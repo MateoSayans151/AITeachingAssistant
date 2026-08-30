@@ -1,0 +1,253 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --color-bg: #ffffff;
+  --color-text: #16181d;
+  --color-text-secondary: #565c68;
+  --color-text-tertiary: #9a9fa9;
+  --color-border: #e7e8ec;
+  --color-accent: #c8511b;
+  --color-accent-soft: #fbe9e0;
+  --color-success: #1a7f4e;
+  --color-success-soft: #e5f6ee;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Misma convención que mapa_ficha.html: etiqueta chica, mayúscula, tracking amplio */
+.eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+}
+
+.page-header {
+  margin-bottom: 40px;
+}
+
+.page-header h1 {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin-top: 10px;
+}
+
+.page-header p {
+  font-size: 16px;
+  color: var(--color-text-secondary);
+  margin-top: 10px;
+  max-width: 60ch;
+}
+
+.top-rule {
+  margin-top: 28px;
+  border-top: 2px solid var(--color-text);
+}
+
+.card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  background: var(--color-bg);
+}
+
+.card + .card {
+  margin-top: 16px;
+}
+
+.card-link {
+  display: block;
+  transition: border-color 0.15s ease;
+}
+
+.card-link:hover {
+  border-color: var(--color-text);
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.card-meta {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #a9430f;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-text);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field {
+  margin-bottom: 20px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.criterio-row {
+  display: grid;
+  grid-template-columns: 2fr 3fr 100px auto;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.badge-pendiente {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.badge-corregido {
+  background: #eef1fb;
+  color: #3b4fb0;
+}
+
+.badge-revisado {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.stepper {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.stepper .step {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.stepper .step-num {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-accent);
+}
+
+.stepper .step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.muted {
+  color: var(--color-text-secondary);
+}
+
+.error-box {
+  background: #fdeeea;
+  border: 1px solid #f3c8bb;
+  color: #9a3412;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.empty-state {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 40px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}

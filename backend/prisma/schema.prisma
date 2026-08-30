@@ -1,0 +1,119 @@
+// Prisma schema — refleja 1:1 supabase/schema.sql
+// `DATABASE_URL` apunta al Postgres de Supabase (connection string "Transaction" pooler recomendada).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EstadoEntrega {
+  pendiente_correccion
+  corregido
+  revisado
+
+  @@map("estado_entrega")
+}
+
+enum EstadoRevision {
+  pendiente
+  aceptada
+  editada
+
+  @@map("estado_revision")
+}
+
+model Docente {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre    String
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  trabajosPracticos TrabajoPractico[]
+
+  @@map("docentes")
+}
+
+model TrabajoPractico {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  docenteId  String   @map("docente_id") @db.Uuid
+  titulo     String
+  consigna   String
+  materia    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  docente          Docente           @relation(fields: [docenteId], references: [id], onDelete: Cascade)
+  criterios        CriterioRubrica[]
+  entregas         Entrega[]
+  resumenesCurso   ResumenCurso[]
+
+  @@index([docenteId])
+  @@map("trabajos_practicos")
+}
+
+model CriterioRubrica {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trabajoPracticoId String  @map("trabajo_practico_id") @db.Uuid
+  nombre            String
+  descripcion       String
+  puntajeMaximo     Decimal @map("puntaje_maximo")
+  orden             Int     @default(0)
+
+  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
+
+  @@index([trabajoPracticoId])
+  @@map("criterios_rubrica")
+}
+
+model Entrega {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trabajoPracticoId String        @map("trabajo_practico_id") @db.Uuid
+  alumnoNombre      String        @map("alumno_nombre")
+  alumnoEmail       String?       @map("alumno_email")
+  textoTrabajo      String        @map("texto_trabajo")
+  estado            EstadoEntrega @default(pendiente_correccion)
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
+  correccion      Correccion?
+
+  @@index([trabajoPracticoId])
+  @@index([estado])
+  @@map("entregas")
+}
+
+model Correccion {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entregaId          String         @unique @map("entrega_id") @db.Uuid
+  modeloIa           String         @map("modelo_ia")
+  notaPorCriterio     Json          @map("nota_por_criterio")
+  notaTotalSugerida  Decimal        @map("nota_total_sugerida")
+  feedbackSugerido   String         @map("feedback_sugerido")
+  notaTotalFinal     Decimal?       @map("nota_total_final")
+  feedbackFinal      String?        @map("feedback_final")
+  estadoRevision     EstadoRevision @default(pendiente) @map("estado_revision")
+  revisadoEn         DateTime?      @map("revisado_en")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  entrega Entrega @relation(fields: [entregaId], references: [id], onDelete: Cascade)
+
+  @@index([estadoRevision])
+  @@map("correcciones")
+}
+
+model ResumenCurso {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trabajoPracticoId         String   @map("trabajo_practico_id") @db.Uuid
+  contenido                 String
+  cantidadEntregasAnalizadas Int     @map("cantidad_entregas_analizadas")
+  modeloIa                  String  @map("modelo_ia")
+  generadoEn                DateTime @default(now()) @map("generado_en")
+
+  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
+
+  @@index([trabajoPracticoId])
+  @@map("resumenes_curso")
+}
