@@ -33,6 +33,8 @@ model Docente {
   createdAt DateTime @default(now()) @map("created_at")
 
   trabajosPracticos TrabajoPractico[]
+  cursos            Curso[]
+  matricesRubrica   MatrizRubrica[]
 
   @@map("docentes")
 }
@@ -116,4 +118,219 @@ model ResumenCurso {
 
   @@index([trabajoPracticoId])
   @@map("resumenes_curso")
+}
+
+// ============================================================================
+// Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara de ajuste.
+// Todo lo de acá abajo es aditivo y convive con el flujo simple de arriba
+// (TrabajoPractico/Entrega/Correccion) sin tocarlo: son dos flujos distintos
+// que comparten Docente y AiService.
+// ============================================================================
+
+enum TipoPregunta {
+  desarrollo
+  resolucion_problema
+  demostracion
+  analisis_caso
+  respuesta_corta
+  numerica
+  relacionar_pares
+  opcion_multiple
+  casillas
+  verdadero_falso
+
+  @@map("tipo_pregunta")
+}
+
+enum ModalidadExamen {
+  sesion_tiempo
+  ventana_dias
+
+  @@map("modalidad_examen")
+}
+
+enum FeedbackModo {
+  inmediato
+  manual
+
+  @@map("feedback_modo")
+}
+
+enum EstadoExamen {
+  borrador
+  publicado
+  cerrado
+
+  @@map("estado_examen")
+}
+
+model Curso {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  docenteId String   @map("docente_id") @db.Uuid
+  nombre    String
+  materia   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  docente    Docente     @relation(fields: [docenteId], references: [id], onDelete: Cascade)
+  comisiones Comision[]
+  examenes   Examen[]
+
+  @@index([docenteId])
+  @@map("cursos")
+}
+
+model Comision {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cursoId   String   @map("curso_id") @db.Uuid
+  nombre    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  curso            Curso             @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  alumnos          Alumno[]
+  examenComisiones ExamenComision[]
+
+  @@index([cursoId])
+  @@map("comisiones")
+}
+
+model Alumno {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  comisionId String   @map("comision_id") @db.Uuid
+  nombre     String
+  email      String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  comision   Comision          @relation(fields: [comisionId], references: [id], onDelete: Cascade)
+  respuestas RespuestaExamen[]
+
+  @@unique([comisionId, email])
+  @@map("alumnos")
+}
+
+model MatrizRubrica {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  docenteId   String   @map("docente_id") @db.Uuid
+  nombre      String
+  descripcion String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  docente   Docente           @relation(fields: [docenteId], references: [id], onDelete: Cascade)
+  criterios CriterioMatriz[]
+  usosComoOrigen CriterioPregunta[]
+
+  @@index([docenteId])
+  @@map("matrices_rubrica")
+}
+
+model CriterioMatriz {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matrizId           String  @map("matriz_id") @db.Uuid
+  nombre             String
+  descripcion        String
+  puntajeMaximo      Decimal @map("puntaje_maximo")
+  orden              Int     @default(0)
+  nivelesDescripcion Json    @map("niveles_descripcion")
+
+  matriz MatrizRubrica @relation(fields: [matrizId], references: [id], onDelete: Cascade)
+
+  @@index([matrizId])
+  @@map("criterios_matriz")
+}
+
+model Examen {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cursoId             String          @map("curso_id") @db.Uuid
+  titulo              String
+  consigna            String
+  modalidad           ModalidadExamen @default(ventana_dias)
+  duracionMinutos     Int?            @map("duracion_minutos")
+  escalaMin           Decimal         @default(0) @map("escala_min")
+  escalaMax           Decimal         @default(10) @map("escala_max")
+  niveles             Json
+  varaPorcentaje      Decimal         @default(0) @map("vara_porcentaje")
+  feedbackModo        FeedbackModo    @default(manual) @map("feedback_modo")
+  feedbackLiberadoEn  DateTime?       @map("feedback_liberado_en")
+  estado              EstadoExamen    @default(borrador)
+  createdAt           DateTime        @default(now()) @map("created_at")
+
+  curso      Curso             @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  preguntas  Pregunta[]
+  comisiones ExamenComision[]
+  respuestas RespuestaExamen[]
+
+  @@index([cursoId])
+  @@map("examenes")
+}
+
+model ExamenComision {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examenId    String    @map("examen_id") @db.Uuid
+  comisionId  String    @map("comision_id") @db.Uuid
+  slugAcceso  String    @unique @map("slug_acceso")
+  fechaInicio DateTime? @map("fecha_inicio")
+  fechaFin    DateTime? @map("fecha_fin")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  examen   Examen   @relation(fields: [examenId], references: [id], onDelete: Cascade)
+  comision Comision @relation(fields: [comisionId], references: [id], onDelete: Cascade)
+
+  @@unique([examenId, comisionId])
+  @@map("examen_comisiones")
+}
+
+model Pregunta {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examenId      String       @map("examen_id") @db.Uuid
+  tipo          TipoPregunta
+  enunciado     String
+  orden         Int          @default(0)
+  puntajeMaximo Decimal      @map("puntaje_maximo")
+  opciones      Json?
+
+  examen    Examen             @relation(fields: [examenId], references: [id], onDelete: Cascade)
+  criterios CriterioPregunta[]
+
+  @@index([examenId])
+  @@map("preguntas")
+}
+
+model CriterioPregunta {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  preguntaId         String  @map("pregunta_id") @db.Uuid
+  matrizOrigenId     String? @map("matriz_origen_id") @db.Uuid
+  nombre             String
+  descripcion        String
+  puntajeMaximo      Decimal @map("puntaje_maximo")
+  orden              Int     @default(0)
+  nivelesDescripcion Json    @map("niveles_descripcion")
+
+  pregunta     Pregunta       @relation(fields: [preguntaId], references: [id], onDelete: Cascade)
+  matrizOrigen MatrizRubrica? @relation(fields: [matrizOrigenId], references: [id], onDelete: SetNull)
+
+  @@index([preguntaId])
+  @@map("criterios_pregunta")
+}
+
+model RespuestaExamen {
+  id                      String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examenId                String         @map("examen_id") @db.Uuid
+  alumnoId                String         @map("alumno_id") @db.Uuid
+  modeloIa                String?        @map("modelo_ia")
+  respuestasPorPregunta   Json           @map("respuestas_por_pregunta")
+  notaTotalSugerida       Decimal?       @map("nota_total_sugerida")
+  feedbackGeneralSugerido String?        @map("feedback_general_sugerido")
+  notaTotalFinal          Decimal?       @map("nota_total_final")
+  feedbackGeneralFinal    String?        @map("feedback_general_final")
+  estado                  EstadoEntrega  @default(pendiente_correccion)
+  estadoRevision          EstadoRevision @default(pendiente) @map("estado_revision")
+  revisadoEn              DateTime?      @map("revisado_en")
+  createdAt               DateTime       @default(now()) @map("created_at")
+
+  examen Examen @relation(fields: [examenId], references: [id], onDelete: Cascade)
+  alumno Alumno @relation(fields: [alumnoId], references: [id], onDelete: Cascade)
+
+  @@unique([examenId, alumnoId])
+  @@index([estado])
+  @@index([estadoRevision])
+  @@map("respuestas_examen")
 }

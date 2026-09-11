@@ -7,6 +7,11 @@ import { TrabajosPracticosModule } from './trabajos-practicos/trabajos-practicos
 import { EntregasModule } from './entregas/entregas.module';
 import { CorreccionesModule } from './correcciones/correcciones.module';
 import { ResumenCursoModule } from './resumen-curso/resumen-curso.module';
+import { CursosModule } from './cursos/cursos.module';
+import { ComisionesModule } from './comisiones/comisiones.module';
+import { MatricesRubricaModule } from './matrices-rubrica/matrices-rubrica.module';
+import { ExamenesModule } from './examenes/examenes.module';
+import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.module';
 
 @Module({
   imports: [
@@ -18,6 +23,13 @@ import { ResumenCursoModule } from './resumen-curso/resumen-curso.module';
     EntregasModule,
     CorreccionesModule,
     ResumenCursoModule,
+    // Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara — feature-set
+    // nuevo, en paralelo al flujo de arriba (TrabajoPractico/Entrega/Correccion).
+    CursosModule,
+    ComisionesModule,
+    MatricesRubricaModule,
+    ExamenesModule,
+    RespuestasExamenModule,
   ],
 })
 export class AppModule {}

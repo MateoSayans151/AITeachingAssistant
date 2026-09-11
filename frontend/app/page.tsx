@@ -35,9 +35,12 @@ export default function HomePage() {
         <p>Tus trabajos prácticos y el estado de corrección de cada uno.</p>
       </header>
 
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Link href="/trabajos/nuevo" className="btn btn-primary">
           + Nuevo trabajo práctico
+        </Link>
+        <Link href="/cursos" className="btn btn-secondary">
+          Ir a Cátedra (exámenes por curso)
         </Link>
       </div>
 

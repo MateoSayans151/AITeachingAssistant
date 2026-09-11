@@ -43,3 +43,72 @@ export interface CriterioInput {
   descripcion: string;
   puntajeMaximo: number;
 }
+
+// ---- Corrección de exámenes (Cátedra): preguntas tipadas con matriz de niveles ----
+
+export interface NivelEscalaInput {
+  orden: number;
+  nombre: string;
+  porcentaje: number; // % del puntajeMaximo del criterio que corresponde a este nivel
+}
+
+export interface CriterioPreguntaInput {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  puntajeMaximo: number;
+  nivelesDescripcion: Array<{ orden: number; nombre: string; descripcion: string }>;
+}
+
+export interface PreguntaAbiertaInput {
+  id: string;
+  enunciado: string;
+  criterios: CriterioPreguntaInput[];
+}
+
+// Schema de salida para la corrección de las preguntas ABIERTAS de una respuesta de examen.
+// Las preguntas auto-corregibles (opción múltiple, V/F, numérica, etc.) nunca pasan por acá:
+// se corrigen en código comparando contra la clave guardada en Pregunta.opciones.
+export const CorreccionExamenSchema = z.object({
+  porPregunta: z
+    .array(
+      z.object({
+        preguntaId: z.string().describe('id de la pregunta evaluada'),
+        notaPorCriterio: z.array(
+          z.object({
+            criterioId: z.string(),
+            nombre: z.string(),
+            nivelSugerido: z
+              .number()
+              .describe('nivel de desempeño alcanzado: un entero entre 1 y 5, según las descripciones de cada nivel'),
+            comentario: z.string().describe('comentario breve y específico sobre por qué se asignó ese nivel'),
+          }),
+        ),
+      }),
+    )
+    .describe('Una entrada por cada pregunta abierta recibida, en el mismo orden'),
+  feedbackGeneralSugerido: z
+    .string()
+    .describe('devolución personalizada para el alumno sobre el examen completo, tono constructivo'),
+});
+
+export type CorreccionExamenIA = z.infer<typeof CorreccionExamenSchema>;
+
+// Resultado ya validado/clampeado en código (ver AiService.validarCorreccionExamen):
+// agrega notaSugerida numérica por criterio y por pregunta, calculada a partir del
+// porcentaje del nivel elegido — nunca se confía en que el modelo haga esa cuenta.
+export interface CorreccionExamenResultado {
+  porPregunta: Array<{
+    preguntaId: string;
+    notaSugerida: number;
+    notaPorCriterio: Array<{
+      criterioId: string;
+      nombre: string;
+      nivelSugerido: number;
+      notaSugerida: number;
+      comentario: string;
+    }>;
+  }>;
+  notaTotalSugerida: number;
+  feedbackGeneralSugerido: string;
+}
