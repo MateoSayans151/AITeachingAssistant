@@ -66,6 +66,14 @@ export interface PreguntaAbiertaInput {
   criterios: CriterioPreguntaInput[];
 }
 
+// Material de cátedra (texto plano) que el docente carga por curso, opcional, para que
+// la IA lo use como referencia extra al corregir preguntas abiertas de ese curso.
+export interface MaterialCursoInput {
+  titulo: string;
+  unidad: string | null;
+  contenido: string;
+}
+
 // Schema de salida para la corrección de las preguntas ABIERTAS de una respuesta de examen.
 // Las preguntas auto-corregibles (opción múltiple, V/F, numérica, etc.) nunca pasan por acá:
 // se corrigen en código comparando contra la clave guardada en Pregunta.opciones.

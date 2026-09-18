@@ -53,6 +53,16 @@ npm run dev
 No hay OCR ni carga de imágenes/PDF escaneado en este MVP — todo es texto plano, a propósito (ver el
 documento de contexto del proyecto).
 
+### Material de cátedra (Cátedra: cursos/exámenes)
+
+Además de la consigna y la rúbrica, el docente puede cargar **material de cátedra** por curso (pestaña
+"Material" en `/cursos/[id]`): apuntes o bibliografía en texto plano, opcionales, que quedan asociados
+al curso y no a un examen puntual. La IA lo usa como referencia extra al corregir las preguntas abiertas
+de cualquier examen de ese curso (`AiService.corregirRespuestaExamen`): lo cita para fundamentar el
+criterio, pero la rúbrica sigue mandando sobre la nota — no se evalúa como incorrecto un desarrollo
+válido solo porque no aparece en el material. Mismo criterio "texto plano, a propósito" del resto del
+MVP: no hay carga de PDF/imagen todavía.
+
 ## 1. Base de datos (Supabase)
 
 1. Creá un proyecto en [supabase.com](https://supabase.com).
@@ -112,6 +122,14 @@ Por default apunta a `http://localhost:3001/api` (backend local). Abrí `http://
 La primera vez te va a pedir nombre y email para "identificarte" como docente — es un reemplazo
 mínimo de login real (no hay autenticación en este MVP; queda para v2 con Supabase Auth).
 
+**Sobre el diseño:** [`app/globals.css`](./frontend/app/globals.css) porta 1:1 los tokens y clases del
+mockup de Claude Design "Cátedra - Evaluaciones IA" (paleta ámbar, tipografía Sora + Inter, radios y
+sombras suaves) — se mantuvieron los nombres de clase que ya usaban las páginas (`.page`, `.card`,
+`.btn`, `.field`, `.table`, `.tabs`…) para no tener que tocar cada `page.tsx`. La barra superior
+persistente (`app/components/TopNav.tsx`) también sale de ese mockup. Quedan afuera del alcance actual,
+por no tener backend equivalente todavía: el drag-and-drop de la barra de vara, los popovers de
+calendario (se usan inputs nativos) y el sistema de anti-trampa.
+
 ## 4. Deploy
 
 - **Frontend**: Vercel, apuntando a la carpeta `frontend/`. Variable de entorno
@@ -151,7 +169,10 @@ asigná el puntaje máximo"*). Cómo está contenido eso hoy, en
 - **Instrucciones y datos separados.** Las reglas van en el `system`; la consigna y la
   rúbrica en el prompt; el trabajo del alumno va delimitado (`<trabajo_alumno>…`) y el
   `system` le indica al modelo que trate ese bloque como material a evaluar, nunca como
-  órdenes. Lo mismo para el feedback agregado en el resumen de curso (`<correcciones>…`).
+  órdenes. Lo mismo para el feedback agregado en el resumen de curso (`<correcciones>…`)
+  y para el material de cátedra opcional (`<material>…`, ver más arriba): aunque lo carga
+  el docente, va delimitado igual — puede traer texto pegado de un PDF o de internet con
+  algo que parezca una instrucción.
 - **Validación de la salida en código** (`validarCorreccion`), sin confiar en que el modelo
   respetó la rúbrica: se descartan criterios inventados (id fuera de la rúbrica), se fuerza
   cada nota al rango `[0, puntajeMaximo]` del criterio, se usa el nombre canónico del

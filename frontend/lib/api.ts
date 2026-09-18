@@ -147,6 +147,16 @@ export interface Curso {
   _count?: { comisiones: number; examenes: number };
   comisiones?: Comision[];
   examenes?: Examen[];
+  materiales?: MaterialCurso[];
+}
+
+export interface MaterialCurso {
+  id: string;
+  cursoId: string;
+  titulo: string;
+  unidad: string | null;
+  contenido: string;
+  createdAt: string;
 }
 
 export interface Comision {
@@ -328,6 +338,17 @@ export const listComisionesPorCurso = (cursoId: string) =>
   request<Comision[]>(`/cursos/${cursoId}/comisiones`);
 
 export const getComision = (id: string) => request<Comision>(`/comisiones/${id}`);
+
+// ---- Material de cátedra (texto plano, por curso) ----
+
+export const listMaterialesPorCurso = (cursoId: string) => request<MaterialCurso[]>(`/cursos/${cursoId}/materiales`);
+
+export const createMaterialCurso = (
+  cursoId: string,
+  data: { titulo: string; unidad?: string; contenido: string },
+) => request<MaterialCurso>(`/cursos/${cursoId}/materiales`, { method: 'POST', body: JSON.stringify(data) });
+
+export const eliminarMaterialCurso = (id: string) => request<void>(`/materiales/${id}`, { method: 'DELETE' });
 
 export const agregarAlumno = (comisionId: string, data: { nombre: string; email: string }) =>
   request<Alumno>(`/comisiones/${comisionId}/alumnos`, { method: 'POST', body: JSON.stringify(data) });

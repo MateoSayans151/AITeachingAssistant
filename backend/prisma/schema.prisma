@@ -174,9 +174,27 @@ model Curso {
   docente    Docente     @relation(fields: [docenteId], references: [id], onDelete: Cascade)
   comisiones Comision[]
   examenes   Examen[]
+  materiales MaterialCurso[]
 
   @@index([docenteId])
   @@map("cursos")
+}
+
+// Material de cátedra: apuntes/bibliografía en texto plano por curso (no por examen
+// puntual), que la IA usa como referencia extra al corregir preguntas abiertas de ese
+// curso. Mismo criterio "texto plano, a propósito" que el resto del MVP.
+model MaterialCurso {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cursoId   String   @map("curso_id") @db.Uuid
+  titulo    String
+  unidad    String?
+  contenido String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  curso Curso @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+
+  @@index([cursoId])
+  @@map("materiales_curso")
 }
 
 model Comision {

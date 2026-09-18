@@ -122,7 +122,12 @@ export class RespuestasExamenService {
     const respuesta = await this.prisma.respuestaExamen.findUnique({
       where: { id: respuestaId },
       include: {
-        examen: { include: { preguntas: { orderBy: { orden: 'asc' }, include: { criterios: true } } } },
+        examen: {
+          include: {
+            preguntas: { orderBy: { orden: 'asc' }, include: { criterios: true } },
+            curso: { include: { materiales: { orderBy: { createdAt: 'asc' } } } },
+          },
+        },
       },
     });
     if (!respuesta) throw new NotFoundException(`Respuesta ${respuestaId} no encontrada`);
@@ -157,6 +162,11 @@ export class RespuestasExamenService {
           texto: String(contenidoPorPregunta.get(p.id) ?? ''),
         })),
         niveles: respuesta.examen.niveles as any,
+        materialCurso: respuesta.examen.curso.materiales.map((m) => ({
+          titulo: m.titulo,
+          unidad: m.unidad,
+          contenido: m.contenido,
+        })),
       });
     }
 

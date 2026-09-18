@@ -29,6 +29,7 @@ export class CursosService {
           include: { _count: { select: { alumnos: true } } },
         },
         examenes: { orderBy: { createdAt: 'desc' } },
+        materiales: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!curso) throw new NotFoundException(`Curso ${id} no encontrado`);

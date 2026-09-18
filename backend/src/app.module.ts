@@ -9,6 +9,7 @@ import { CorreccionesModule } from './correcciones/correcciones.module';
 import { ResumenCursoModule } from './resumen-curso/resumen-curso.module';
 import { CursosModule } from './cursos/cursos.module';
 import { ComisionesModule } from './comisiones/comisiones.module';
+import { MaterialesCursoModule } from './materiales-curso/materiales-curso.module';
 import { MatricesRubricaModule } from './matrices-rubrica/matrices-rubrica.module';
 import { ExamenesModule } from './examenes/examenes.module';
 import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.module';
@@ -27,6 +28,7 @@ import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.mo
     // nuevo, en paralelo al flujo de arriba (TrabajoPractico/Entrega/Correccion).
     CursosModule,
     ComisionesModule,
+    MaterialesCursoModule,
     MatricesRubricaModule,
     ExamenesModule,
     RespuestasExamenModule,

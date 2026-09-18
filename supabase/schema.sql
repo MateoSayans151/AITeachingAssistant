@@ -110,6 +110,21 @@ create table if not exists cursos (
 
 create index if not exists idx_cursos_docente on cursos(docente_id);
 
+-- Material de cátedra: apuntes/bibliografía en texto plano que el docente carga por
+-- curso (no por examen puntual) y que la IA usa como referencia extra al corregir las
+-- preguntas abiertas de ese curso. Mismo criterio "texto plano, a propósito" que el
+-- resto del MVP — sin carga de PDF/imagen.
+create table if not exists materiales_curso (
+  id uuid primary key default gen_random_uuid(),
+  curso_id uuid not null references cursos(id) on delete cascade,
+  titulo text not null,
+  unidad text,
+  contenido text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_materiales_curso_curso on materiales_curso(curso_id);
+
 create table if not exists comisiones (
   id uuid primary key default gen_random_uuid(),
   curso_id uuid not null references cursos(id) on delete cascade,

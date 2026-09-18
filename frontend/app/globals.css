@@ -1,23 +1,64 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;600;700&display=swap');
+
+/*
+ * Design system "Cátedra": tokens + clases portados 1:1 desde el mockup de Claude Design
+ * (Drive: "Cátedra - Evaluaciones IA.html", Tecnología e Innovación — UADE). Los NOMBRES
+ * de clase existentes en las páginas (.page, .card, .btn, .field, .badge, .tabs, .stepper,
+ * .table…) se mantienen para no tener que tocar cada page.tsx; lo que cambia acá es cómo
+ * se ven. Paleta cálida (ámbar), tipografía Sora (títulos) + Inter (cuerpo), radios y
+ * sombras más suaves que la versión anterior.
+ */
 
 :root {
-  --color-bg: #ffffff;
-  --color-text: #16181d;
-  --color-text-secondary: #565c68;
-  --color-text-tertiary: #9a9fa9;
-  --color-border: #e7e8ec;
-  --color-accent: #c8511b;
-  --color-accent-soft: #fbe9e0;
-  --color-success: #1a7f4e;
-  --color-success-soft: #e5f6ee;
-  --radius: 10px;
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201f1d;
+  --color-text-secondary: color-mix(in srgb, #201f1d 70%, transparent);
+  --color-text-tertiary: color-mix(in srgb, #201f1d 55%, transparent);
+  --color-accent: #b68235;
+  --color-accent-hover: #a06f24;
+  --color-accent-active: #7d5411;
+  --color-border: color-mix(in srgb, #201f1d 14%, transparent);
+  --color-success: #4c7a3a;
+  --color-success-soft: #e9f1e3;
+  --color-error: #a63e3e;
+  --color-error-soft: #fbeaea;
+
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-700: #7d7979;
+  --color-neutral-800: #605d5d;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff3e4;
+  --color-accent-700: #7d5411;
+  --color-accent-800: #5a3b0a;
+
+  --font-heading: 'Sora', system-ui, sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+
+  --space-1: 5px;
+  --space-2: 9px;
+  --space-3: 14px;
+  --space-4: 18px;
+  --space-6: 28px;
+  --space-8: 37px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius: var(--radius-md); /* alias retrocompatible */
+
+  --shadow-sm: 0 1px 3px rgba(45, 43, 43, 0.08);
+  --shadow-md: 0 4px 14px rgba(45, 43, 43, 0.1);
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: var(--font-body);
 }
 
 html,
@@ -31,84 +72,171 @@ a {
   text-decoration: none;
 }
 
-/* Misma convención que mapa_ficha.html: etiqueta chica, mayúscula, tracking amplio */
-.eyebrow {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-text-tertiary);
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
+/* ---- barra superior (TopNav) ---- */
+.topnav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-8);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topnav-left {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.topnav-brand {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.topnav-links {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.topnav-links a {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.topnav-links a:hover,
+.topnav-links a[data-active='true'] {
+  color: var(--color-accent);
+}
+
+.topnav-user {
+  font-size: 13px;
+  color: var(--color-neutral-800);
+  flex-shrink: 0;
+}
+
+/* ---- layout de página ---- */
 .page {
-  max-width: 960px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 56px 32px 96px;
+  padding: var(--space-8);
 }
 
 .page-header {
-  margin-bottom: 40px;
+  margin-bottom: var(--space-6);
 }
 
 .page-header h1 {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-  margin-top: 10px;
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: 40px;
+  letter-spacing: -0.01em;
+  margin-top: var(--space-2);
 }
 
 .page-header p {
-  font-size: 16px;
+  font-size: 15px;
   color: var(--color-text-secondary);
-  margin-top: 10px;
-  max-width: 60ch;
+  margin-top: var(--space-2);
+  max-width: 62ch;
+}
+
+/* Etiqueta chica, mayúscula, tracking amplio — usada como kicker sobre los títulos. */
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-neutral-800);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .top-rule {
-  margin-top: 28px;
-  border-top: 2px solid var(--color-text);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
+.hr {
+  height: 1px;
+  border: 0;
+  margin: var(--space-4) 0;
+  background: var(--color-border);
+}
+
+/* ---- cards ---- */
 .card {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 24px 28px;
-  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
 .card + .card {
-  margin-top: 16px;
+  margin-top: var(--space-3);
 }
 
 .card-link {
   display: block;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .card-link:hover {
-  border-color: var(--color-text);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-md);
+}
+
+.card-kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent);
 }
 
 .card-title {
-  font-size: 18px;
-  font-weight: 700;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.3;
 }
 
 .card-meta {
   font-size: 13px;
-  color: var(--color-text-tertiary);
+  color: var(--color-neutral-700);
   margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
+/* ---- botones ---- */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
   font-size: 14px;
-  font-weight: 700;
-  border: none;
+  font-weight: 600;
+  border: 1px solid transparent;
   cursor: pointer;
 }
 
@@ -118,17 +246,31 @@ a {
 }
 
 .btn-primary:hover {
-  background: #a9430f;
+  background: var(--color-accent-hover);
+}
+
+.btn-primary:active {
+  background: var(--color-accent-active);
 }
 
 .btn-secondary {
   background: #fff;
   color: var(--color-text);
-  border: 1px solid var(--color-border);
+  border-color: var(--color-border);
 }
 
 .btn-secondary:hover {
-  border-color: var(--color-text);
+  border-color: var(--color-neutral-800);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-accent);
+  padding-inline: var(--space-1);
+}
+
+.btn-ghost:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .btn:disabled {
@@ -136,32 +278,41 @@ a {
   cursor: not-allowed;
 }
 
+/* ---- formularios ---- */
 .field {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .field label {
   display: block;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
   color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
+  min-height: 38px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
   font-size: 15px;
+  font-family: var(--font-body);
   color: var(--color-text);
+  background: #fff;
+}
+
+.field input:hover,
+.field textarea:hover,
+.field select:hover {
+  border-color: var(--color-neutral-800);
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.field select:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
@@ -179,25 +330,28 @@ a {
   margin-bottom: 10px;
 }
 
-.badge {
+/* ---- etiquetas de estado (badge/tag) ---- */
+.badge,
+.tag {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 3px 11px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  font-weight: 600;
 }
 
-.badge-pendiente {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
+.badge-pendiente,
+.tag-accent {
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
 }
 
-.badge-corregido {
-  background: #eef1fb;
-  color: #3b4fb0;
+.badge-corregido,
+.tag-outline {
+  background: transparent;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent-700);
 }
 
 .badge-revisado {
@@ -205,29 +359,41 @@ a {
   color: var(--color-success);
 }
 
+.tag-neutral {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-800);
+}
+
+/* ---- stepper (wizard) ---- */
 .stepper {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 32px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
 }
 
 .stepper .step {
   display: flex;
-  gap: 10px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 2px solid var(--color-border);
+  padding-top: var(--space-2);
 }
 
 .stepper .step-num {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+  font-variant-numeric: tabular-nums;
 }
 
 .stepper .step-label {
-  font-size: 13px;
+  font-family: var(--font-heading);
+  font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }
 
 .muted {
@@ -235,48 +401,53 @@ a {
 }
 
 .error-box {
-  background: #fdeeea;
-  border: 1px solid #f3c8bb;
-  color: #9a3412;
-  border-radius: 8px;
+  background: var(--color-error-soft);
+  border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
+  color: var(--color-error);
+  border-radius: var(--radius-md);
   padding: 12px 16px;
   font-size: 14px;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .empty-state {
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius);
-  padding: 40px;
+  border-radius: var(--radius-md);
+  padding: var(--space-8);
   text-align: center;
   color: var(--color-text-secondary);
 }
 
-/* Cátedra: tabs, tabla simple y chip de nivel — no existían clases para esto todavía. */
+/* ---- pestañas: control segmentado, activa rellena de acento ---- */
 .tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: 24px;
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-6);
 }
 
 .tab {
-  background: none;
+  background: transparent;
   border: none;
   cursor: pointer;
-  padding: 10px 16px;
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-body);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-secondary);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+}
+
+.tab + .tab {
+  border-left: 1px solid var(--color-border);
 }
 
 .tab-active {
-  color: var(--color-text);
-  border-bottom-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
 }
 
+/* ---- tablas ---- */
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -285,18 +456,22 @@ a {
 
 .table th {
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--color-text-tertiary);
-  padding: 8px 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-neutral-700);
+  padding: var(--space-2);
   border-bottom: 1px solid var(--color-border);
 }
 
 .table td {
-  padding: 12px;
+  padding: var(--space-3) var(--space-2);
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
 }
 
 .table tr:last-child td {
@@ -310,7 +485,7 @@ a {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .nivel-dot {
@@ -318,4 +493,40 @@ a {
   height: 8px;
   border-radius: 50%;
   display: inline-block;
+}
+
+/* ---- diálogo modal (opcional, por si se agrega alguno) ---- */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgba(45, 43, 43, 0.4);
+  z-index: 40;
+}
+
+.dialog {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
+}
+
+.dialog-title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
