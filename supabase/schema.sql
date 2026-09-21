@@ -125,6 +125,24 @@ create table if not exists materiales_curso (
 
 create index if not exists idx_materiales_curso_curso on materiales_curso(curso_id);
 
+-- Indice RAG del material de catedra. En una base existente aplicar la migracion
+-- supabase/migrations/20260921_add_rag_materiales.sql.
+create extension if not exists vector with schema extensions;
+
+create table if not exists rag_fragmentos_material (
+  id uuid primary key default gen_random_uuid(),
+  material_id uuid not null references materiales_curso(id) on delete cascade,
+  curso_id uuid not null references cursos(id) on delete cascade,
+  indice integer not null check (indice >= 0),
+  contenido text not null,
+  embedding extensions.vector(768) not null,
+  created_at timestamptz not null default now(),
+  unique (material_id, indice)
+);
+create index if not exists idx_rag_fragmentos_material_curso on rag_fragmentos_material(curso_id);
+create index if not exists idx_rag_fragmentos_material_embedding
+  on rag_fragmentos_material using hnsw (embedding vector_cosine_ops);
+
 create table if not exists comisiones (
   id uuid primary key default gen_random_uuid(),
   curso_id uuid not null references cursos(id) on delete cascade,

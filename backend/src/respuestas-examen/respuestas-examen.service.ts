@@ -5,6 +5,7 @@ import { TIPOS_AUTOCORREGIBLES } from '../examenes/dto/create-examen.dto';
 import { RegistrarRespuestaDto } from './dto/registrar-respuesta.dto';
 import { RevisarRespuestaExamenDto } from './dto/revisar-respuesta-examen.dto';
 import { corregirPreguntaCerrada, sanitizarOpcionesParaAlumno } from './correccion-cerradas.util';
+import { RagService } from '../rag/rag.service';
 
 type RespuestaPorPregunta = {
   preguntaId: string;
@@ -22,6 +23,7 @@ export class RespuestasExamenService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly rag: RagService,
   ) {}
 
   /** Trae el examen (sin claves de respuesta) para la página pública de rendir. */
@@ -125,7 +127,7 @@ export class RespuestasExamenService {
         examen: {
           include: {
             preguntas: { orderBy: { orden: 'asc' }, include: { criterios: true } },
-            curso: { include: { materiales: { orderBy: { createdAt: 'asc' } } } },
+            curso: true,
           },
         },
       },
@@ -145,6 +147,10 @@ export class RespuestasExamenService {
 
     let resultadoAbiertas = { porPregunta: [] as any[], notaTotalSugerida: 0, feedbackGeneralSugerido: '' };
     if (abiertas.length > 0) {
+      const consultaRag = abiertas
+        .map((p) => `${p.enunciado}\n${String(contenidoPorPregunta.get(p.id) ?? '')}`)
+        .join('\n\n');
+      const materialRecuperado = await this.rag.buscarMaterial(respuesta.examen.cursoId, consultaRag);
       resultadoAbiertas = await this.ai.corregirRespuestaExamen({
         preguntas: abiertas.map((p) => ({
           id: p.id,
@@ -162,11 +168,7 @@ export class RespuestasExamenService {
           texto: String(contenidoPorPregunta.get(p.id) ?? ''),
         })),
         niveles: respuesta.examen.niveles as any,
-        materialCurso: respuesta.examen.curso.materiales.map((m) => ({
-          titulo: m.titulo,
-          unidad: m.unidad,
-          contenido: m.contenido,
-        })),
+        materialCurso: materialRecuperado,
       });
     }
 
