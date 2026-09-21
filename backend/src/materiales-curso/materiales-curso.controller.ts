@@ -15,6 +15,11 @@ export class MaterialesCursoController {
   findAllByCurso(@Param('cursoId') cursoId: string) {
     return this.service.findAllByCurso(cursoId);
   }
+
+  @Post('reindexar')
+  reindexarCurso(@Param('cursoId') cursoId: string) {
+    return this.service.reindexarCurso(cursoId);
+  }
 }
 
 @Controller('materiales')
