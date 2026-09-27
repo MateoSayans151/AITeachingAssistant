@@ -38,7 +38,7 @@ export class RagService {
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {
     // Una coleccion vectorial usa siempre el mismo modelo y la misma dimension.
-    this.embeddingModelId = this.config.get<string>('RAG_EMBEDDING_MODEL_ID', 'text-embedding-004');
+    this.embeddingModelId = this.config.get<string>('RAG_EMBEDDING_MODEL_ID', 'gemini-embedding-001');
     this.dimensions = Number(this.config.get<string>('RAG_EMBEDDING_DIMENSIONS', '768'));
   }
 
