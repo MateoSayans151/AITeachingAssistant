@@ -31,6 +31,19 @@ function acotar(texto: string, max = MAX_TEXTO_NO_CONFIABLE): string {
 }
 
 /**
+ * Resiliencia de las llamadas al LLM: más reintentos de los 2 por defecto (el SDK reintenta con
+ * backoff exponencial solo ante 429/5xx/timeouts del proveedor) y un tope de tiempo para que una
+ * llamada colgada no deje la respuesta del alumno en limbo. El timeout es del conjunto: corre
+ * desde que arranca la llamada e incluye los reintentos, por eso se crea uno nuevo por llamada.
+ */
+const LLM_MAX_REINTENTOS = 4;
+const LLM_TIMEOUT_MS = 90_000;
+
+export function opcionesResilientes() {
+  return { maxRetries: LLM_MAX_REINTENTOS, abortSignal: AbortSignal.timeout(LLM_TIMEOUT_MS) };
+}
+
+/**
  * Capa de acceso al LLM. Todo el "cerebro" del producto vive acá adentro:
  * el resto de la app nunca llama a un provider de IA directamente.
  *
@@ -120,6 +133,7 @@ ${acotar(textoTrabajo)}
       schema: CorreccionSchema,
       system,
       prompt,
+      ...opcionesResilientes(),
     });
 
     const validado = this.validarCorreccion(object, criterios);
@@ -208,6 +222,7 @@ ${acotar(correccionesTexto)}
       schema: ResumenCursoSchema,
       system,
       prompt,
+      ...opcionesResilientes(),
     });
 
     return object;
@@ -307,6 +322,7 @@ Reglas:
       schema: CorreccionExamenSchema,
       system,
       prompt,
+      ...opcionesResilientes(),
     });
 
     const resultado = this.validarCorreccionExamen(object, preguntas, niveles);
