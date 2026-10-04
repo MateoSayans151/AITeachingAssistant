@@ -68,7 +68,7 @@ export default function NuevaComisionPage() {
         <div className="field">
           <label>Alumnos</label>
           <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-            Cada alumno se identifica por su email cuando entra a rendir un examen por link.
+            Cada alumno rinde ingresando su email, así que cargalo con el mismo que usa.
           </div>
 
           {alumnos.map((a, i) => (

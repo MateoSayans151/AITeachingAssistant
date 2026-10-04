@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMatrizRubricaDto } from './dto/create-matriz-rubrica.dto';
 
@@ -7,10 +8,10 @@ import { CreateMatrizRubricaDto } from './dto/create-matriz-rubrica.dto';
 export class MatricesRubricaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateMatrizRubricaDto) {
+  create(docenteId: string, dto: CreateMatrizRubricaDto) {
     return this.prisma.matrizRubrica.create({
       data: {
-        docenteId: dto.docenteId,
+        docenteId,
         nombre: dto.nombre,
         descripcion: dto.descripcion,
         criterios: {
@@ -27,17 +28,18 @@ export class MatricesRubricaService {
     });
   }
 
-  // Igual que TrabajosPracticosService.findAll(): no se filtra por docente en este MVP.
-  findAll() {
+  findAll(docenteId: string) {
     return this.prisma.matrizRubrica.findMany({
+      where: { docenteId },
       orderBy: { createdAt: 'desc' },
       include: { criterios: { orderBy: { orden: 'asc' } } },
     });
   }
 
-  async findOne(id: string) {
-    const matriz = await this.prisma.matrizRubrica.findUnique({
-      where: { id },
+  async findOne(docenteId: string, id: string) {
+    if (!isUUID(id)) throw new NotFoundException(`Matriz de rúbrica ${id} no encontrado`);
+    const matriz = await this.prisma.matrizRubrica.findFirst({
+      where: { id, docenteId },
       include: { criterios: { orderBy: { orden: 'asc' } } },
     });
     if (!matriz) throw new NotFoundException(`Matriz de rúbrica ${id} no encontrada`);

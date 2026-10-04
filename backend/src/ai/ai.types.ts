@@ -57,6 +57,7 @@ export interface CriterioPreguntaInput {
   nombre: string;
   descripcion: string;
   puntajeMaximo: number;
+  // Vacío si el docente no detalló los niveles de este criterio.
   nivelesDescripcion: Array<{ orden: number; nombre: string; descripcion: string }>;
 }
 

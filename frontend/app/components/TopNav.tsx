@@ -1,11 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Docente } from '@/lib/api';
-
-const DOCENTE_STORAGE_KEY = 'ata_docente';
+import { cerrarSesion, useDocente } from '@/lib/auth';
 
 const LINKS = [
   { href: '/', label: 'Trabajos prácticos' },
@@ -15,19 +12,15 @@ const LINKS = [
 
 /**
  * Barra superior persistente, estilo "Cátedra" (marca + navegación + docente activo a
- * la derecha) — se muestra en todas las páginas del docente. `/rendir/[slug]` es la
- * única vista pública (el alumno no tiene sesión de docente) y queda afuera a propósito.
+ * la derecha) — se muestra en todas las páginas del docente. `/rendir/[slug]` y
+ * `/entregar/[slug]` son las únicas vistas públicas (el alumno no tiene sesión de docente)
+ * y quedan afuera a propósito.
  */
 export function TopNav() {
   const pathname = usePathname();
-  const [docente, setDocente] = useState<Docente | null>(null);
+  const docente = useDocente();
 
-  useEffect(() => {
-    const raw = window.localStorage.getItem(DOCENTE_STORAGE_KEY);
-    if (raw) setDocente(JSON.parse(raw));
-  }, [pathname]);
-
-  if (pathname?.startsWith('/rendir')) return null;
+  if (pathname?.startsWith('/rendir') || pathname?.startsWith('/entregar')) return null;
 
   return (
     <div className="topnav">
@@ -47,7 +40,21 @@ export function TopNav() {
           ))}
         </nav>
       </div>
-      {docente && <div className="topnav-user">{docente.nombre}</div>}
+      {docente && (
+        <div className="topnav-user">
+          {docente.nombre} ·{' '}
+          <button
+            type="button"
+            onClick={async () => {
+              await cerrarSesion();
+              window.location.href = '/';
+            }}
+            style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+          >
+            Salir
+          </button>
+        </div>
+      )}
     </div>
   );
 }

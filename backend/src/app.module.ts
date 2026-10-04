@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AiModule } from './ai/ai.module';
-import { DocentesModule } from './docentes/docentes.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AuthModule } from './auth/auth.module';
+import { AuthGuard } from './auth/auth.guard';
+import { AccesoModule } from './acceso/acceso.module';
 import { TrabajosPracticosModule } from './trabajos-practicos/trabajos-practicos.module';
 import { EntregasModule } from './entregas/entregas.module';
 import { CorreccionesModule } from './correcciones/correcciones.module';
@@ -19,7 +23,9 @@ import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.mo
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AiModule,
-    DocentesModule,
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    AuthModule,
+    AccesoModule,
     TrabajosPracticosModule,
     EntregasModule,
     CorreccionesModule,
@@ -32,6 +38,11 @@ import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.mo
     MatricesRubricaModule,
     ExamenesModule,
     RespuestasExamenModule,
+  ],
+  providers: [
+    // Orden importa: primero el rate limit, después la autenticación (default-deny).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
 export class AppModule {}

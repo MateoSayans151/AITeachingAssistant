@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCursoDto } from './dto/create-curso.dto';
 
@@ -6,13 +7,13 @@ import { CreateCursoDto } from './dto/create-curso.dto';
 export class CursosService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateCursoDto) {
-    return this.prisma.curso.create({ data: dto });
+  create(docenteId: string, dto: CreateCursoDto) {
+    return this.prisma.curso.create({ data: { ...dto, docenteId } });
   }
 
-  // Igual que TrabajosPracticosService.findAll(): no se filtra por docente en este MVP.
-  findAll() {
+  findAll(docenteId: string) {
     return this.prisma.curso.findMany({
+      where: { docenteId },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { comisiones: true, examenes: true } },
@@ -20,9 +21,10 @@ export class CursosService {
     });
   }
 
-  async findOne(id: string) {
-    const curso = await this.prisma.curso.findUnique({
-      where: { id },
+  async findOne(docenteId: string, id: string) {
+    if (!isUUID(id)) throw new NotFoundException(`Curso ${id} no encontrado`);
+    const curso = await this.prisma.curso.findFirst({
+      where: { id, docenteId },
       include: {
         comisiones: {
           orderBy: { createdAt: 'asc' },

@@ -53,6 +53,26 @@ npm run dev
 No hay OCR ni carga de imágenes/PDF escaneado en este MVP — todo es texto plano, a propósito (ver el
 documento de contexto del proyecto).
 
+### Link para que los alumnos entreguen solos
+
+Al crear un trabajo práctico se genera siempre un **link** (`/entregar/<slug>`, se ve y se copia en
+`/trabajos/[id]`) para mandárselo a los alumnos. En el formulario se elige solo lo mínimo:
+
+- **Modo seguro** (sí/no): registra cuántas veces el alumno sale de pantalla completa, cambia de pestaña o pega
+  texto. Solo informa (nunca bloquea ni baja la nota); el alumno ve qué se monitorea y lo acepta antes de empezar.
+  Los contadores aparecen junto a cada entrega.
+- **Ventana de tiempo** (N minutos por alumno desde que empieza, hasta 24 h) **u horario fijo** (se abre y vence en
+  las fechas elegidas).
+
+El alumno no tiene cuenta: pone su nombre y su email, la consigna recién aparece al empezar (con el reloj del
+servidor ya corriendo), el texto se autoguarda y, al entregar o vencer el tiempo, se crea una **entrega común**: sigue
+el flujo de arriba (corrección de IA → revisión del docente). Cargar entregas a mano sigue funcionando. Los trabajos
+anteriores a esta función no tienen link.
+
+Limitaciones a propósito: el link es abierto (quien lo tiene puede entregar; la identidad es el email que escribe el
+alumno, un email = una entrega) y una ventana de tiempo no vence nunca como link (cada alumno tiene sus N minutos
+desde que empieza, sea cuando sea). Migración: `supabase/migrations/20261003_tp_link_alumnos.sql`.
+
 ### Material de cátedra (Cátedra: cursos/exámenes)
 
 Además de la consigna y la rúbrica, el docente puede cargar **material de cátedra** por curso (pestaña
@@ -117,10 +137,25 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Por default apunta a `http://localhost:3001/api` (backend local). Abrí `http://localhost:3000`.
+Por default apunta a `http://localhost:3001/api` (backend local; ajustalo con `NEXT_PUBLIC_API_URL` si usás otro puerto). Abrí `http://localhost:3000`.
 
-La primera vez te va a pedir nombre y email para "identificarte" como docente — es un reemplazo
-mínimo de login real (no hay autenticación en este MVP; queda para v2 con Supabase Auth).
+### Login de docentes (Supabase Auth)
+
+El registro, el login y "olvidé mi contraseña" los hace **Supabase Auth** desde el navegador; el backend solo verifica
+el token (contra las claves públicas del proyecto) y lo vincula con la fila de `docentes`. Para que ande:
+
+1. **Variables.** Front: `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Project Settings → API; la
+   *anon/publishable* key es pública por diseño, **nunca** la `service_role`). Back: `SUPABASE_URL`.
+2. **Migración** `supabase/migrations/20261003_supabase_auth.sql` (agrega `docentes.auth_user_id`).
+3. **En el panel de Supabase → Authentication:**
+   - *Sign In / Providers → Email*: habilitado y con **Confirm email activado**. Es lo que impide que alguien se
+     registre con el email de otro docente: el backend solo vincula cuentas con email confirmado.
+   - *URL Configuration*: Site URL `http://localhost:3000` y, en Redirect URLs, `http://localhost:3000/restablecer`
+     (y las equivalentes de producción).
+   - *SMTP*: el servicio de emails por defecto de Supabase tiene un límite muy bajo y solo envía a miembros del
+     equipo del proyecto; para docentes reales hace falta configurar un SMTP propio.
+4. **Docentes anteriores a Supabase Auth.** Se vinculan solos: registrate (o usá "Olvidé mi contraseña") con el mismo
+   email, confirmalo, y al entrar vas a ver tus cursos de antes.
 
 **Sobre el diseño:** [`app/globals.css`](./frontend/app/globals.css) porta 1:1 los tokens y clases del
 mockup de Claude Design "Cátedra - Evaluaciones IA" (paleta ámbar, tipografía Sora + Inter, radios y
@@ -192,7 +227,6 @@ corrige a mano", no un problema de seguridad del proyecto.
 
 ## Qué falta para una v2
 
-- Autenticación real (Supabase Auth) en vez de la identificación por email.
 - Edición inline de la nota por criterio (hoy solo se edita la nota total y el feedback).
 - Carga de PDF/Word con extracción de texto (hoy es texto plano pegado o escrito).
 - Notificación al alumno cuando el docente confirma la corrección.

@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Docente, createTrabajoPractico } from '@/lib/api';
+import { ApiError, ModalidadLink, createTrabajoPractico } from '@/lib/api';
+import { useDocente } from '@/lib/auth';
+import { fechaLocalAIso } from '@/lib/fechas';
 
 interface CriterioForm {
   nombre: string;
@@ -12,20 +14,35 @@ interface CriterioForm {
 
 const CRITERIO_VACIO: CriterioForm = { nombre: '', descripcion: '', puntajeMaximo: '' };
 
+// Máximo de una ventana de tiempo (lo mismo que valida el servidor): más largo es un plazo, o sea, horario fijo.
+const MAX_DURACION_MINUTOS = 24 * 60;
+
+/** Mensaje de validación que mandó el servidor (class-validator devuelve una lista), si lo hay. */
+function mensajeDelServidor(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  try {
+    const m = JSON.parse(err.body).message;
+    return Array.isArray(m) ? m.join(' · ') : typeof m === 'string' ? m : null;
+  } catch {
+    return null; // cuerpo no JSON
+  }
+}
+
 export default function NuevoTrabajoPracticoPage() {
   const router = useRouter();
-  const [docente, setDocente] = useState<Docente | null>(null);
+  const docente = useDocente();
   const [titulo, setTitulo] = useState('');
   const [materia, setMateria] = useState('');
   const [consigna, setConsigna] = useState('');
   const [criterios, setCriterios] = useState<CriterioForm[]>([{ ...CRITERIO_VACIO }]);
+  // Link para los alumnos: lo único que se elige (el link se genera siempre).
+  const [modoSeguro, setModoSeguro] = useState(false);
+  const [modalidad, setModalidad] = useState<ModalidadLink>('ventana_tiempo');
+  const [duracionMinutos, setDuracionMinutos] = useState('60');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem('ata_docente');
-    if (raw) setDocente(JSON.parse(raw));
-  }, []);
 
   function actualizarCriterio(index: number, campo: keyof CriterioForm, valor: string) {
     setCriterios((prev) => prev.map((c, i) => (i === index ? { ...c, [campo]: valor } : c)));
@@ -39,14 +56,35 @@ export default function NuevoTrabajoPracticoPage() {
     setCriterios((prev) => prev.filter((_, i) => i !== index));
   }
 
+  /** Qué le falta a la modalidad elegida (el servidor lo vuelve a validar). */
+  function validarLink(): string | null {
+    if (modalidad === 'ventana_tiempo') {
+      const minutos = Number(duracionMinutos);
+      if (!Number.isInteger(minutos) || minutos < 1 || minutos > MAX_DURACION_MINUTOS) {
+        return `La ventana de tiempo tiene que ser de entre 1 y ${MAX_DURACION_MINUTOS} minutos. Para un plazo más largo, usá horario fijo.`;
+      }
+      return null;
+    }
+    const inicio = fechaLocalAIso(fechaInicio);
+    const fin = fechaLocalAIso(fechaFin);
+    if (!inicio || !fin) return 'El horario fijo necesita la fecha y hora de inicio y la de vencimiento.';
+    if (new Date(fin) <= new Date(inicio)) return 'El vencimiento tiene que ser posterior al inicio.';
+    if (new Date(fin) <= new Date()) return 'El vencimiento ya pasó.';
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!docente) return;
+    const problema = validarLink();
+    if (problema) {
+      setError(problema);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const tp = await createTrabajoPractico({
-        docenteId: docente.id,
         titulo,
         materia: materia || undefined,
         consigna,
@@ -57,10 +95,15 @@ export default function NuevoTrabajoPracticoPage() {
             descripcion: c.descripcion,
             puntajeMaximo: Number(c.puntajeMaximo),
           })),
+        modoSeguro,
+        modalidad,
+        duracionMinutos: modalidad === 'ventana_tiempo' ? Number(duracionMinutos) : undefined,
+        fechaInicio: modalidad === 'horario_fijo' ? fechaLocalAIso(fechaInicio) : undefined,
+        fechaFin: modalidad === 'horario_fijo' ? fechaLocalAIso(fechaFin) : undefined,
       });
       router.push(`/trabajos/${tp.id}`);
     } catch (err) {
-      setError('No se pudo crear el trabajo práctico. Revisá los datos e intentá de nuevo.');
+      setError(mensajeDelServidor(err) ?? 'No se pudo crear el trabajo práctico. Revisá los datos e intentá de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -79,7 +122,10 @@ export default function NuevoTrabajoPracticoPage() {
       <header className="page-header">
         <div className="eyebrow">Nuevo trabajo práctico</div>
         <h1>Consigna y rúbrica</h1>
-        <p>Se carga una sola vez por trabajo práctico. Después subís las entregas de los alumnos contra esto.</p>
+        <p>
+          Se carga una sola vez por trabajo práctico. Al crearlo se genera un link para que los alumnos entreguen solos;
+          también podés cargar entregas a mano.
+        </p>
       </header>
 
       {error && <div className="error-box">{error}</div>}
@@ -149,9 +195,62 @@ export default function NuevoTrabajoPracticoPage() {
           </button>
         </div>
 
+        <div className="card" style={{ marginTop: 28 }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            Link para los alumnos
+          </div>
+          <p className="muted" style={{ marginBottom: 14 }}>
+            Se genera al crear el trabajo. Elegí cómo lo entregan; el alumno solo necesita su nombre y su email.
+          </p>
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
+            <input type="checkbox" checked={modoSeguro} onChange={(e) => setModoSeguro(e.target.checked)} />
+            Modo seguro
+          </label>
+          <p className="muted" style={{ margin: '6px 0 18px' }}>
+            Registra si el alumno sale de pantalla completa, cambia de pestaña o pega texto. No bloquea nada ni baja la nota: lo
+            ves junto a cada entrega y decidís. Antes de empezar, el alumno ve qué se monitorea y tiene que aceptarlo.
+          </p>
+
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Cómo se entrega</div>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+            <input type="radio" name="modalidad" checked={modalidad === 'ventana_tiempo'} onChange={() => setModalidad('ventana_tiempo')} />
+            Ventana de tiempo
+          </label>
+          <p className="muted" style={{ margin: '0 0 8px 26px' }}>
+            Cada alumno tiene un tiempo fijo desde que empieza. Si se termina, se entrega lo que alcanzó a escribir.
+          </p>
+          {modalidad === 'ventana_tiempo' && (
+            <div className="field" style={{ width: 220, marginLeft: 26 }}>
+              <label htmlFor="duracion">Minutos por alumno</label>
+              <input id="duracion" type="number" min="1" max={MAX_DURACION_MINUTOS} step="1" value={duracionMinutos} onChange={(e) => setDuracionMinutos(e.target.value)} />
+            </div>
+          )}
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0 4px' }}>
+            <input type="radio" name="modalidad" checked={modalidad === 'horario_fijo'} onChange={() => setModalidad('horario_fijo')} />
+            Horario fijo
+          </label>
+          <p className="muted" style={{ margin: '0 0 8px 26px' }}>
+            El link se abre y se cierra en las fechas que elijas; todos entregan hasta el vencimiento.
+          </p>
+          {modalidad === 'horario_fijo' && (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginLeft: 26 }}>
+              <div className="field" style={{ width: 220 }}>
+                <label htmlFor="fechaInicio">Se abre</label>
+                <input id="fechaInicio" type="datetime-local" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+              </div>
+              <div className="field" style={{ width: 220 }}>
+                <label htmlFor="fechaFin">Vence</label>
+                <input id="fechaFin" type="datetime-local" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div style={{ marginTop: 28 }}>
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Creando…' : 'Crear trabajo práctico'}
+            {loading ? 'Creando…' : 'Crear trabajo práctico y generar link'}
           </button>
         </div>
       </form>

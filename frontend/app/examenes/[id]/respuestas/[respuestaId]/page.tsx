@@ -3,17 +3,84 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
+  ExplicacionVara,
   RespuestaExamen,
+  explicarVaraRespuesta,
   getRespuestaExamen,
   recorregirRespuestaExamen,
   revisarRespuestaExamen,
 } from '@/lib/api';
+
+const TIPO_EVENTO_LABEL: Record<string, string> = {
+  salida_pantalla_completa: 'Salió de pantalla completa',
+  cambio_pestana: 'Cambió de pestaña o ventana',
+  pegado: 'Pegó texto',
+};
+
+/** De la nota sugerida a la final: qué regla de vara se aplicó y qué decidió el docente. */
+function VaraCard({ explicacion }: { explicacion: ExplicacionVara }) {
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-title" style={{ marginBottom: 8 }}>
+        ¿Por qué esta nota?
+      </div>
+      <p>{explicacion.explicacion}</p>
+      {explicacion.historial.length > 0 && (
+        <ul style={{ paddingLeft: 20, marginTop: 8 }}>
+          {explicacion.historial.map((h) => (
+            <li key={h.ajusteId} className="muted">
+              {new Date(h.creadoEn).toLocaleString('es-AR')} — {h.descripcion}: {h.notaBase} → {h.notaDespues}
+              {h.estado !== 'activo' && ` (${h.estado})`}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Señales de integridad del intento: información para el criterio del docente, no afectan la nota. */
+function IntegridadCard({ integridad }: { integridad: NonNullable<RespuestaExamen['integridad']> }) {
+  const hora = (iso: string) => new Date(iso).toLocaleString('es-AR');
+  const duracionMin =
+    integridad.entregadoEn ? Math.round((new Date(integridad.entregadoEn).getTime() - new Date(integridad.inicioEn).getTime()) / 60000) : null;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-title" style={{ marginBottom: 8 }}>
+        Integridad del intento
+      </div>
+      <p className="muted" style={{ marginBottom: 8 }}>
+        Empezó {hora(integridad.inicioEn)}
+        {duracionMin !== null && ` · duró ${duracionMin} min`}
+        {integridad.estado === 'vencido' && ' · se terminó el tiempo: se entregó lo último autoguardado'}
+      </p>
+      {integridad.eventos.length === 0 ? (
+        <p className="muted">
+          {integridad.consentimientoEn ? 'Sin señales registradas.' : 'Este examen se rindió sin monitoreo.'}
+        </p>
+      ) : (
+        <ul style={{ paddingLeft: 20 }}>
+          {integridad.eventos.map((e, i) => (
+            <li key={i}>
+              {hora(e.ocurridoEn)} — {TIPO_EVENTO_LABEL[e.tipo] ?? e.tipo}
+              {e.detalle ? ` (${e.detalle})` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted" style={{ marginTop: 8 }}>
+        Son señales de comportamiento, no una prueba: no detectan, por ejemplo, el uso de un segundo dispositivo. No modifican la nota.
+      </p>
+    </div>
+  );
+}
 
 export default function DetalleRespuestaExamenPage() {
   const params = useParams<{ id: string; respuestaId: string }>();
   const router = useRouter();
 
   const [respuesta, setRespuesta] = useState<RespuestaExamen | null>(null);
+  const [explicacionVara, setExplicacionVara] = useState<ExplicacionVara | null>(null);
   const [notasFinales, setNotasFinales] = useState<Record<string, string>>({});
   const [feedbackFinal, setFeedbackFinal] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +97,7 @@ export default function DetalleRespuestaExamenPage() {
         ),
       );
     });
+    explicarVaraRespuesta(params.id, params.respuestaId).then(setExplicacionVara).catch(() => setExplicacionVara(null));
   }, [params.id, params.respuestaId]);
 
   if (!respuesta) {
@@ -88,6 +156,7 @@ export default function DetalleRespuestaExamenPage() {
       setNotasFinales(
         Object.fromEntries(actualizada.respuestasPorPregunta.map((rp) => [rp.preguntaId, String(rp.notaSugerida)])),
       );
+      explicarVaraRespuesta(params.id, params.respuestaId).then(setExplicacionVara).catch(() => setExplicacionVara(null));
     } catch (err) {
       setError('Falló la re-corrección con IA.');
     } finally {
@@ -104,6 +173,10 @@ export default function DetalleRespuestaExamenPage() {
       </header>
 
       {error && <div className="error-box">{error}</div>}
+
+      {explicacionVara && (explicacionVara.historial.length > 0 || respuesta.notaTotalSugerida !== null) && <VaraCard explicacion={explicacionVara} />}
+
+      {respuesta.integridad && <IntegridadCard integridad={respuesta.integridad} />}
 
       {respuesta.respuestasPorPregunta.map((rp, i) => {
         const pregunta = preguntasPorId.get(rp.preguntaId);
@@ -155,6 +228,13 @@ export default function DetalleRespuestaExamenPage() {
         <label htmlFor="feedback">Feedback general para el alumno (editable)</label>
         <textarea id="feedback" value={feedbackFinal} onChange={(e) => setFeedbackFinal(e.target.value)} style={{ minHeight: 160 }} />
       </div>
+
+      {respuesta.notaConVara !== null && respuesta.estadoRevision === 'pendiente' && (
+        <p className="muted" style={{ marginBottom: 12 }}>
+          Esta respuesta tiene nota con vara ({respuesta.notaConVara}). Aceptar la sugerencia la confirma; guardar tu edición define la nota a
+          partir de los puntajes por pregunta de arriba y deja de lado la vara.
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={handleAceptar} disabled={loading}>

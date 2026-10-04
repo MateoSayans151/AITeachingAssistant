@@ -242,12 +242,13 @@ ${acotar(correccionesTexto)}
       .map((p) => {
         const criteriosTexto = p.criterios
           .map((c) => {
-            const nivelesCriterio = c.nivelesDescripcion
+            // Los niveles por criterio son opcionales: sin ellos se juzga con la descripción y la escala general.
+            const nivelesCriterio = (c.nivelesDescripcion ?? [])
               .slice()
               .sort((a, b) => a.orden - b.orden)
               .map((n) => `    - Nivel ${n.orden} (${n.nombre}): ${n.descripcion}`)
               .join('\n');
-            return `  - [${c.id}] ${c.nombre} (máx ${c.puntajeMaximo} pts): ${c.descripcion}\n${nivelesCriterio}`;
+            return `  - [${c.id}] ${c.nombre} (máx ${c.puntajeMaximo} pts): ${c.descripcion}${nivelesCriterio ? `\n${nivelesCriterio}` : ''}`;
           })
           .join('\n');
         return `PREGUNTA [${p.id}]: ${p.enunciado}\nCriterios:\n${criteriosTexto}`;
@@ -272,9 +273,11 @@ ${acotar(correccionesTexto)}
       : '';
 
     const system = `Sos un asistente que ayuda a un docente a corregir un examen contra una matriz de rúbrica.
-Recibís, por cada pregunta abierta, su enunciado y sus criterios de evaluación. Cada criterio tiene 5
-niveles de desempeño posibles, cada uno con su propia descripción y equivalencia en % del puntaje del
-criterio. Tenés que elegir, para cada criterio de cada pregunta, qué nivel (1 a 5) alcanzó el alumno.
+Recibís, por cada pregunta abierta, su enunciado y sus criterios de evaluación. Cada criterio se evalúa
+en 5 niveles de desempeño, cada uno con su equivalencia en % del puntaje del criterio. Tenés que elegir,
+para cada criterio de cada pregunta, qué nivel (1 a 5) alcanzó el alumno. Si un criterio detalla qué
+implica cada nivel, usá esa descripción; si no, juzgá qué tan bien cumple lo que el criterio espera,
+con la escala de abajo.
 
 Escala de niveles (aplica a todos los criterios salvo que su propia descripción de nivel diga otra cosa):
 ${nivelesTexto}

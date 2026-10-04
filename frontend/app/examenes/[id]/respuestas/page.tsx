@@ -13,13 +13,16 @@ const ESTADO_REVISION_LABEL: Record<string, string> = {
 
 function exportarCsv(examen: Examen, respuestas: RespuestaExamen[]) {
   const filas = [
-    ['Alumno', 'Email', 'Nota sugerida', 'Nota final', 'Estado revisión'],
+    ['Alumno', 'Email', 'Nota sugerida', 'Nota con vara', 'Nota final', 'Estado revisión', 'Cierre del intento', 'Señales de integridad'],
     ...respuestas.map((r) => [
       r.alumno?.nombre ?? '',
       r.alumno?.email ?? '',
       r.notaTotalSugerida ?? '',
+      r.notaConVara ?? '',
       r.notaTotalFinal ?? '',
       ESTADO_REVISION_LABEL[r.estadoRevision] ?? r.estadoRevision,
+      r.intento ? (r.intento.estado === 'vencido' ? 'Por vencimiento' : 'Entregado') : '',
+      r.intento?.eventos ?? '',
     ]),
   ];
   const csv = filas.map((fila) => fila.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -108,8 +111,10 @@ export default function RespuestasExamenPage() {
               <tr>
                 <th>Alumno</th>
                 <th>Nota sugerida</th>
+                <th>Con vara</th>
                 <th>Nota final</th>
                 <th>Revisión</th>
+                <th>Integridad</th>
                 <th></th>
               </tr>
             </thead>
@@ -118,11 +123,16 @@ export default function RespuestasExamenPage() {
                 <tr key={r.id}>
                   <td>{r.alumno?.nombre}</td>
                   <td>{r.notaTotalSugerida ?? '—'}</td>
+                  <td>{r.notaConVara ?? '—'}</td>
                   <td>{r.notaTotalFinal ?? '—'}</td>
                   <td>
                     <span className={`badge badge-${r.estadoRevision === 'pendiente' ? 'pendiente' : r.estadoRevision === 'aceptada' ? 'revisado' : 'corregido'}`}>
                       {ESTADO_REVISION_LABEL[r.estadoRevision]}
                     </span>
+                  </td>
+                  <td>
+                    {r.intento?.estado === 'vencido' && <span className="badge badge-pendiente" title="Se terminó el tiempo: se entregó lo último autoguardado">Por vencimiento</span>}{' '}
+                    {r.intento && r.intento.eventos > 0 ? `${r.intento.eventos} señal${r.intento.eventos === 1 ? '' : 'es'}` : r.intento ? 'Sin señales' : '—'}
                   </td>
                   <td>
                     <Link href={`/examenes/${examen.id}/respuestas/${r.id}`} className="btn btn-secondary">

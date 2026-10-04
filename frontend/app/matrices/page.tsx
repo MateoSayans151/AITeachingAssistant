@@ -2,17 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Docente, MatrizRubrica, listMatricesRubrica } from '@/lib/api';
+import { MatrizRubrica, listMatricesRubrica } from '@/lib/api';
+import { useDocente } from '@/lib/auth';
 
 export default function MatricesPage() {
-  const [docente, setDocente] = useState<Docente | null>(null);
+  const docente = useDocente();
   const [matrices, setMatrices] = useState<MatrizRubrica[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem('ata_docente');
-    if (raw) setDocente(JSON.parse(raw));
-  }, []);
 
   useEffect(() => {
     if (!docente) return;

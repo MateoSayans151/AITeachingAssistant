@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -9,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -66,11 +68,14 @@ export class CriterioPreguntaInputDto {
   @Min(0.01)
   puntajeMaximo: number;
 
+  // Opcional: qué implica cada uno de los 5 niveles en este criterio. Sin esto, la IA juzga con la
+  // descripción del criterio y la escala general del examen (como en los trabajos prácticos).
+  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => NivelDescripcionInputDto)
   @ArrayMinSize(5)
   @ArrayMaxSize(5)
-  nivelesDescripcion: NivelDescripcionInputDto[];
+  nivelesDescripcion?: NivelDescripcionInputDto[];
 }
 
 export class PreguntaInputDto {
@@ -97,6 +102,28 @@ export class PreguntaInputDto {
   // (opción múltiple, casillas) es un array, y class-validator no considera "objeto" a un array.
   @IsOptional()
   opciones?: Record<string, unknown> | unknown[];
+}
+
+export class AntiCheatInputDto {
+  @IsBoolean()
+  pantallaCompleta: boolean;
+
+  @IsBoolean()
+  cambioPestana: boolean;
+
+  @IsBoolean()
+  pegado: boolean;
+}
+
+export class DistribucionEsperadaInputDto {
+  @IsNumber()
+  umbralAprobacion: number;
+
+  // % de alumnos que se espera que aprueben.
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  aprobadosEsperadosPct: number;
 }
 
 export class CreateExamenDto {
@@ -134,6 +161,18 @@ export class CreateExamenDto {
 
   @IsIn(['inmediato', 'manual'])
   feedbackModo: 'inmediato' | 'manual';
+
+  // Controles de integridad nivel 1. Si se omite (o todo en false) el examen se rinde sin monitoreo.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AntiCheatInputDto)
+  antiCheat?: AntiCheatInputDto;
+
+  // Lo que el docente espera del examen; precarga la regla de la vara. Opcional.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DistribucionEsperadaInputDto)
+  distribucionEsperada?: DistribucionEsperadaInputDto;
 
   @ValidateNested({ each: true })
   @Type(() => PreguntaInputDto)

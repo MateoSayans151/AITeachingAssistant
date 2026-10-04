@@ -7,7 +7,6 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -48,9 +47,6 @@ export class CriterioMatrizInputDto {
 }
 
 export class CreateMatrizRubricaDto {
-  @IsUUID()
-  docenteId: string;
-
   @IsString()
   @IsNotEmpty()
   nombre: string;

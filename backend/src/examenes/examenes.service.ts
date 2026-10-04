@@ -4,7 +4,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
-import { AplicarVaraDto } from './dto/aplicar-vara.dto';
 
 @Injectable()
 export class ExamenesService {
@@ -24,6 +23,12 @@ export class ExamenesService {
       }
     }
 
+    if (dto.escalaMin >= dto.escalaMax) throw new BadRequestException('La escala mínima tiene que ser menor que la máxima');
+    const dist = dto.distribucionEsperada;
+    if (dist && (dist.umbralAprobacion < dto.escalaMin || dist.umbralAprobacion > dto.escalaMax)) {
+      throw new BadRequestException('La nota de aprobación tiene que estar dentro de la escala');
+    }
+
     return this.prisma.examen.create({
       data: {
         cursoId: dto.cursoId,
@@ -35,6 +40,8 @@ export class ExamenesService {
         escalaMax: dto.escalaMax,
         niveles: dto.niveles as unknown as Prisma.InputJsonValue,
         feedbackModo: dto.feedbackModo,
+        distribucionEsperada: dist ? (dist as unknown as Prisma.InputJsonValue) : undefined,
+        antiCheat: dto.antiCheat && Object.values(dto.antiCheat).some(Boolean) ? (dto.antiCheat as unknown as Prisma.InputJsonValue) : undefined,
         preguntas: {
           create: dto.preguntas.map((p, i) => ({
             tipo: p.tipo,
@@ -49,7 +56,7 @@ export class ExamenesService {
                     nombre: c.nombre,
                     descripcion: c.descripcion,
                     puntajeMaximo: c.puntajeMaximo,
-                    nivelesDescripcion: c.nivelesDescripcion as unknown as Prisma.InputJsonValue,
+                    nivelesDescripcion: (c.nivelesDescripcion ?? []) as unknown as Prisma.InputJsonValue, // [] = sin niveles detallados
                     orden: j,
                   })),
                 }
@@ -103,42 +110,6 @@ export class ExamenesService {
 
     const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
     return { ...examenComision, urlAcceso: `${frontendOrigin}/rendir/${examenComision.slugAcceso}` };
-  }
-
-  /**
-   * Aplica la "vara": desplaza en `varaPorcentaje` la nota sugerida por la IA y la deja
-   * como nota final sugerida. Solo toca las respuestas que el docente todavía NO revisó
-   * individualmente (estadoRevision === 'pendiente') — una vez que el docente edita a mano
-   * la nota de un alumno puntual, la vara no se la pisa.
-   */
-  async aplicarVara(examenId: string, dto: AplicarVaraDto) {
-    const examen = await this.prisma.examen.findUnique({ where: { id: examenId } });
-    if (!examen) throw new NotFoundException(`Examen ${examenId} no encontrado`);
-
-    const respuestas = await this.prisma.respuestaExamen.findMany({
-      where: { examenId, estadoRevision: 'pendiente', notaTotalSugerida: { not: null } },
-    });
-
-    const escalaMin = Number(examen.escalaMin);
-    const escalaMax = Number(examen.escalaMax);
-
-    await this.prisma.$transaction([
-      this.prisma.examen.update({ where: { id: examenId }, data: { varaPorcentaje: dto.varaPorcentaje } }),
-      ...respuestas.map((r) => {
-        const notaConVara = Number(r.notaTotalSugerida) * (1 + dto.varaPorcentaje / 100);
-        const notaClamp = Math.min(Math.max(notaConVara, escalaMin), escalaMax);
-        return this.prisma.respuestaExamen.update({
-          where: { id: r.id },
-          data: { notaTotalFinal: notaClamp },
-        });
-      }),
-    ]);
-
-    return this.prisma.respuestaExamen.findMany({
-      where: { examenId },
-      include: { alumno: true },
-      orderBy: { createdAt: 'asc' },
-    });
   }
 
   async liberarFeedback(examenId: string) {

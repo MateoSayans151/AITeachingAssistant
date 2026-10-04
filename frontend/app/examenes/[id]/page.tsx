@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Comision, Examen, getExamen, listComisionesPorCurso, publicarExamenAComision } from '@/lib/api';
+import { fechaLocalAIso } from '@/lib/fechas';
 
 export default function ExamenDetallePage() {
   const params = useParams<{ id: string }>();
@@ -11,6 +12,8 @@ export default function ExamenDetallePage() {
   const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [comisionSeleccionada, setComisionSeleccionada] = useState('');
   const [linkGenerado, setLinkGenerado] = useState<string | null>(null);
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,9 +52,15 @@ export default function ExamenDetallePage() {
     setLoading(true);
     setError(null);
     try {
-      const resultado = await publicarExamenAComision(examen!.id, { comisionId: comisionSeleccionada });
+      const resultado = await publicarExamenAComision(examen!.id, {
+        comisionId: comisionSeleccionada,
+        fechaInicio: fechaLocalAIso(fechaInicio),
+        fechaFin: fechaLocalAIso(fechaFin),
+      });
       setLinkGenerado(resultado.urlAcceso ?? null);
       setComisionSeleccionada('');
+      setFechaInicio('');
+      setFechaFin('');
       cargar();
     } catch (err) {
       setError('No se pudo publicar el examen a esa comisión.');
@@ -66,6 +75,15 @@ export default function ExamenDetallePage() {
         <div className="eyebrow">Examen</div>
         <h1>{examen.titulo}</h1>
         <p>{examen.consigna}</p>
+        {examen.antiCheat && (
+          <p className="muted">
+            Señales de integridad activas:{' '}
+            {[examen.antiCheat.pantallaCompleta && 'pantalla completa', examen.antiCheat.cambioPestana && 'cambio de pestaña', examen.antiCheat.pegado && 'pegado']
+              .filter(Boolean)
+              .join(', ')}
+            .
+          </p>
+        )}
       </header>
 
       {error && <div className="error-box">{error}</div>}
@@ -106,6 +124,11 @@ export default function ExamenDetallePage() {
             <div className="muted" style={{ fontSize: 13, wordBreak: 'break-all' }}>
               {typeof window !== 'undefined' ? `${window.location.origin}/rendir/${ec.slugAcceso}` : ec.slugAcceso}
             </div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              {ec.fechaInicio ? `Se habilita ${new Date(ec.fechaInicio).toLocaleString('es-AR')}` : 'Habilitado desde ya'}
+              {' · '}
+              {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
+            </div>
           </div>
         ))}
 
@@ -116,7 +139,7 @@ export default function ExamenDetallePage() {
         )}
 
         {comisionesDisponibles.length > 0 && (
-          <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+          <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <select value={comisionSeleccionada} onChange={(e) => setComisionSeleccionada(e.target.value)}>
               <option value="">Elegí una comisión…</option>
               {comisionesDisponibles.map((c) => (
@@ -125,6 +148,8 @@ export default function ExamenDetallePage() {
                 </option>
               ))}
             </select>
+            <input type="datetime-local" aria-label="Se habilita (opcional)" title="Se habilita (opcional)" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+            <input type="datetime-local" aria-label="Cierra (opcional)" title="Cierra (opcional)" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
             <button className="btn btn-primary" onClick={handlePublicar} disabled={loading || !comisionSeleccionada}>
               {loading ? 'Publicando…' : 'Publicar / generar link'}
             </button>

@@ -11,6 +11,7 @@ create table if not exists docentes (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
   email text not null unique,
+  password_hash text,
   created_at timestamptz not null default now()
 );
 
@@ -157,6 +158,7 @@ create table if not exists alumnos (
   comision_id uuid not null references comisiones(id) on delete cascade,
   nombre text not null,
   email text not null,
+  codigo_acceso text not null,
   created_at timestamptz not null default now(),
   unique (comision_id, email)
 );
@@ -257,3 +259,150 @@ create table if not exists respuestas_examen (
 
 create index if not exists idx_respuestas_examen_estado on respuestas_examen(estado);
 create index if not exists idx_respuestas_examen_revision on respuestas_examen(estado_revision);
+
+-- ---------------------------------------------------------------------------
+-- Fase 1: intentos de examen (reloj del servidor, autoguardado) y anti-cheat nivel 1.
+-- (Idéntico a supabase/migrations/20260930_fase1_intentos_y_anticheat.sql)
+-- ---------------------------------------------------------------------------
+-- Fase 1: examen rendible (reloj del servidor, autoguardado) y anti-cheat nivel 1.
+do $$ begin
+  create type estado_intento as enum ('en_curso', 'entregado', 'vencido');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type tipo_evento_integridad as enum ('salida_pantalla_completa', 'cambio_pestana', 'pegado');
+exception when duplicate_object then null; end $$;
+
+alter table examenes add column if not exists anti_cheat jsonb;
+
+create table if not exists intentos_examen (
+  id uuid primary key default gen_random_uuid(),
+  examen_id uuid not null references examenes(id) on delete cascade,
+  alumno_id uuid not null references alumnos(id) on delete cascade,
+  inicio_en timestamptz not null default now(),
+  expira_en timestamptz,
+  estado estado_intento not null default 'en_curso',
+  borrador jsonb not null default '{}'::jsonb,
+  borrador_actualizado_en timestamptz,
+  consentimiento_en timestamptz,
+  entregado_en timestamptz,
+  created_at timestamptz not null default now(),
+  unique (examen_id, alumno_id)
+);
+create index if not exists idx_intentos_estado_expira on intentos_examen(estado, expira_en);
+
+create table if not exists eventos_integridad (
+  id uuid primary key default gen_random_uuid(),
+  intento_id uuid not null references intentos_examen(id) on delete cascade,
+  tipo tipo_evento_integridad not null,
+  ocurrido_en timestamptz not null default now(),
+  detalle text
+);
+create index if not exists idx_eventos_integridad_intento on eventos_integridad(intento_id);
+
+-- ---------------------------------------------------------------------------
+-- Fase 2: vara auditable.
+-- (Idéntico a supabase/migrations/20261001_fase2_vara_auditable.sql)
+-- ---------------------------------------------------------------------------
+-- Fase 2: vara auditable. La vara deja de pisar la nota: se guarda como ajuste con regla explícita,
+-- snapshot por respuesta y posibilidad de revertirlo. notaTotalFinal solo la escribe el docente.
+do $$ begin
+  create type estado_ajuste_vara as enum ('activo', 'reemplazado', 'revertido');
+exception when duplicate_object then null; end $$;
+
+-- { umbralAprobacion, aprobadosEsperadosPct } — lo que el docente espera del examen; precarga la vara.
+alter table examenes add column if not exists distribucion_esperada jsonb;
+
+create table if not exists ajustes_vara (
+  id uuid primary key default gen_random_uuid(),
+  examen_id uuid not null references examenes(id) on delete cascade,
+  autor_id uuid references docentes(id) on delete set null,
+  regla jsonb not null, -- { modo, valor, umbral?, tope? }
+  desplazamiento numeric, -- puntos aplicados (solo modo aprobados_esperados)
+  resumen jsonb not null, -- { total, ajustadas, aprobadosAntes, aprobadosDespues, alcanzable }
+  estado estado_ajuste_vara not null default 'activo',
+  created_at timestamptz not null default now(),
+  revertido_en timestamptz
+);
+create index if not exists idx_ajustes_vara_examen on ajustes_vara(examen_id, created_at);
+
+-- Snapshot por respuesta: qué nota había antes y cuál quedó después de cada ajuste.
+create table if not exists ajustes_vara_detalle (
+  id uuid primary key default gen_random_uuid(),
+  ajuste_id uuid not null references ajustes_vara(id) on delete cascade,
+  respuesta_id uuid not null references respuestas_examen(id) on delete cascade,
+  nota_base numeric not null, -- sugerida por la IA
+  nota_con_vara_antes numeric, -- lo que tenía la respuesta antes de este ajuste (null = sin vara)
+  ajuste_anterior_id uuid references ajustes_vara(id) on delete set null,
+  nota_despues numeric not null,
+  unique (ajuste_id, respuesta_id)
+);
+create index if not exists idx_ajustes_vara_detalle_respuesta on ajustes_vara_detalle(respuesta_id);
+
+alter table respuestas_examen add column if not exists nota_con_vara numeric;
+alter table respuestas_examen add column if not exists ajuste_vara_id uuid references ajustes_vara(id) on delete set null;
+
+-- Datos de la vara vieja: dejaba una nota final escrita en respuestas todavía pendientes.
+-- Se mueve a nota_con_vara (sin autor ni regla: no hay de dónde recuperarlos) y la final vuelve a null.
+-- Idempotente: la segunda vez no hay pendientes con nota final.
+update respuestas_examen
+   set nota_con_vara = nota_total_final, nota_total_final = null
+ where estado_revision = 'pendiente' and nota_total_final is not null;
+
+-- ---------------------------------------------------------------------------
+-- Endurecimiento: fallos de acceso en la base.
+-- (Idéntico a supabase/migrations/20261002_endurecimiento_fallos_acceso.sql)
+-- ---------------------------------------------------------------------------
+-- Endurecimiento: el freno a los intentos fallidos de código de acceso pasa de memoria del proceso a la
+-- base, para que valga igual con varias instancias del backend.
+create table if not exists fallos_acceso (
+  id uuid primary key default gen_random_uuid(),
+  clave text not null, -- "slug|email" o "ip|<ip>"
+  ocurrido_en timestamptz not null default now()
+);
+create index if not exists idx_fallos_acceso_clave on fallos_acceso(clave, ocurrido_en);
+create index if not exists idx_fallos_acceso_ocurrido on fallos_acceso(ocurrido_en);
+
+-- ---------------------------------------------------------------------------
+-- Login de docentes con Supabase Auth.
+-- (Idéntico a supabase/migrations/20261003_supabase_auth.sql)
+-- ---------------------------------------------------------------------------
+-- El login de docentes pasa a Supabase Auth. Cada docente se vincula con su usuario de auth.users en el
+-- primer login: por id si ya estaba vinculado, o por email confirmado para los docentes anteriores.
+-- (Sin clave foránea a auth.users a propósito: el esquema tiene que poder crearse también en un Postgres común.)
+alter table docentes add column if not exists auth_user_id uuid unique;
+
+-- ---------------------------------------------------------------------------
+-- Link de entrega de trabajos prácticos para alumnos.
+-- (Idéntico a supabase/migrations/20261003_tp_link_alumnos.sql)
+-- ---------------------------------------------------------------------------
+-- Link para que los alumnos entreguen un trabajo práctico por su cuenta: modo seguro y ventana de tiempo u horario fijo.
+-- Aditivo e idempotente: los trabajos prácticos anteriores quedan sin link (slug_acceso null).
+alter table trabajos_practicos add column if not exists slug_acceso text unique;
+alter table trabajos_practicos add column if not exists modo_seguro boolean not null default false;
+alter table trabajos_practicos add column if not exists duracion_minutos int; -- ventana de tiempo; null = horario fijo
+alter table trabajos_practicos add column if not exists fecha_inicio timestamptz; -- horario fijo
+alter table trabajos_practicos add column if not exists fecha_fin timestamptz; -- horario fijo (vencimiento)
+
+-- Un alumno entregando desde el link (reutiliza el tipo estado_intento de la Fase 1).
+create table if not exists intentos_entrega (
+  id uuid primary key default gen_random_uuid(),
+  trabajo_practico_id uuid not null references trabajos_practicos(id) on delete cascade,
+  alumno_nombre text not null,
+  alumno_email text not null, -- en minúscula
+  inicio_en timestamptz not null default now(),
+  expira_en timestamptz not null,
+  estado estado_intento not null default 'en_curso',
+  borrador text not null default '',
+  borrador_actualizado_en timestamptz,
+  consentimiento_en timestamptz,
+  -- señales de integridad del modo seguro (contadores)
+  salidas_pantalla int not null default 0,
+  cambios_pestana int not null default 0,
+  pegados int not null default 0,
+  entregado_en timestamptz,
+  -- null si venció sin escribir nada: no se manda a corregir un texto vacío
+  entrega_id uuid unique references entregas(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (trabajo_practico_id, alumno_email)
+);
+create index if not exists idx_intentos_entrega_estado_expira on intentos_entrega(estado, expira_en);
