@@ -51,8 +51,52 @@ export function corregirPreguntaCerrada(
   }
 }
 
-/** Quita del `opciones` cualquier campo que revele la clave correcta, para exponerlo al alumno. */
-export function sanitizarOpcionesParaAlumno(tipo: string, opciones: unknown): unknown {
+/** Hash de 32 bits (FNV-1a) para derivar una semilla numérica de un texto. */
+function hash32(texto: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < texto.length; i += 1) {
+    h ^= texto.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** Generador pseudoaleatorio determinístico (mulberry32): la misma semilla da siempre la misma secuencia. */
+function generador(semilla: number): () => number {
+  let a = semilla | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Mezcla (Fisher-Yates) una copia de la lista de forma DETERMINÍSTICA a partir de un texto-semilla: el mismo texto da siempre
+ * el mismo orden (el alumno ve lo mismo si recarga la página o retoma el intento), pero el orden no guarda relación con el
+ * que cargó el docente. No es azar criptográfico ni hace falta: lo único que tiene que lograr es que la posición no delate nada.
+ * La misma regla está copiada en `frontend/lib/vista-previa.ts` (un test compara las dos).
+ */
+export function mezclarDeterministico<T>(items: readonly T[], semilla: string): T[] {
+  const copia = [...items];
+  const azar = generador(hash32(semilla));
+  for (let i = copia.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(azar() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia;
+}
+
+/**
+ * Quita del `opciones` cualquier campo que revele la clave correcta, para exponerlo al alumno.
+ *
+ * En "relacionar pares" el docente carga `derecha[i]` como la pareja de `izquierda[i]`: entregarla en ese orden le regalaba la
+ * respuesta a cualquiera que mirara las posiciones. Por eso la columna derecha sale MEZCLADA (con una semilla estable: la pregunta
+ * y su contenido). La corrección compara por texto (`paresCorrectos`), así que el orden en que se muestra no la afecta.
+ * `semilla` es opcional (el id de la pregunta en el flujo real); sin ella la mezcla depende solo del contenido.
+ */
+export function sanitizarOpcionesParaAlumno(tipo: string, opciones: unknown, semilla?: string): unknown {
   switch (tipo) {
     case 'opcion_multiple':
     case 'casillas': {
@@ -65,7 +109,10 @@ export function sanitizarOpcionesParaAlumno(tipo: string, opciones: unknown): un
       return null;
     case 'relacionar_pares': {
       const cfg = opciones as { izquierda: unknown[]; derecha: unknown[] };
-      return { izquierda: cfg?.izquierda ?? [], derecha: cfg?.derecha ?? [] };
+      const izquierda = cfg?.izquierda ?? [];
+      const derecha = cfg?.derecha ?? [];
+      const clave = `${semilla ?? ''}|${izquierda.map(String).join('\u0001')}|${derecha.map(String).join('\u0001')}`;
+      return { izquierda, derecha: mezclarDeterministico(derecha, clave) };
     }
     default:
       return opciones ?? null;

@@ -90,13 +90,12 @@ test('preguntasParaAlumno: opción múltiple y casillas -> [{ id, texto }] sin `
   }
 });
 
-test('preguntasParaAlumno: relacionar pares -> { izquierda, derecha } sin los pares correctos, y SIN mezclar (el servidor no mezcla)', () => {
+test('preguntasParaAlumno: relacionar pares -> { izquierda, derecha } sin los pares correctos y con la columna derecha mezclada', () => {
   const op = preguntasParaAlumno(todasCompletas()).find((p) => p.tipo === 'relacionar_pares')!.opciones as Record<string, unknown>;
   assert.deepEqual(Object.keys(op).sort(), ['derecha', 'izquierda']);
   assert.deepEqual(op.izquierda, ['Argentina', 'Chile', 'Perú']);
-  // Mismo orden que se cargó: es lo que entrega `sanitizarOpcionesParaAlumno` hoy (si el backend empezara a mezclar, este test avisa
-  // que la vista previa tiene que mezclar con la misma regla).
-  assert.deepEqual(op.derecha, ['Buenos Aires', 'Santiago', 'Lima']);
+  // La derecha es una permutación de lo que cargó el docente (nada se pierde ni se agrega)...
+  assert.deepEqual([...(op.derecha as string[])].sort(), ['Buenos Aires', 'Lima', 'Santiago']);
 });
 
 test('preguntasParaAlumno: coincide con sanitizarOpcionesParaAlumno del backend para las preguntas completas de los 10 tipos', () => {

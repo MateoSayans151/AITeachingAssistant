@@ -154,7 +154,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
         tipo: p.tipo,
         enunciado: p.enunciado,
         puntajeMaximo: p.puntajeMaximo,
-        opciones: sanitizarOpcionesParaAlumno(p.tipo, p.opciones),
+        opciones: sanitizarOpcionesParaAlumno(p.tipo, p.opciones, p.id),
       })),
     };
   }
