@@ -1,10 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
+import { validarPuntajes } from './puntaje.util';
 import { MENSAJE_SIN_MAIL_PARA_PUBLICAR, NotificacionesService } from '../mail/notificaciones.service';
+
+export const MENSAJE_EXAMEN_CON_ALUMNOS =
+  'Este examen ya tiene alumnos que empezaron o entregaron: no se puede borrar para no perder sus respuestas.';
 
 @Injectable()
 export class ExamenesService {
@@ -34,6 +39,11 @@ export class ExamenesService {
     if (dist && (dist.umbralAprobacion < dto.escalaMin || dist.umbralAprobacion > dto.escalaMax)) {
       throw new BadRequestException('La nota de aprobación tiene que estar dentro de la escala');
     }
+
+    // El puntaje total tiene que ser igual a la escala máxima (si no, la nota de un alumno se pasaría de la escala) y
+    // cada pregunta abierta vale la suma de sus criterios.
+    const errorPuntaje = validarPuntajes(dto.preguntas, dto.escalaMax);
+    if (errorPuntaje) throw new BadRequestException(errorPuntaje);
 
     return this.prisma.examen.create({
       data: {
@@ -88,10 +98,34 @@ export class ExamenesService {
       include: {
         preguntas: { orderBy: { orden: 'asc' }, include: { criterios: { orderBy: { orden: 'asc' } } } },
         comisiones: { include: { comision: true } },
+        // Cuántos alumnos empezaron o entregaron: la pantalla lo usa para saber si el examen se puede borrar.
+        _count: { select: { respuestas: true, intentos: true } },
       },
     });
     if (!examen) throw new NotFoundException(`Examen ${id} no encontrado`);
     return examen;
+  }
+
+  /**
+   * Borra el examen solo si NADIE empezó ni entregó (ni respuestas ni intentos): si no, se perderían las respuestas de los
+   * alumnos. Las preguntas, criterios, publicaciones a comisiones (los links dejan de funcionar) y ajustes de vara se van
+   * por cascada en la base.
+   * Todo en una transacción y con la fila del examen bloqueada (FOR UPDATE): un alumno que está por empezar (su intento
+   * toma un lock de la fila del examen por la clave foránea) espera a que terminemos, y entonces o ve que el examen ya no
+   * está o lo contamos nosotros y se rechaza el borrado. Sin el lock podría empezar justo entre el conteo y el borrado y
+   * perder lo que acaba de escribir por la cascada.
+   */
+  async remove(id: string) {
+    // Un id que no es UUID no puede existir (y el cast del SQL de abajo respondería 500).
+    if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
+    await this.prisma.$transaction(async (tx) => {
+      const filas = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM examenes WHERE id = ${id}::uuid FOR UPDATE`;
+      if (filas.length === 0) throw new NotFoundException(`Examen ${id} no encontrado`);
+      const respuestas = await tx.respuestaExamen.count({ where: { examenId: id } });
+      const intentos = await tx.intentoExamen.count({ where: { examenId: id } });
+      if (respuestas > 0 || intentos > 0) throw new ConflictException(MENSAJE_EXAMEN_CON_ALUMNOS);
+      await tx.examen.delete({ where: { id } });
+    });
   }
 
   async publicarAComision(examenId: string, dto: PublicarComisionDto) {

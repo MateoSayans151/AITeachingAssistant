@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { ExamenesService } from './examenes.service';
 import { CreateExamenDto } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
@@ -36,6 +36,14 @@ export class ExamenesController {
   async findOne(@DocenteId() docenteId: string, @Param('id') id: string) {
     await this.acceso.examen(docenteId, id);
     return this.service.findOne(id);
+  }
+
+  // Solo si nadie empezó ni entregó (si no, 409): preguntas, criterios, links y ajustes de vara se van con el examen.
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@DocenteId() docenteId: string, @Param('id') id: string) {
+    await this.acceso.examen(docenteId, id);
+    await this.service.remove(id);
   }
 
   @Post(':id/comisiones')
