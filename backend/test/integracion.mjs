@@ -608,9 +608,9 @@ await check('rúbrica: un criterio es nombre + qué se espera + puntos; los 5 ni
   assert.deepEqual(guardados.map((c) => [c.nombre, Number(c.puntajeMaximo), c.nivelesDescripcion]), [['Claridad', 6, []], ['Precisión', 4, []]]);
 
   const cinco = [1, 2, 3, 4, 5].map((o) => ({ orden: o, nombre: `N${o}`, descripcion: `Nivel ${o} implica…` }));
-  assert.equal((await crear([{ nombre: 'Con niveles', descripcion: 'd', puntajeMaximo: 5, nivelesDescripcion: cinco }])).status, 201, 'los niveles detallados siguen valiendo');
-  assert.equal((await crear([{ nombre: 'A medias', descripcion: 'd', puntajeMaximo: 5, nivelesDescripcion: cinco.slice(0, 3) }])).status, 400, 'o son los 5 o ninguno');
-  assert.equal((await crear([{ nombre: 'Sin qué se espera', puntajeMaximo: 5 }])).status, 400);
+  assert.equal((await crear([{ nombre: 'Con niveles', descripcion: 'd', puntajeMaximo: 10, nivelesDescripcion: cinco }])).status, 201, 'los niveles detallados siguen valiendo');
+  assert.equal((await crear([{ nombre: 'A medias', descripcion: 'd', puntajeMaximo: 10, nivelesDescripcion: cinco.slice(0, 3) }])).status, 400, 'o son los 5 o ninguno');
+  assert.equal((await crear([{ nombre: 'Sin qué se espera', puntajeMaximo: 10 }])).status, 400);
   assert.equal((await crear([])).status, 400, 'una pregunta abierta necesita al menos un criterio');
 });
 
@@ -625,6 +625,46 @@ await check('flujo simple: curso nuevo + comisión con alumnos pegados + publica
   assert.equal(det.alumnos.length, 2);
   const dentro = await call('POST', `/rendir/${pub.json.urlAcceso.split('/rendir/')[1]}/iniciar`, { body: { alumnoEmail: 'ana.perez@x.com' } });
   assert.equal(dentro.status, 201, dentro.text); // entra solo con su email
+});
+
+// ------------------------------------------------------------------ el puntaje total coincide con la escala
+await check('puntaje: el total del examen tiene que ser igual a la escala máxima y una pregunta abierta vale la suma de sus criterios', async () => {
+  const crear = (body) => call('POST', '/examenes', { token: tA, body: { cursoId: curso.id, titulo: 'Puntaje', consigna: 'c', modalidad: 'ventana_dias', escalaMin: 0, escalaMax: 10, niveles, feedbackModo: 'manual', preguntas: preguntasIn, ...body } });
+  const abierta = (puntajeMaximo, criterios) => ({ tipo: 'desarrollo', enunciado: 'Explicá', puntajeMaximo, criterios: criterios.map((c, i) => ({ nombre: `C${i}`, descripcion: 'd', puntajeMaximo: c })) });
+  assert.equal((await crear({})).status, 201, 'cerradas que suman justo la escala');
+  const sobra = await crear({ escalaMax: 5 });
+  assert.equal(sobra.status, 400);
+  assert.equal(sobra.json.message, 'El puntaje total del examen (10) tiene que ser igual a la escala máxima (5). Ajustá los puntajes o la escala.');
+  assert.equal((await crear({ escalaMax: 20 })).status, 400, 'si faltan puntos también se rechaza');
+  assert.equal((await crear({ preguntas: [preguntasIn[0], abierta(5, [3, 2])] })).status, 201, 'mezcla de cerrada y abierta');
+  assert.equal((await crear({ preguntas: [preguntasIn[0], abierta(0.1 + 0.2 + 4.7, [0.1, 0.2, 4.7])] })).status, 201, 'el redondeo no genera falsos rechazos');
+  const desparejo = await crear({ preguntas: [preguntasIn[0], abierta(5, [3, 3])] });
+  assert.equal(desparejo.status, 400);
+  assert.equal(desparejo.json.message, 'La pregunta 2: el puntaje (5) tiene que ser la suma de los puntajes de sus criterios (6).');
+});
+
+// ------------------------------------------------------------------ borrar un examen
+await check('borrar examen: limpio → 204 y su link deja de funcionar; con alumnos → 409; ajeno o inexistente → 404; sin token → 401', async () => {
+  const limpio = await mkExamen({});
+  assert.equal((await call('DELETE', `/examenes/${limpio.id}`)).status, 401);
+  assert.equal((await call('DELETE', `/examenes/${limpio.id}`, { token: tB })).status, 404, 'de otro docente');
+  assert.equal((await call('DELETE', '/examenes/no-es-uuid', { token: tA })).status, 404);
+  assert.deepEqual((await call('GET', `/examenes/${limpio.id}`, { token: tA })).json._count, { respuestas: 0, intentos: 0 });
+  assert.equal((await call('DELETE', `/examenes/${limpio.id}`, { token: tA })).status, 204);
+  assert.equal(sql(`select count(*) from examenes where id='${limpio.id}'`), '0');
+  assert.equal(sql(`select count(*) from preguntas where examen_id='${limpio.id}'`), '0', 'las preguntas se van por cascada');
+  assert.equal(sql(`select count(*) from examen_comisiones where examen_id='${limpio.id}'`), '0', 'la publicación también');
+  assert.equal((await call('GET', `/rendir/${limpio.slug}`)).status, 404, 'el link ya no funciona');
+  assert.equal((await call('DELETE', `/examenes/${limpio.id}`, { token: tA })).status, 404, 'ya no existe');
+
+  const conAlumno = await mkExamen({});
+  assert.equal((await iniciar(conAlumno.slug, 'luz')).status, 201);
+  const r = await call('DELETE', `/examenes/${conAlumno.id}`, { token: tA });
+  assert.equal(r.status, 409);
+  assert.equal(r.json.message, 'Este examen ya tiene alumnos que empezaron o entregaron: no se puede borrar para no perder sus respuestas.');
+  assert.deepEqual((await call('GET', `/examenes/${conAlumno.id}`, { token: tA })).json._count, { respuestas: 0, intentos: 1 });
+  assert.equal(sql(`select count(*) from examenes where id='${conAlumno.id}'`), '1', 'no se borró');
+  assert.equal(sql(`select count(*) from intentos_examen where examen_id='${conAlumno.id}'`), '1', 'ni el intento del alumno');
 });
 
 console.log(`\n${n} checks OK${process.exitCode ? ' — HAY FALLAS' : ''}`);

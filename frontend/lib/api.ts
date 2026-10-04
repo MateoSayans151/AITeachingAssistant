@@ -353,7 +353,11 @@ export interface Examen {
   createdAt: string;
   preguntas?: Pregunta[];
   comisiones?: ExamenComision[];
-  _count?: { preguntas: number; respuestas: number };
+  /**
+   * La lista por curso trae { preguntas, respuestas }; el detalle trae { respuestas, intentos }: cuántos alumnos entregaron y
+   * cuántos empezaron (con cualquiera de los dos mayor a 0 el examen ya no se puede borrar).
+   */
+  _count?: { preguntas?: number; respuestas: number; intentos?: number };
 }
 
 export interface NotaPorCriterioPregunta {
@@ -491,6 +495,9 @@ export const createExamen = (data: {
 export const listExamenesPorCurso = (cursoId: string) => request<Examen[]>(`/examenes?cursoId=${cursoId}`);
 
 export const getExamen = (id: string) => request<Examen>(`/examenes/${id}`);
+
+/** Borra un examen que nadie empezó ni entregó (si no, 409 con el motivo). Se van con él sus preguntas y los links publicados. */
+export const deleteExamen = (id: string) => request<void>(`/examenes/${id}`, { method: 'DELETE' });
 
 export const publicarExamenAComision = (
   examenId: string,
