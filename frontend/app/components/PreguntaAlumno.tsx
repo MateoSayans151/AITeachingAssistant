@@ -37,25 +37,32 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
   const abiertas = ['desarrollo', 'resolucion_problema', 'demostracion', 'analisis_caso', 'respuesta_corta'];
 
   if (abiertas.includes(p.tipo)) {
+    // Con la clase `field` toma el estilo del resto de la app (borde, foco, ancho completo) y no el crudo del navegador. Las
+    // respuestas largas (desarrollo, demostración…) necesitan lugar para escribir: una respuesta corta, bastante menos.
     return (
-      <textarea
-        aria-label={`Respuesta a: ${p.enunciado}`}
-        value={typeof valor === 'string' ? valor : ''}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={deshabilitado}
-      />
+      <div className="field" style={{ marginBottom: 0 }}>
+        <textarea
+          aria-label={`Respuesta a: ${p.enunciado}`}
+          value={typeof valor === 'string' ? valor : ''}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={deshabilitado}
+          style={{ minHeight: p.tipo === 'respuesta_corta' ? 90 : 220 }}
+        />
+      </div>
     );
   }
 
   if (p.tipo === 'numerica') {
     return (
-      <input
-        type="number"
-        aria-label={`Respuesta a: ${p.enunciado}`}
-        value={typeof valor === 'number' ? valor : ''}
-        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-        disabled={deshabilitado}
-      />
+      <div className="field" style={{ marginBottom: 0, maxWidth: 240 }}>
+        <input
+          type="number"
+          aria-label={`Respuesta a: ${p.enunciado}`}
+          value={typeof valor === 'number' ? valor : ''}
+          onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+          disabled={deshabilitado}
+        />
+      </div>
     );
   }
 
@@ -116,22 +123,24 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
           // La clave lleva la posición: en la vista previa el docente puede tener textos repetidos mientras escribe.
           <div key={`${k}-${izq}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
             <div style={{ paddingTop: 10 }}>{izq}</div>
-            <select
-              aria-label={`Elegí la pareja de ${izq}`}
-              value={pares.find(([i]) => i === izq)?.[1] ?? ''}
-              onChange={(e) => {
-                const resto = pares.filter(([i]) => i !== izq);
-                onChange(e.target.value ? [...resto, [izq, e.target.value]] : resto);
-              }}
-              disabled={deshabilitado}
-            >
-              <option value="">Elegí…</option>
-              {cfg.derecha.map((der, j) => (
-                <option key={`${j}-${der}`} value={der}>
-                  {der}
-                </option>
-              ))}
-            </select>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <select
+                aria-label={`Elegí la pareja de ${izq}`}
+                value={pares.find(([i]) => i === izq)?.[1] ?? ''}
+                onChange={(e) => {
+                  const resto = pares.filter(([i]) => i !== izq);
+                  onChange(e.target.value ? [...resto, [izq, e.target.value]] : resto);
+                }}
+                disabled={deshabilitado}
+              >
+                <option value="">Elegí…</option>
+                {cfg.derecha.map((der, j) => (
+                  <option key={`${j}-${der}`} value={der}>
+                    {der}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         ))}
       </>

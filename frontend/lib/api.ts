@@ -454,7 +454,7 @@ export const createMatrizRubrica = (data: {
     nombre: string;
     descripcion: string;
     puntajeMaximo: number;
-    /** Opcional: sin niveles detallados la matriz se guarda con `[]`; si se mandan, tienen que ser los 5. */
+    /** Opcional: sin niveles detallados la matriz se guarda con `[]`; si se mandan, de 3 a 7 (como la escala del examen). */
     nivelesDescripcion?: NivelDescripcion[];
   }[];
 }) => request<MatrizRubrica>('/matrices-rubrica', { method: 'POST', body: JSON.stringify(data) });
@@ -487,7 +487,7 @@ export const createExamen = (data: {
       nombre: string;
       descripcion: string;
       puntajeMaximo: number;
-      /** Opcional: qué implica cada uno de los 5 niveles en este criterio. */
+      /** Opcional: qué implica cada uno de los niveles de la escala del examen en este criterio (todos o ninguno). */
       nivelesDescripcion?: NivelDescripcion[];
     }[];
   }[];

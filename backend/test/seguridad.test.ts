@@ -24,6 +24,8 @@ import { ComisionesController, ComisionDetalleController, AlumnosController } fr
 import { MaterialesCursoController, MaterialDetalleController } from '../src/materiales-curso/materiales-curso.controller';
 import { MatricesRubricaController } from '../src/matrices-rubrica/matrices-rubrica.controller';
 import { ExamenesController } from '../src/examenes/examenes.controller';
+import { SugerenciasController } from '../src/examenes/sugerencias.controller';
+import { InvitacionesController } from '../src/mail/invitaciones.controller';
 import { RespuestasExamenController } from '../src/respuestas-examen/respuestas-examen.controller';
 import { TrabajosPracticosController } from '../src/trabajos-practicos/trabajos-practicos.controller';
 import { EntregasController } from '../src/entregas/entregas.controller';
@@ -73,7 +75,7 @@ test('las únicas rutas públicas son las de rendir y entregar (el login es de S
     AuthController, RendirController, EntregarController, CursosController, ComisionesController, ComisionDetalleController,
     AlumnosController, MaterialesCursoController, MaterialDetalleController, MatricesRubricaController,
     ExamenesController, RespuestasExamenController, TrabajosPracticosController, EntregasController,
-    CorreccionesController, ResumenCursoController,
+    CorreccionesController, ResumenCursoController, SugerenciasController, InvitacionesController,
   ];
   const publicas: string[] = [];
   for (const c of controllers) {

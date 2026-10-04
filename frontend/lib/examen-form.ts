@@ -308,7 +308,7 @@ export function construirPregunta(p: PreguntaForm): PreguntaPayload {
       nombre: c.nombre.trim(),
       descripcion: c.descripcion.trim(),
       puntajeMaximo: puntos[i],
-      // Solo si el docente describió los 5 niveles.
+      // Solo si el docente describió TODOS los niveles de la escala.
       nivelesDescripcion: c.niveles.every((nv) => nv.descripcion.trim()) ? c.niveles : undefined,
     })),
   };
