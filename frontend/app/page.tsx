@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { TrabajoPractico, listTrabajosPracticos } from '@/lib/api';
+import { Curso, listCursos } from '@/lib/api';
 import { useSesion } from '@/lib/auth';
 import { supabase, supabaseConfigurado } from '@/lib/supabase';
 
@@ -15,13 +15,13 @@ export default function HomePage() {
   useEffect(() => {
     if (recuperando) router.replace('/restablecer');
   }, [recuperando, router]);
-  const [trabajos, setTrabajos] = useState<TrabajoPractico[] | null>(null);
+  const [cursos, setCursos] = useState<Curso[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!docente) return;
-    listTrabajosPracticos()
-      .then(setTrabajos)
+    listCursos()
+      .then(setCursos)
       .catch((e) => setError(e.message));
   }, [docente]);
 
@@ -42,37 +42,61 @@ export default function HomePage() {
       <header className="page-header">
         <div className="eyebrow">AI Teaching Assistant</div>
         <h1>Hola, {docente.nombre.split(' ')[0]}</h1>
-        <p>Tus trabajos prácticos y el estado de corrección de cada uno.</p>
+        <p>Armá un examen, compartí el link con tus comisiones y revisá las respuestas desde acá.</p>
       </header>
 
-      <div style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Link href="/trabajos/nuevo" className="btn btn-primary">
-          + Nuevo trabajo práctico
+      <div style={{ marginBottom: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link href="/examenes/nuevo" className="btn btn-primary">
+          + Nuevo examen
         </Link>
-        <Link href="/cursos" className="btn btn-secondary">
-          Ir a Cátedra (exámenes por curso)
+        <Link href="/cursos/nuevo" className="btn btn-secondary">
+          + Nuevo curso
         </Link>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
+      <section>
+        <h2 style={{ fontSize: 22, marginBottom: 14 }}>Tus cursos</h2>
 
-      {trabajos === null && !error && <p className="muted">Cargando…</p>}
+        {error && <div className="error-box">{error}</div>}
 
-      {trabajos?.length === 0 && (
-        <div className="empty-state">
-          Todavía no cargaste ningún trabajo práctico. Arrancá creando la consigna y la rúbrica.
-        </div>
-      )}
+        {cursos === null && !error && <p className="muted">Cargando…</p>}
 
-      {trabajos?.map((tp) => (
-        <Link key={tp.id} href={`/trabajos/${tp.id}`} className="card card-link">
-          <div className="card-title">{tp.titulo}</div>
-          <div className="card-meta">
-            {tp.materia ? `${tp.materia} · ` : ''}
-            {tp.criterios.length} criterios de rúbrica · {tp._count?.entregas ?? 0} entregas
+        {cursos?.length === 0 && (
+          <div className="empty-state">
+            Creá tu primer curso o armá un examen: si no tenés curso, el asistente te deja crear uno.
           </div>
-        </Link>
-      ))}
+        )}
+
+        {cursos?.map((curso) => (
+          <Link key={curso.id} href={`/cursos/${curso.id}`} className="card card-link">
+            <div className="card-title">{curso.nombre}</div>
+            <div className="card-meta">
+              {curso.materia ? `${curso.materia} · ` : ''}
+              {curso._count?.comisiones ?? 0} comisiones · {curso._count?.examenes ?? 0} exámenes
+            </div>
+          </Link>
+        ))}
+      </section>
+
+      <hr className="hr" style={{ margin: '40px 0 24px' }} />
+
+      {/* Flujo simple (sin cursos ni comisiones): queda a mano pero fuera del camino principal. */}
+      <section>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>
+          Trabajos prácticos
+        </div>
+        <p className="muted" style={{ marginBottom: 14, maxWidth: '62ch' }}>
+          Para corregir entregas de una consigna con su rúbrica, sin armar curso ni comisiones.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Link href="/trabajos" className="btn btn-secondary">
+            Ver trabajos prácticos
+          </Link>
+          <Link href="/trabajos/nuevo" className="btn btn-secondary">
+            + Nuevo trabajo práctico
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

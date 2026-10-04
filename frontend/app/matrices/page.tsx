@@ -28,7 +28,7 @@ export default function MatricesPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">Cátedra</div>
+        <div className="eyebrow">Matrices</div>
         <h1>Matrices de rúbrica</h1>
         <p>Librería reutilizable: al crear una pregunta abierta en un examen podés partir de una de estas matrices.</p>
       </header>

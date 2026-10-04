@@ -952,7 +952,7 @@ function NuevoExamenForm() {
                 ¿Quiénes lo rinden?
               </div>
               <p className="muted" style={{ marginBottom: 14 }}>
-                Cada alumno entra al link con su email y un código personal que se genera acá. Así nadie puede rendir en nombre de otro.
+                Cada alumno entra al link con el email con el que figura en la lista: cargalos tal cual los usan (no distingue mayúsculas).
               </p>
 
               {comisiones && comisiones.length > 0 && (

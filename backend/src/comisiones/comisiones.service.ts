@@ -6,6 +6,9 @@ import { CreateComisionDto, AlumnoInputDto } from './dto/create-comision.dto';
 /** Código para rendir (72 bits): se le entrega al alumno junto con el link de la comisión. */
 export const generarCodigoAcceso = () => randomBytes(9).toString('base64url');
 
+/** Emails siempre sin espacios y en minúsculas: así el match al rendir no depende de cómo se cargó. */
+export const normalizarEmail = (email: string) => email.trim().toLowerCase();
+
 @Injectable()
 export class ComisionesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -16,7 +19,7 @@ export class ComisionesService {
         cursoId,
         nombre: dto.nombre,
         alumnos: dto.alumnos
-          ? { create: dto.alumnos.map((a) => ({ nombre: a.nombre, email: a.email, codigoAcceso: generarCodigoAcceso() })) }
+          ? { create: dto.alumnos.map((a) => ({ nombre: a.nombre, email: normalizarEmail(a.email), codigoAcceso: generarCodigoAcceso() })) }
           : undefined,
       },
       include: { alumnos: true },
@@ -45,7 +48,7 @@ export class ComisionesService {
     if (!comision) throw new NotFoundException(`Comisión ${comisionId} no encontrada`);
 
     return this.prisma.alumno.create({
-      data: { comisionId, nombre: dto.nombre, email: dto.email, codigoAcceso: generarCodigoAcceso() },
+      data: { comisionId, nombre: dto.nombre, email: normalizarEmail(dto.email), codigoAcceso: generarCodigoAcceso() },
     });
   }
 }
