@@ -103,10 +103,12 @@ export default function NuevaMatrizPage() {
   const cantidadInvalidos = errores.filter((e) => e.alguno).length;
   const mensajeValidacion =
     intentoEnvio && cantidadInvalidos > 0
-      ? `Completá ${cantidadInvalidos === 1 ? 'el criterio marcado' : `los ${cantidadInvalidos} criterios marcados`} en rojo: nombre, qué evalúa, puntaje y los 5 niveles.`
+      ? `Completá ${cantidadInvalidos === 1 ? 'el criterio marcado' : `los ${cantidadInvalidos} criterios marcados`} en rojo: nombre, qué evalúa, peso y los 5 niveles.`
       : null;
   const mensajeError = error ?? mensajeValidacion;
-  const totalPuntos = criterios.reduce((suma, c) => suma + (puntajeValido(c.puntajeMaximo) ? Number(c.puntajeMaximo) : 0), 0);
+  // El "peso" viaja al servidor como `puntajeMaximo`; acá solo importa en proporción: al usar la matriz en una pregunta, los
+  // puntos de ésta se reparten según el peso de cada criterio.
+  const totalPesos = criterios.reduce((suma, c) => suma + (puntajeValido(c.puntajeMaximo) ? Number(c.puntajeMaximo) : 0), 0);
 
   // Tras un envío rechazado, lleva al primer campo marcado (los niveles incompletos ya se desplegaron).
   useEffect(() => {
@@ -195,6 +197,9 @@ export default function NuevaMatrizPage() {
         <div className="eyebrow">Nueva matriz de rúbrica</div>
         <h1>Criterios y niveles de desempeño</h1>
         <p>Cada criterio tiene 5 niveles fijos con una descripción sugerida; editala para ajustarla a ese criterio puntual.</p>
+        <p id="ayuda-peso">
+          Peso: importancia relativa del criterio. Al usar la matriz en una pregunta, los puntos se reparten según el peso.
+        </p>
       </header>
 
       {mensajeError && (
@@ -247,13 +252,15 @@ export default function NuevaMatrizPage() {
                   />
                 </label>
                 <label className="mini-field">
-                  <span>Puntaje máx.</span>
+                  <span>Peso</span>
                   <input
                     type="number"
-                    min="0.5"
-                    step="0.5"
+                    min="0.01"
+                    step="any"
                     inputMode="decimal"
-                    placeholder="ej: 2"
+                    placeholder="ej: 30"
+                    title="Importancia relativa del criterio: al usar la matriz en una pregunta, los puntos se reparten según el peso"
+                    aria-describedby="ayuda-peso"
                     value={c.puntajeMaximo}
                     aria-invalid={mostrar && err.puntaje}
                     onChange={(e) => actualizarCriterio(ci, 'puntajeMaximo', e.target.value)}
@@ -330,7 +337,7 @@ export default function NuevaMatrizPage() {
         <div className="action-bar">
           <div className="action-bar-info">
             <span className="action-bar-total">
-              {criterios.length} {criterios.length === 1 ? 'criterio' : 'criterios'} · Total {formatoPuntos.format(totalPuntos)} pts
+              {criterios.length} {criterios.length === 1 ? 'criterio' : 'criterios'} · Suma de pesos {formatoPuntos.format(totalPesos)}
             </span>
             {mensajeError && <span className="action-bar-error">{mensajeError}</span>}
           </div>

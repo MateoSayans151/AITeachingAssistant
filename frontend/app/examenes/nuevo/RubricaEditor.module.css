@@ -1,0 +1,140 @@
+/* Estilos propios del editor de rúbrica (RubricaEditor.tsx). El resto sale de las clases globales de globals.css. */
+
+/* Fila superior: selector de matriz + "Sugerir criterios con IA". */
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* Mismo aspecto que los inputs del formulario (los <select> sueltos no lo heredan de .field). */
+.selector {
+  flex: 1 1 320px;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-text);
+  background: #fff;
+  text-overflow: ellipsis;
+}
+
+.selector:hover:not(:disabled) {
+  border-color: var(--color-neutral-800);
+}
+
+.selector:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.selector:disabled {
+  background: var(--color-neutral-100);
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+}
+
+.botonIA {
+  flex: 0 0 auto;
+  justify-content: center;
+  min-width: 214px; /* no cambia de ancho al pasar de "Sugerir criterios con IA" a "Pensando…" */
+}
+
+/* Marca discreta de "esto lo hace la IA". */
+.etiquetaIA {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.avisoIA,
+.avisoOk {
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: var(--space-3);
+}
+
+.avisoIA {
+  background: var(--color-accent-100);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  color: var(--color-accent-800);
+}
+
+.avisoOk {
+  background: var(--color-success-soft);
+  border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent);
+  color: var(--color-success);
+  margin-top: var(--space-3);
+  margin-bottom: 0;
+}
+
+/* Criterio que, con los puntos de la pregunta, se redondea a 0. */
+.ptsChicos {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+/* Acciones al pie de la rúbrica. */
+.pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.ayudaPie {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Mini formulario "Guardar estos criterios como matriz". */
+.formMatriz {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.formMatrizTitulo {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
+.formMatrizCampos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.formMatrizCampos :global(.field) {
+  margin-bottom: var(--space-3);
+}
+
+.formMatrizAcciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .formMatrizCampos {
+    grid-template-columns: 1fr;
+  }
+}
