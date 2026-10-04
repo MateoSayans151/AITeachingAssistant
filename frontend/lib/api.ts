@@ -743,3 +743,35 @@ export const bulkAceptarRespuestas = (examenId: string) =>
  */
 export const corregirPendientes = (examenId: string) =>
   request<{ pendientes: number }>(`/examenes/${examenId}/respuestas/corregir-pendientes`, { method: 'POST' });
+
+// ---- Invitaciones por mail (uso docente) ----
+// El docente le manda a cada alumno el link para rendir un examen ya publicado. El envío corre en segundo plano en el
+// servidor: `invitarAlumnos` responde enseguida y el avance se consulta con `getEstadoInvitaciones` (refrescar mientras `enCurso`).
+
+export interface EstadoInvitaciones {
+  /** El servidor tiene el envío de mails configurado (RESEND_API_KEY y EMAIL_FROM). Sin eso, invitar responde 409. */
+  configurado: boolean;
+  /** Dirección a la que llegan TODOS los mails en vez de a los alumnos (modo prueba); null = modo normal. */
+  modoPrueba: string | null;
+  /** Invitaciones del último envío (0 si nunca se mandó o si el servidor se reinició: el estado vive en su memoria). */
+  total: number;
+  enviados: number;
+  conError: number;
+  /** Hay un envío corriendo ahora mismo. */
+  enCurso: boolean;
+  /** Motivo del último fallo (por ejemplo, el límite diario de envíos del plan de Resend); null si no hubo. */
+  ultimoError: string | null;
+}
+
+/**
+ * Manda por mail a cada alumno su link para rendir: de la publicación `examenComisionId`, o de todas las comisiones donde el examen
+ * está publicado si no se pasa. Responde enseguida con cuántos mails salen. 409 si el envío no está configurado, si ya hay un envío
+ * en curso para este examen o si no hay a quién mandarle; 404 si la publicación no es de este examen.
+ */
+export const invitarAlumnos = (examenId: string, examenComisionId?: string) =>
+  request<{ aEnviar: number }>(`/examenes/${examenId}/invitaciones`, {
+    method: 'POST',
+    body: JSON.stringify(examenComisionId ? { examenComisionId } : {}),
+  });
+
+export const getEstadoInvitaciones = (examenId: string) => request<EstadoInvitaciones>(`/examenes/${examenId}/invitaciones`);
