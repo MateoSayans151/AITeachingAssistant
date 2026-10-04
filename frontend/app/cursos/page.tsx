@@ -28,7 +28,7 @@ export default function CursosPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">Cátedra</div>
+        <div className="eyebrow">Cursos y exámenes</div>
         <h1>Tus cursos</h1>
         <p>Cursos con sus comisiones y exámenes. Cada examen se publica a una o más comisiones.</p>
       </header>

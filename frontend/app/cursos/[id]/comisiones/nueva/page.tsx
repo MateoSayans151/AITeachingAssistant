@@ -36,7 +36,10 @@ export default function NuevaComisionPage() {
     setLoading(true);
     setError(null);
     try {
-      const alumnosValidos = alumnos.filter((a) => a.nombre && a.email);
+      // El email va sin espacios y en minúsculas: el alumno rinde con él y el match no distingue mayúsculas.
+      const alumnosValidos = alumnos
+        .map((a) => ({ ...a, email: a.email.trim().toLowerCase() }))
+        .filter((a) => a.nombre && a.email);
       await createComision(params.id, {
         nombre,
         alumnos: alumnosValidos.length > 0 ? alumnosValidos : undefined,
