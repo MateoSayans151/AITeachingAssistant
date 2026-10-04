@@ -5,12 +5,12 @@ import {
   ApiError,
   AntiCheatConfig,
   EstadoIntentoRendir,
-  PreguntaRendir,
   TipoEventoIntegridad,
   entregarIntento,
   guardarBorrador,
   registrarEvento,
 } from '@/lib/api';
+import { TarjetaPreguntaAlumno } from '@/app/components/PreguntaAlumno';
 import { alCambiarPantallaCompleta, enPantallaCompleta, entrarPantallaCompleta, pantallaCompletaSoportada } from '@/lib/pantalla-completa';
 
 type Respuestas = Record<string, unknown>;
@@ -355,12 +355,14 @@ export default function ExamenEnCurso({
       {errorEntrega && <div className="error-box">{errorEntrega}</div>}
 
       {preguntas.map((p, i) => (
-        <div key={p.id} className="card" style={{ marginBottom: 16 }} data-pregunta={i + 1}>
-          <div className="card-title" style={{ marginBottom: 12 }}>
-            {i + 1}. {p.enunciado} <span className="muted">({p.puntajeMaximo} pts)</span>
-          </div>
-          <CampoRespuesta pregunta={p} valor={respuestas[p.id]} onChange={(v) => cambiarRespuesta(p.id, v)} disabled={seAcabo || entregando} />
-        </div>
+        <TarjetaPreguntaAlumno
+          key={p.id}
+          pregunta={p}
+          numero={i + 1}
+          valor={respuestas[p.id]}
+          onChange={(v) => cambiarRespuesta(p.id, v)}
+          deshabilitado={seAcabo || entregando}
+        />
       ))}
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -388,121 +390,4 @@ function tieneRespuesta(v: unknown): boolean {
   if (v === null || v === undefined || v === '') return false;
   if (Array.isArray(v)) return v.length > 0;
   return true;
-}
-
-function CampoRespuesta({
-  pregunta: p,
-  valor,
-  onChange,
-  disabled,
-}: {
-  pregunta: PreguntaRendir;
-  valor: unknown;
-  onChange: (v: unknown) => void;
-  disabled: boolean;
-}) {
-  const abiertas = ['desarrollo', 'resolucion_problema', 'demostracion', 'analisis_caso', 'respuesta_corta'];
-
-  if (abiertas.includes(p.tipo)) {
-    return (
-      <textarea
-        aria-label={`Respuesta a: ${p.enunciado}`}
-        value={typeof valor === 'string' ? valor : ''}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-      />
-    );
-  }
-
-  if (p.tipo === 'numerica') {
-    return (
-      <input
-        type="number"
-        aria-label={`Respuesta a: ${p.enunciado}`}
-        value={typeof valor === 'number' ? valor : ''}
-        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-        disabled={disabled}
-      />
-    );
-  }
-
-  if (p.tipo === 'verdadero_falso') {
-    return (
-      <div style={{ display: 'flex', gap: 16 }}>
-        {[
-          { label: 'Verdadero', v: true },
-          { label: 'Falso', v: false },
-        ].map((o) => (
-          <label key={o.label} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="radio" name={`vf-${p.id}`} checked={valor === o.v} onChange={() => onChange(o.v)} disabled={disabled} />
-            {o.label}
-          </label>
-        ))}
-      </div>
-    );
-  }
-
-  if (p.tipo === 'opcion_multiple') {
-    return (
-      <>
-        {(p.opciones as Array<{ id: string; texto: string }>).map((o) => (
-          <label key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-            <input type="radio" name={`om-${p.id}`} checked={valor === o.id} onChange={() => onChange(o.id)} disabled={disabled} />
-            {o.texto}
-          </label>
-        ))}
-      </>
-    );
-  }
-
-  if (p.tipo === 'casillas') {
-    const actuales = Array.isArray(valor) ? (valor as string[]) : [];
-    return (
-      <>
-        {(p.opciones as Array<{ id: string; texto: string }>).map((o) => (
-          <label key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-            <input
-              type="checkbox"
-              checked={actuales.includes(o.id)}
-              onChange={(e) => onChange(e.target.checked ? [...actuales, o.id] : actuales.filter((id) => id !== o.id))}
-              disabled={disabled}
-            />
-            {o.texto}
-          </label>
-        ))}
-      </>
-    );
-  }
-
-  if (p.tipo === 'relacionar_pares') {
-    const cfg = p.opciones as { izquierda: string[]; derecha: string[] };
-    const pares = Array.isArray(valor) ? (valor as Array<[string, string]>) : [];
-    return (
-      <>
-        {cfg.izquierda.map((izq) => (
-          <div key={izq} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
-            <div style={{ paddingTop: 10 }}>{izq}</div>
-            <select
-              aria-label={`Elegí la pareja de ${izq}`}
-              value={pares.find(([i]) => i === izq)?.[1] ?? ''}
-              onChange={(e) => {
-                const resto = pares.filter(([i]) => i !== izq);
-                onChange(e.target.value ? [...resto, [izq, e.target.value]] : resto);
-              }}
-              disabled={disabled}
-            >
-              <option value="">Elegí…</option>
-              {cfg.derecha.map((der) => (
-                <option key={der} value={der}>
-                  {der}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
-      </>
-    );
-  }
-
-  return null;
 }
