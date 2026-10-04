@@ -18,6 +18,7 @@ import {
   mensajesDelServidor,
   nivelesPorDefecto,
   preguntaVacia,
+  reconciliarNiveles,
   redondearPuntos,
   totalCoincideConEscala,
   totalDelExamen,
@@ -63,7 +64,6 @@ function NuevoExamenForm() {
 
   // Opciones avanzadas del paso 1 (plegadas por defecto). Viven acá para que un error de validación pueda abrirlas.
   const [avanzadoAbierto, setAvanzadoAbierto] = useState(false);
-  const [nivelesPersonalizar, setNivelesPersonalizar] = useState(false); // editor de nombres y porcentajes de los niveles
 
   // Duplicar desde un examen existente (?desde=<examenId>): se carga una sola vez y el formulario se precarga con sus datos.
   const [cargandoDesde, setCargandoDesde] = useState(Boolean(desdeParam));
@@ -154,6 +154,19 @@ function NuevoExamenForm() {
 
   const patchDatos = (patch: Partial<DatosForm>) => setDatos((prev) => ({ ...prev, ...patch }));
 
+  // Cada cambio de la escala de niveles (cantidad, nombre, orden) llega por acá, desde PasoDatos. Los `niveles` de cada criterio
+  // de cada pregunta tienen que acompañarla (misma cantidad y nombres, conservando las descripciones ya escritas): se
+  // reconcilian en ese mismo evento y no en un efecto, así el precargado de "duplicar" (que arma las dos cosas juntas) y las
+  // ediciones de las preguntas nunca se pisan ni hay un bucle. Un cambio que no es de la escala (cualquier otro campo) no toca las preguntas.
+  const cambiarDatos = (patch: Partial<DatosForm>) => {
+    const nuevos = patch.niveles;
+    if (nuevos) {
+      const anteriores = datos.niveles;
+      setPreguntas((prev) => reconciliarNiveles(prev, nuevos, anteriores));
+    }
+    patchDatos(patch);
+  };
+
   // ---------------------------------------------------------------- validación (paso a paso, con mensajes concretos)
   function validarPaso(p: number): string[] {
     if (p === 0) return validarDatos(datos);
@@ -225,7 +238,8 @@ function NuevoExamenForm() {
           ? { umbralAprobacion: Number(datos.umbralAprobacion), aprobadosEsperadosPct: Number(datos.aprobadosPct) }
           : undefined,
         antiCheat: datos.antiCheatOn ? { pantallaCompleta: datos.acPantalla, cambioPestana: datos.acPestana, pegado: datos.acPegado } : undefined,
-        preguntas: preguntas.map(construirPregunta),
+        // Red de seguridad: los niveles de cada criterio tienen que tener la forma de la escala (el servidor exige esa cantidad).
+        preguntas: reconciliarNiveles(preguntas, datos.niveles).map(construirPregunta),
       });
       setExamenCreadoId(examen.id);
       setCursoDelExamenId(cursoId);
@@ -312,12 +326,10 @@ function NuevoExamenForm() {
       {paso === 0 && (
         <PasoDatos
           datos={datos}
-          onChange={patchDatos}
+          onChange={cambiarDatos}
           cursos={cursos}
           avanzadoAbierto={avanzadoAbierto}
           onToggleAvanzado={() => setAvanzadoAbierto((v) => !v)}
-          personalizarNiveles={nivelesPersonalizar}
-          onPersonalizarNiveles={setNivelesPersonalizar}
         />
       )}
 

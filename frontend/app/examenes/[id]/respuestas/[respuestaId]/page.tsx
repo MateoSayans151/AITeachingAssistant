@@ -148,6 +148,8 @@ export default function DetalleRespuestaExamenPage() {
 
   const actual = respuesta;
   const preguntasPorId = new Map((respuesta.examen?.preguntas ?? []).map((p) => [p.id, p]));
+  // Cantidad de niveles de la escala de ESTE examen (de 3 a 7): si el detalle no trajera la escala, se muestra solo "nivel X".
+  const cantidadNiveles = Array.isArray(respuesta.examen?.niveles) ? respuesta.examen.niveles.length : 0;
   // La IA todavía no corrigió: no hay nota ni feedback sugeridos para aceptar.
   const sinCorregir = respuesta.estado === 'pendiente_correccion';
 
@@ -269,7 +271,7 @@ export default function DetalleRespuestaExamenPage() {
                 {rp.notaPorCriterio.map((c) => (
                   <div key={c.criterioId} style={{ marginBottom: 8 }}>
                     <strong>
-                      {c.nombre}: nivel {c.nivelSugerido}/5 — {c.notaSugerida.toFixed(2)} pts
+                      {c.nombre}: nivel {c.nivelSugerido}{cantidadNiveles > 0 ? `/${cantidadNiveles}` : ''} — {c.notaSugerida.toFixed(2)} pts
                     </strong>
                     <div className="muted" style={{ fontSize: 14 }}>
                       {c.comentario}

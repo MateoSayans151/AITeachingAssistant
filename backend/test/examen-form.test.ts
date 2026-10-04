@@ -7,9 +7,7 @@ import { test } from 'node:test';
 import { ApiError, TIPOS_AUTOCORREGIBLES } from '../../frontend/lib/api';
 import type { Examen, MatrizRubrica, Pregunta, TipoPregunta } from '../../frontend/lib/api';
 import {
-  PRESETS_NIVELES,
   aplicarMatriz,
-  aplicarPreset,
   construirOpciones,
   construirPregunta,
   criterioVacio,
@@ -17,10 +15,10 @@ import {
   examenAFormulario,
   formatearPuntos,
   mensajesDelServidor,
+  nivelDelMedio,
   nivelesPorDefecto,
   parsearAlumnos,
   preguntaVacia,
-  presetDe,
   puntajeEfectivoDe,
   puntosDeEjemplo,
   puntosPorCriterio,
@@ -394,15 +392,12 @@ test('aplicarMatriz: normaliza los decimales de la matriz y no toca el resto de 
 });
 
 // ---------------------------------------------------------------------------
-// 6. Escala de niveles: validación, presets y resumen
+// 6. Escala de niveles: validación, ejemplo y resumen (agregar/quitar/colores/reconciliar: ver niveles-escala.test.ts)
 // ---------------------------------------------------------------------------
 const conPorcentajes = (porcentajes: string[]): NivelForm[] => nivelesPorDefecto().map((n, i) => ({ ...n, porcentaje: porcentajes[i] }));
 
-test('validarNiveles: la escala por defecto y los 3 presets son válidos', () => {
+test('validarNiveles: la escala por defecto es válida', () => {
   assert.deepEqual(validarNiveles(nivelesPorDefecto()), []);
-  for (const preset of PRESETS_NIVELES) {
-    assert.deepEqual(validarNiveles(aplicarPreset(nivelesPorDefecto(), preset.id)), [], preset.id);
-  }
 });
 
 test('validarNiveles: nombre, rango, primer nivel 0 %, último 100 % y porcentajes crecientes', () => {
@@ -419,31 +414,20 @@ test('validarNiveles: nombre, rango, primer nivel 0 %, último 100 % y porcentaj
   const noCrece = validarNiveles(conPorcentajes(['0', '50', '50', '75', '100']));
   assert.equal(noCrece.length, 1);
   assert.match(noCrece[0], /tienen que ir creciendo.*«Básico» vale 50 % y «Intermedio» vale 50 %/);
-  assert.deepEqual(validarNiveles([]), []);
+  // Sin niveles ya no es una escala válida: hacen falta de 3 a 7.
+  assert.deepEqual(validarNiveles([]), ['La escala necesita entre 3 y 7 niveles (ahora tiene 0).']);
 });
 
-test('presetDe / aplicarPreset: reconoce el preset exacto, conserva nombres y colores, y detecta lo personalizado', () => {
-  assert.equal(presetDe(nivelesPorDefecto()), 'estandar');
-  const exigente = aplicarPreset(nivelesPorDefecto(), 'exigente');
-  assert.deepEqual(exigente.map((n) => n.porcentaje), ['0', '10', '30', '60', '100']);
-  assert.deepEqual(exigente.map((n) => n.nombre), nivelesPorDefecto().map((n) => n.nombre));
-  assert.deepEqual(exigente.map((n) => n.colorHex), nivelesPorDefecto().map((n) => n.colorHex));
-  assert.equal(presetDe(exigente), 'exigente');
-  assert.equal(presetDe(aplicarPreset(nivelesPorDefecto(), 'flexible')), 'flexible');
-  assert.equal(presetDe(conPorcentajes(['0', '20', '50', '75', '100'])), 'personalizado');
-  // Un id desconocido no cambia nada.
-  assert.deepEqual(aplicarPreset(nivelesPorDefecto(), 'inexistente'), nivelesPorDefecto());
-});
-
-test('puntosDeEjemplo y resumenNiveles', () => {
+test('puntosDeEjemplo, nivelDelMedio y resumenNiveles', () => {
   assert.equal(puntosDeEjemplo('50'), 1);
   assert.equal(puntosDeEjemplo('25'), 0.5);
   assert.equal(puntosDeEjemplo('75', 4), 3);
   assert.equal(puntosDeEjemplo(''), null);
   assert.equal(puntosDeEjemplo('abc'), null);
-  assert.equal(resumenNiveles(nivelesPorDefecto()), 'Estándar · 0 / 25 / 50 / 75 / 100 %');
-  assert.equal(resumenNiveles(aplicarPreset(nivelesPorDefecto(), 'flexible')), 'Flexible · 0 / 35 / 60 / 85 / 100 %');
-  assert.equal(resumenNiveles(conPorcentajes(['0', '20', '', '75', '100'])), 'Personalizada · 0 / 20 / ? / 75 / 100 %');
+  assert.equal(nivelDelMedio(nivelesPorDefecto())?.nombre, 'Intermedio');
+  assert.equal(nivelDelMedio([]), undefined);
+  assert.equal(resumenNiveles(nivelesPorDefecto()), '5 niveles · 0 / 25 / 50 / 75 / 100 %');
+  assert.equal(resumenNiveles(conPorcentajes(['0', '20', '', '75', '100'])), '5 niveles · 0 / 20 / ? / 75 / 100 %');
 });
 
 // ---------------------------------------------------------------------------

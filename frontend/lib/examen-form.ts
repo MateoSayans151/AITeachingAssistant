@@ -16,14 +16,66 @@ export interface NivelForm {
   porcentaje: string;
 }
 
+// ---------------------------------------------------------------- escala de niveles: cantidad, colores y nombres por defecto
+
+/** La escala de niveles de desempeño tiene entre 3 y 7 niveles (5 por defecto). */
+export const MIN_NIVELES = 3;
+export const MAX_NIVELES = 7;
+export const CANT_NIVELES_POR_DEFECTO = 5;
+
+// Escala de rojo a verde sobre la que se interpola el color de cada nivel. Con 5 niveles cada uno cae justo en un ancla.
+const COLORES_ANCLA = ['#c0392b', '#c8511b', '#c9a227', '#3b4fb0', '#1a7f4e'];
+
+const aCanales = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const aHex = (canales: number[]): string => `#${canales.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+
+/**
+ * Color del nivel `indice` (base 0) de una escala de `total` niveles: va de rojo (el primero) a verde (el último), interpolado
+ * entre los colores ancla. El docente no lo elige: se calcula siempre por posición. Con 5 niveles da exactamente los 5 colores
+ * ancla (`#c0392b, #c8511b, #c9a227, #3b4fb0, #1a7f4e`).
+ */
+export function colorDeNivel(indice: number, total: number): string {
+  const ultimaAncla = COLORES_ANCLA.length - 1;
+  if (!(total > 1)) return COLORES_ANCLA[0];
+  const i = Math.min(Math.max(Math.round(indice), 0), total - 1);
+  // Posición sobre las anclas en enteros (i * 4 / (total - 1)) para que con 5 niveles no haya error de coma flotante.
+  const base = Math.min(Math.floor((i * ultimaAncla) / (total - 1)), ultimaAncla - 1);
+  const resto = (i * ultimaAncla) / (total - 1) - base;
+  if (resto === 0) return COLORES_ANCLA[base];
+  if (resto === 1) return COLORES_ANCLA[base + 1];
+  const a = aCanales(COLORES_ANCLA[base]);
+  const b = aCanales(COLORES_ANCLA[base + 1]);
+  return aHex(a.map((x, k) => x + (b[k] - x) * resto));
+}
+
+const NOMBRES_POR_CANTIDAD: Record<number, string[]> = {
+  3: ['Insuficiente', 'Adecuado', 'Excelente'],
+  4: ['Insuficiente', 'Básico', 'Avanzado', 'Excelente'],
+  5: ['Insuficiente', 'Básico', 'Intermedio', 'Avanzado', 'Excelente'],
+  6: ['Insuficiente', 'Básico', 'Intermedio', 'Bueno', 'Muy bueno', 'Excelente'],
+  7: ['Insuficiente', 'Muy bajo', 'Básico', 'Intermedio', 'Bueno', 'Muy bueno', 'Excelente'],
+};
+
+/** Porcentajes parejos para `cantidad` niveles: 0, 100/(n-1), … , 100 redondeados a enteros (siempre crecientes para n <= 7). */
+export function porcentajesParejos(cantidad: number): number[] {
+  const n = Math.max(Math.round(cantidad), 2);
+  return Array.from({ length: n }, (_, i) => Math.round((i * 100) / (n - 1)));
+}
+
+/** Deja `orden` en 1..N consecutivo y el color de cada nivel según su posición: lo que toda operación sobre la escala tiene que respetar. */
+export function normalizarNiveles(niveles: NivelForm[]): NivelForm[] {
+  return niveles.map((n, i) => ({ ...n, orden: i + 1, colorHex: colorDeNivel(i, niveles.length) }));
+}
+
+/** Escala nueva de `cantidad` niveles (se acota a 3..7) con los nombres por defecto, colores por posición y porcentajes parejos. */
+export function nivelesParaCantidad(cantidad: number): NivelForm[] {
+  const n = Math.min(Math.max(Math.round(cantidad) || CANT_NIVELES_POR_DEFECTO, MIN_NIVELES), MAX_NIVELES);
+  const porcentajes = porcentajesParejos(n);
+  return normalizarNiveles(NOMBRES_POR_CANTIDAD[n].map((nombre, i) => ({ orden: i + 1, nombre, colorHex: '', porcentaje: String(porcentajes[i]) })));
+}
+
 export function nivelesPorDefecto(): NivelForm[] {
-  return [
-    { orden: 1, nombre: 'Insuficiente', colorHex: '#c0392b', porcentaje: '0' },
-    { orden: 2, nombre: 'Básico', colorHex: '#c8511b', porcentaje: '25' },
-    { orden: 3, nombre: 'Intermedio', colorHex: '#c9a227', porcentaje: '50' },
-    { orden: 4, nombre: 'Avanzado', colorHex: '#3b4fb0', porcentaje: '75' },
-    { orden: 5, nombre: 'Excelente', colorHex: '#1a7f4e', porcentaje: '100' },
-  ];
+  return nivelesParaCantidad(CANT_NIVELES_POR_DEFECTO);
 }
 
 // ---------------------------------------------------------------- datos del examen (paso 1)
@@ -319,42 +371,91 @@ export function aplicarMatriz(p: PreguntaForm, matriz: MatrizRubrica): PreguntaF
   return { ...p, criterios, puntajeMaximo: sinPuntos ? String(redondearPuntos(suma)) : p.puntajeMaximo };
 }
 
-// ---------------------------------------------------------------- niveles de desempeño: presets, validación y ejemplo
+// ---------------------------------------------------------------- niveles de desempeño: editar la escala, validación y ejemplo
 
-/** Reparto del puntaje de un criterio entre los 5 niveles: la "exigencia" de la corrección. */
-export interface PresetNiveles {
-  id: string;
-  nombre: string;
-  porcentajes: number[];
+/** Nombre sugerido para un nivel nuevo en la posición `orden` ("Nivel 5"): el primero libre (sin distinguir mayúsculas). */
+function nombreSugerido(niveles: NivelForm[], orden: number): string {
+  const usados = new Set(niveles.map((n) => n.nombre.trim().toLowerCase()));
+  let k = orden;
+  while (usados.has(`nivel ${k}`)) k += 1;
+  return `Nivel ${k}`;
 }
 
-export const PRESETS_NIVELES: PresetNiveles[] = [
-  { id: 'estandar', nombre: 'Estándar', porcentajes: [0, 25, 50, 75, 100] },
-  { id: 'exigente', nombre: 'Exigente', porcentajes: [0, 10, 30, 60, 100] },
-  { id: 'flexible', nombre: 'Flexible', porcentajes: [0, 35, 60, 85, 100] },
-];
-
-/** Id del preset que coincide exactamente con los porcentajes de los niveles, o 'personalizado'. */
-export function presetDe(niveles: NivelForm[]): string {
-  const valores = niveles.map((n) => Number(n.porcentaje));
-  const preset = PRESETS_NIVELES.find((p) => p.porcentajes.length === valores.length && p.porcentajes.every((x, i) => x === valores[i]));
-  return preset ? preset.id : 'personalizado';
-}
-
-/** Aplica los porcentajes de un preset conservando los nombres (y colores) que ya tengan los niveles. */
-export function aplicarPreset(niveles: NivelForm[], id: string): NivelForm[] {
-  const preset = PRESETS_NIVELES.find((p) => p.id === id);
-  if (!preset) return niveles;
-  return niveles.map((n, i) => ({ ...n, porcentaje: String(preset.porcentajes[i] ?? n.porcentaje) }));
+/** Porcentaje intermedio entre dos vecinos (entero si cabe uno estrictamente en el medio; si no, con decimales). */
+function porcentajeIntermedio(desde: string, hasta: string, respaldo: number): string {
+  const a = Number(desde);
+  const b = Number(hasta);
+  if (desde.trim() === '' || hasta.trim() === '' || !Number.isFinite(a) || !Number.isFinite(b) || a >= b) return String(respaldo);
+  const medio = (a + b) / 2;
+  const entero = Math.round(medio);
+  return String(entero > a && entero < b ? entero : Math.round(medio * 100) / 100);
 }
 
 /**
- * Reglas de la escala de niveles. Además de nombre y rango 0-100: el primer nivel vale 0 % (lo que recibe una respuesta que no
- * cumple), el último 100 % (si no, nadie podría sacar el puntaje completo y el total del examen no se alcanzaría nunca) y los
- * porcentajes crecen de un nivel al siguiente (si no, la escala no tiene sentido para quien corrige).
+ * Agrega un nivel NUEVO justo antes del último (el último, "el mejor", queda al final): con un porcentaje intermedio entre sus
+ * vecinos y el nombre sugerido "Nivel N". Renumera y recalcula los colores. Con 7 niveles no hace nada.
+ */
+export function agregarNivel(niveles: NivelForm[]): NivelForm[] {
+  if (niveles.length >= MAX_NIVELES) return niveles;
+  const posicion = Math.max(niveles.length - 1, 0); // índice donde entra el nuevo
+  const anterior = niveles[posicion - 1];
+  const ultimo = niveles[niveles.length - 1];
+  const respaldo = porcentajesParejos(niveles.length + 1)[posicion] ?? 50;
+  const nuevo: NivelForm = {
+    orden: posicion + 1,
+    nombre: nombreSugerido(niveles, posicion + 1),
+    colorHex: '',
+    porcentaje: anterior && ultimo ? porcentajeIntermedio(anterior.porcentaje, ultimo.porcentaje, respaldo) : String(respaldo),
+  };
+  return normalizarNiveles([...niveles.slice(0, posicion), nuevo, ...niveles.slice(posicion)]);
+}
+
+/** Saca el nivel `indice` (base 0), renumera y recalcula los colores. Con 3 niveles (el mínimo) no hace nada. */
+export function quitarNivel(niveles: NivelForm[], indice: number): NivelForm[] {
+  if (niveles.length <= MIN_NIVELES || indice < 0 || indice >= niveles.length) return niveles;
+  return normalizarNiveles(niveles.filter((_, i) => i !== indice));
+}
+
+/** Deja los porcentajes en partes iguales (0, 100/(n-1), …, 100 redondeados a enteros) sin tocar nombres ni colores. */
+export function repartirPorcentajes(niveles: NivelForm[]): NivelForm[] {
+  const porcentajes = porcentajesParejos(niveles.length);
+  return niveles.map((n, i) => ({ ...n, porcentaje: String(porcentajes[i]) }));
+}
+
+/** ¿La escala es exactamente la que se genera sola para su cantidad de niveles (nada editado a mano)? */
+export function esEscalaPorDefecto(niveles: NivelForm[]): boolean {
+  if (niveles.length < MIN_NIVELES || niveles.length > MAX_NIVELES) return false;
+  const base = nivelesParaCantidad(niveles.length);
+  return niveles.every((n, i) => n.nombre === base[i].nombre && n.porcentaje === base[i].porcentaje);
+}
+
+/**
+ * Cambia la cantidad de niveles (acotada a 3..7). Si la escala todavía es la de por defecto, pasa a la de por defecto de la
+ * cantidad nueva (nombres y porcentajes sugeridos); si el docente ya la tocó, se conserva lo que escribió: los niveles que
+ * faltan se agregan antes del último y los que sobran se sacan de los que están justo antes del último.
+ */
+export function cambiarCantidadNiveles(niveles: NivelForm[], cantidad: number): NivelForm[] {
+  const destino = Math.min(Math.max(Math.round(cantidad) || niveles.length, MIN_NIVELES), MAX_NIVELES);
+  if (destino === niveles.length) return niveles;
+  if (esEscalaPorDefecto(niveles)) return nivelesParaCantidad(destino);
+  let resultado = niveles;
+  while (resultado.length < destino) resultado = agregarNivel(resultado);
+  while (resultado.length > destino) resultado = quitarNivel(resultado, resultado.length - 2);
+  return resultado;
+}
+
+/**
+ * Reglas de la escala de niveles. Entre 3 y 7 niveles; cada uno con nombre (sin repetir, sin distinguir mayúsculas) y un
+ * porcentaje entre 0 y 100. Además: el primer nivel vale 0 % (lo que recibe una respuesta que no cumple), el último 100 % (si
+ * no, nadie podría sacar el puntaje completo y el total del examen no se alcanzaría nunca) y los porcentajes crecen de un
+ * nivel al siguiente (si no, la escala no tiene sentido para quien corrige).
  */
 export function validarNiveles(niveles: NivelForm[]): string[] {
   const e: string[] = [];
+  if (niveles.length < MIN_NIVELES || niveles.length > MAX_NIVELES) {
+    e.push(`La escala necesita entre ${MIN_NIVELES} y ${MAX_NIVELES} niveles (ahora tiene ${niveles.length}).`);
+    return e;
+  }
   niveles.forEach((n) => {
     if (!n.nombre.trim()) e.push(`El nivel ${n.orden} necesita un nombre.`);
     const p = Number(n.porcentaje);
@@ -362,7 +463,18 @@ export function validarNiveles(niveles: NivelForm[]): string[] {
       e.push(`El nivel ${n.orden} (${n.nombre || 'sin nombre'}) necesita un porcentaje entre 0 y 100.`);
     }
   });
-  if (e.length > 0 || niveles.length === 0) return e;
+  const porNombre = new Map<string, NivelForm[]>();
+  niveles.forEach((n) => {
+    const clave = n.nombre.trim().toLowerCase();
+    if (clave) porNombre.set(clave, [...(porNombre.get(clave) ?? []), n]);
+  });
+  porNombre.forEach((grupo) => {
+    if (grupo.length > 1) {
+      const lista = grupo.map((n) => n.orden).join(' y ');
+      e.push(`Los niveles ${lista} se llaman igual («${grupo[0].nombre.trim()}»): cada nivel necesita un nombre distinto.`);
+    }
+  });
+  if (e.length > 0) return e;
 
   const valores = niveles.map((n) => Number(n.porcentaje));
   const primero = niveles[0];
@@ -389,11 +501,82 @@ export function puntosDeEjemplo(porcentaje: string, puntosCriterio = 2): number 
   return redondearPuntos((puntosCriterio * p) / 100);
 }
 
-/** Resumen corto de la escala para mostrar con el bloque plegado: "Estándar · 0 / 25 / 50 / 75 / 100 %". */
+/** Nivel del medio de la escala, el que se usa para el ejemplo (con 5 niveles, el 3.º; con 4 o 6, el que queda justo pasando la mitad). */
+export function nivelDelMedio(niveles: NivelForm[]): NivelForm | undefined {
+  return niveles[Math.floor(niveles.length / 2)];
+}
+
+/** Resumen corto de la escala para mostrar con el bloque plegado: "5 niveles · 0 / 25 / 50 / 75 / 100 %". */
 export function resumenNiveles(niveles: NivelForm[]): string {
-  const id = presetDe(niveles);
-  const nombre = id === 'personalizado' ? 'Personalizada' : (PRESETS_NIVELES.find((p) => p.id === id)?.nombre ?? '');
-  return `${nombre} · ${niveles.map((n) => n.porcentaje.trim() || '?').join(' / ')} %`;
+  return `${niveles.length} niveles · ${niveles.map((n) => n.porcentaje.trim() || '?').join(' / ')} %`;
+}
+
+// ---------------------------------------------------------------- coherencia entre la escala y los niveles de cada criterio
+
+const claveDeNombre = (nombre: string) => nombre.trim().toLowerCase();
+
+/**
+ * Alinea los nombres de la escala vieja con los de la nueva: devuelve, para cada nivel nuevo, el índice del nivel viejo que le
+ * corresponde (o -1 si es uno nuevo). Con la misma cantidad se asume que cada posición sigue siendo la misma (cambió un
+ * nombre, no la estructura); con otra cantidad se busca la subsecuencia común más larga de nombres (agregar o quitar un nivel
+ * deja el resto alineado).
+ */
+function alinearNiveles(viejos: string[], nuevos: string[]): number[] {
+  if (viejos.length === nuevos.length) return nuevos.map((_, i) => i);
+  const a = viejos.map(claveDeNombre);
+  const b = nuevos.map(claveDeNombre);
+  // lcs[i][j]: largo de la subsecuencia común de a[i..] y b[j..].
+  const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const mapa = b.map(() => -1);
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      mapa[j] = i;
+      i += 1;
+      j += 1;
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) i += 1;
+    else j += 1;
+  }
+  return mapa;
+}
+
+/** ¿Las dos escalas tienen los mismos nombres en el mismo orden? (si solo cambió algún porcentaje, los criterios no se tocan). */
+function mismosNombres(a: NivelForm[], b: NivelForm[]): boolean {
+  return a.length === b.length && a.every((n, i) => n.nombre === b[i].nombre && n.orden === b[i].orden);
+}
+
+function reconciliarCriterio(c: CriterioForm, nuevos: NivelForm[], anteriores?: NivelForm[]): CriterioForm {
+  if (c.niveles.length === nuevos.length && c.niveles.every((n, i) => n.nombre === nuevos[i].nombre && n.orden === nuevos[i].orden)) return c;
+  // Si el criterio seguía la escala anterior, los nombres de esa escala son la referencia; si no (p. ej. vino de una matriz
+  // con otros nombres), la referencia son sus propios niveles.
+  const referencia = anteriores && anteriores.length === c.niveles.length ? anteriores.map((n) => n.nombre) : c.niveles.map((n) => n.nombre);
+  const mapa = alinearNiveles(referencia, nuevos.map((n) => n.nombre));
+  return {
+    ...c,
+    niveles: nuevos.map((n, j) => ({ orden: n.orden, nombre: n.nombre, descripcion: mapa[j] >= 0 ? (c.niveles[mapa[j]]?.descripcion ?? '') : '' })),
+  };
+}
+
+/**
+ * Cuando el docente cambia la escala de niveles (cantidad, nombre u orden), los `niveles` de cada criterio de cada pregunta
+ * tienen que acompañarla: se reconstruyen con la longitud y los nombres de la escala nueva CONSERVANDO las descripciones ya
+ * escritas donde se pueda (al agregar un nivel queda vacío el nuevo, al quitar uno se descarta el suyo, y si cambió solo un
+ * nombre se conserva la descripción). `detallar` no cambia. Las preguntas y criterios que no necesitan cambios se devuelven
+ * tal cual (misma referencia), y si `anteriores` tiene los mismos nombres que `nuevosNiveles` (solo cambió un porcentaje) no
+ * se toca nada.
+ */
+export function reconciliarNiveles(preguntas: PreguntaForm[], nuevosNiveles: NivelForm[], anteriores?: NivelForm[]): PreguntaForm[] {
+  if (anteriores && mismosNombres(anteriores, nuevosNiveles)) return preguntas;
+  return preguntas.map((p) => {
+    const criterios = p.criterios.map((c) => reconciliarCriterio(c, nuevosNiveles, anteriores));
+    return criterios.some((c, i) => c !== p.criterios[i]) ? { ...p, criterios } : p;
+  });
 }
 
 /** Errores de la distribución esperada (solo si se activó); dependen de la escala del examen. */
@@ -423,8 +606,6 @@ export function validarDatos(d: DatosForm): string[] {
 }
 
 // ---------------------------------------------------------------- mapeo inverso: examen existente -> formulario
-
-const CANT_NIVELES = 5;
 
 export interface ExamenFormDatos {
   cursoId: string;
@@ -508,16 +689,16 @@ function preguntaAFormulario(q: Pregunta, niveles: NivelForm[]): PreguntaForm {
     .sort((a, b) => a.orden - b.orden)
     .map((c): CriterioForm => {
       const nd = [...(Array.isArray(c.nivelesDescripcion) ? c.nivelesDescripcion : [])].sort((a, b) => a.orden - b.orden);
-      const detallado = nd.length === CANT_NIVELES && nd.every((n) => typeof n.descripcion === 'string' && n.descripcion.trim() !== '');
+      // Detallado = describió TODOS los niveles de la escala del examen (sean 3, 5 o 7); si no, el detalle queda vacío.
+      const detallado = nd.length === niveles.length && nd.every((n) => typeof n.descripcion === 'string' && n.descripcion.trim() !== '');
       return {
         matrizOrigenId: c.matrizOrigenId ?? undefined,
         nombre: c.nombre,
         descripcion: c.descripcion,
         peso: numAString(c.puntajeMaximo), // en el modelo viejo cada criterio valía puntos: pasan a ser el peso (mismo reparto)
         detallar: detallado,
-        niveles: detallado
-          ? nd.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: n.descripcion }))
-          : niveles.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: '' })),
+        // Siempre con la forma de la escala (misma cantidad, orden y nombres), así el payload cumple lo que pide el servidor.
+        niveles: niveles.map((n, i) => ({ orden: n.orden, nombre: n.nombre, descripcion: detallado ? nd[i].descripcion : '' })),
       };
     });
   // Puntos de la pregunta: los suyos o, si no los hubiera, la suma de sus criterios.
@@ -532,10 +713,11 @@ function preguntaAFormulario(q: Pregunta, niveles: NivelForm[]): PreguntaForm {
  * publicación, liberación de feedback ni respuestas. El título lleva el sufijo " (copia)".
  */
 export function examenAFormulario(examen: Examen): ExamenFormDatos {
+  // La escala se copia con su cantidad real de niveles (3 a 7); el orden se renumera 1..N y el color se calcula por posición.
   const nivelesOrigen = [...(examen.niveles ?? [])].sort((a, b) => a.orden - b.orden);
   const niveles: NivelForm[] =
     nivelesOrigen.length > 0
-      ? nivelesOrigen.map((n) => ({ orden: n.orden, nombre: n.nombre, colorHex: n.colorHex, porcentaje: numAString(n.porcentaje) }))
+      ? normalizarNiveles(nivelesOrigen.map((n) => ({ orden: n.orden, nombre: n.nombre, colorHex: n.colorHex, porcentaje: numAString(n.porcentaje) })))
       : nivelesPorDefecto();
   const preguntasOrigen = [...(examen.preguntas ?? [])].sort((a, b) => a.orden - b.orden);
   return {
