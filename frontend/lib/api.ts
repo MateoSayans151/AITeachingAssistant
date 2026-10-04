@@ -454,7 +454,8 @@ export const createMatrizRubrica = (data: {
     nombre: string;
     descripcion: string;
     puntajeMaximo: number;
-    nivelesDescripcion: NivelDescripcion[];
+    /** Opcional: sin niveles detallados la matriz se guarda con `[]`; si se mandan, tienen que ser los 5. */
+    nivelesDescripcion?: NivelDescripcion[];
   }[];
 }) => request<MatrizRubrica>('/matrices-rubrica', { method: 'POST', body: JSON.stringify(data) });
 
@@ -503,6 +504,20 @@ export const publicarExamenAComision = (
   examenId: string,
   data: { comisionId: string; fechaInicio?: string; fechaFin?: string },
 ) => request<ExamenComision>(`/examenes/${examenId}/comisiones`, { method: 'POST', body: JSON.stringify(data) });
+
+// ---- Sugerir criterios con IA (borrador para el docente; la IA propone, el docente edita y decide) ----
+export interface CriterioSugerido {
+  nombre: string;
+  descripcion: string;
+  /** Entero 1..100; los pesos de toda la sugerencia suman exactamente 100. */
+  peso: number;
+  /** Exactamente 5 descripciones: niveles[0] = nivel 1 (el más bajo) … niveles[4] = nivel 5 (el mejor). */
+  niveles: string[];
+}
+
+/** Solo para preguntas abiertas (desarrollo, resolución de problema, demostración, análisis de caso, respuesta corta). */
+export const sugerirCriterios = (data: { enunciado: string; tipo: TipoPregunta; cantidad?: number }) =>
+  request<{ criterios: CriterioSugerido[] }>('/examenes/sugerir-criterios', { method: 'POST', body: JSON.stringify(data) });
 
 // ---- Vara: regla explícita y auditable (nunca pisa la nota sugerida) ----
 export type ModoVara = 'porcentaje' | 'puntos' | 'aprobados_esperados';

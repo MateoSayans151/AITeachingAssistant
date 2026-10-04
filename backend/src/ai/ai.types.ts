@@ -121,3 +121,58 @@ export interface CorreccionExamenResultado {
   notaTotalSugerida: number;
   feedbackGeneralSugerido: string;
 }
+
+// ---- Sugerencia de criterios de rúbrica (borrador para el docente) ----
+
+// Tipos de pregunta que se corrigen con rúbrica (los demás se autocorrigen en código).
+export const TIPOS_PREGUNTA_ABIERTA = [
+  'desarrollo',
+  'resolucion_problema',
+  'demostracion',
+  'analisis_caso',
+  'respuesta_corta',
+] as const;
+export type TipoPreguntaAbierta = (typeof TIPOS_PREGUNTA_ABIERTA)[number];
+
+export const CANTIDAD_CRITERIOS_MIN = 2;
+export const CANTIDAD_CRITERIOS_MAX = 5;
+export const CANTIDAD_CRITERIOS_DEFECTO = 3;
+export const CANT_NIVELES_CRITERIO = 5;
+
+// Lo que le pedimos al modelo. Es a propósito laxo (sin min/max de longitudes ni sumas): la forma la
+// fuerza generateObject, pero los límites reales los impone `normalizarSugerencia` en código, así un
+// criterio mal formado se descarta sin tirar abajo todo el borrador.
+export const SugerenciaCriteriosSchema = z.object({
+  criterios: z
+    .array(
+      z.object({
+        nombre: z.string().describe('nombre corto del criterio, de 60 caracteres como máximo'),
+        descripcion: z.string().describe('qué evalúa el criterio, en una o dos oraciones'),
+        peso: z
+          .number()
+          .describe('importancia relativa del criterio: entero de 1 a 100; los pesos de todos los criterios suman 100'),
+        niveles: z
+          .array(z.string())
+          .describe(
+            'EXACTAMENTE 5 descripciones de desempeño para este criterio, ordenadas del nivel 1 (el más bajo) al nivel 5 (el mejor)',
+          ),
+      }),
+    )
+    .describe('Los criterios propuestos para la rúbrica de la pregunta'),
+});
+
+export type SugerenciaCriteriosIA = z.infer<typeof SugerenciaCriteriosSchema>;
+
+// Un criterio ya validado y normalizado en código (ver sugerencia-criterios.util.ts).
+export interface CriterioSugerido {
+  nombre: string;
+  descripcion: string;
+  /** Entero 1..100; los pesos de todos los criterios de la sugerencia suman exactamente 100. */
+  peso: number;
+  /** Exactamente 5 descripciones: niveles[0] = nivel 1 (el más bajo) … niveles[4] = nivel 5 (el mejor). */
+  niveles: string[];
+}
+
+export interface SugerenciaCriterios {
+  criterios: CriterioSugerido[];
+}

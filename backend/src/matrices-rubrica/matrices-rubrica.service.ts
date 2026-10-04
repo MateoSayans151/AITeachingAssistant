@@ -19,7 +19,8 @@ export class MatricesRubricaService {
             nombre: c.nombre,
             descripcion: c.descripcion,
             puntajeMaximo: c.puntajeMaximo,
-            nivelesDescripcion: c.nivelesDescripcion as unknown as Prisma.InputJsonValue,
+            // La columna es Json no nula: sin niveles detallados se guarda [] (los consumidores ya lo toleran).
+            nivelesDescripcion: (c.nivelesDescripcion ?? []) as unknown as Prisma.InputJsonValue,
             orden: i,
           })),
         },
