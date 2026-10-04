@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, ConflictException, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ExamenesService } from './examenes.service';
 import { CreateExamenDto } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
@@ -6,6 +6,7 @@ import { ReglaVaraDto } from './dto/vara.dto';
 import { VaraService } from './vara.service';
 import { DocenteId } from '../auth/docente-id.decorator';
 import { AccesoService } from '../acceso/acceso.service';
+import { MENSAJE_SIN_MAIL_PARA_REENVIAR, NotificacionesService } from '../mail/notificaciones.service';
 
 @Controller('examenes')
 export class ExamenesController {
@@ -13,6 +14,7 @@ export class ExamenesController {
     private readonly service: ExamenesService,
     private readonly vara: VaraService,
     private readonly acceso: AccesoService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   @Post()
@@ -72,5 +74,20 @@ export class ExamenesController {
   async liberarFeedback(@DocenteId() docenteId: string, @Param('id') id: string) {
     await this.acceso.examen(docenteId, id);
     return this.service.liberarFeedback(id);
+  }
+
+  // Cómo va el envío de las notas por mail: cuántos salieron, cuántos fallaron y por qué.
+  @Get(':id/notificaciones')
+  async resumenNotificaciones(@DocenteId() docenteId: string, @Param('id') id: string) {
+    await this.acceso.examen(docenteId, id);
+    return this.notificaciones.resumen(id);
+  }
+
+  // Reintenta en segundo plano el mail de los alumnos que todavía no lo recibieron (los que fallaron o quedaron sin enviar).
+  @Post(':id/notificaciones/reenviar')
+  async reenviarNotificaciones(@DocenteId() docenteId: string, @Param('id') id: string) {
+    await this.acceso.examen(docenteId, id);
+    if (!this.notificaciones.configurado) throw new ConflictException(MENSAJE_SIN_MAIL_PARA_REENVIAR);
+    return this.notificaciones.notificarExamen(id);
   }
 }

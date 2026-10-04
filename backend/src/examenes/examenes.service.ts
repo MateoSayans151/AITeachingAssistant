@@ -1,13 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
+import { MENSAJE_SIN_MAIL_PARA_PUBLICAR, NotificacionesService } from '../mail/notificaciones.service';
 
 @Injectable()
 export class ExamenesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ExamenesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificaciones: NotificacionesService,
+  ) {}
 
   create(dto: CreateExamenDto) {
     // Regla de negocio (no expresable con decorators porque depende del tipo de pregunta):
@@ -113,11 +119,17 @@ export class ExamenesService {
   }
 
   /**
-   * Publica las notas del examen. Idempotente: solo escribe si todavía no estaban liberadas (así, aunque el
-   * docente toque el botón dos veces o lleguen dos pedidos a la vez, se conserva la fecha original).
-   * Devuelve además cuántas respuestas siguen sin revisar, para que la pantalla pueda avisarlo.
+   * Publica las notas del examen y manda por mail su resultado a cada alumno que ya tiene el examen revisado (el resto lo
+   * recibe apenas el docente lo revise). Idempotente: solo escribe si todavía no estaban liberadas (así, aunque el
+   * docente toque el botón dos veces o lleguen dos pedidos a la vez, se conserva la fecha original); volver a publicar
+   * reintenta el envío a los que faltan.
+   * Sin el envío de mails configurado se rechaza ANTES de marcar nada: si no, el examen quedaría "publicado" sin que
+   * le llegue nada a nadie. El envío corre en segundo plano; la respuesta trae cuántos mails se lanzaron (`aEnviar`)
+   * y cuántas respuestas siguen sin revisar, para que la pantalla pueda avisarlo.
    */
   async liberarFeedback(examenId: string) {
+    if (!this.notificaciones.configurado) throw new ConflictException(MENSAJE_SIN_MAIL_PARA_PUBLICAR);
+
     await this.prisma.examen.updateMany({
       where: { id: examenId, feedbackLiberadoEn: null },
       data: { feedbackLiberadoEn: new Date() },
@@ -126,6 +138,11 @@ export class ExamenesService {
     if (!examen) throw new NotFoundException(`Examen ${examenId} no encontrado`);
 
     const pendientesDeRevision = await this.prisma.respuestaExamen.count({ where: { examenId, estadoRevision: 'pendiente' } });
-    return { ...examen, pendientesDeRevision };
+    // Las notas ya quedaron publicadas: si el arranque del envío falla no se deshace nada, se reintenta con "reenviar".
+    const { aEnviar } = await this.notificaciones.notificarExamen(examenId).catch((err) => {
+      this.logger.error(`No se pudo iniciar el envío de mails del examen ${examenId}`, err as Error);
+      return { aEnviar: 0 };
+    });
+    return { ...examen, pendientesDeRevision, aEnviar };
   }
 }
