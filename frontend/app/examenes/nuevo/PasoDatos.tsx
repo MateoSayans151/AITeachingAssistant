@@ -3,20 +3,42 @@
 // PasoDatos: el paso 1 del wizard. Curso, título, consigna, modalidad, escala, feedback, señales de integridad y el bloque
 // plegable "Opciones avanzadas" (escala de niveles de desempeño y distribución esperada de aprobados).
 //
+// La escala de niveles es SIEMPRE el editor personalizado: de 3 a 7 niveles (5 por defecto), con nombre y porcentaje editables,
+// "Quitar" por fila, "+ Agregar nivel", "Cantidad de niveles" y "Repartir porcentajes en partes iguales". El color de cada nivel
+// no se elige: se calcula por posición (rojo a verde, `colorDeNivel`). Las operaciones sobre la escala son funciones puras de
+// `@/lib/examen-form` (agregarNivel, quitarNivel, repartirPorcentajes, cambiarCantidadNiveles).
+//
 // Contrato:
 //   PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAvanzado })
 //     datos             DatosForm completo (el estado vive en el padre).
-//     onChange(patch)   se llama con los campos que cambiaron (Partial<DatosForm>); el padre los mezcla con `datos`.
+//     onChange(patch)   se llama con los campos que cambiaron (Partial<DatosForm>); el padre los mezcla con `datos`. Cuando
+//                       cambia la escala avisa con `onChange({ niveles })` (el arreglo completo, ya normalizado: orden 1..N y
+//                       colores por posición): el padre se apoya en eso para reconciliar los niveles de cada criterio
+//                       (`reconciliarNiveles`). Cada acción del docente hace UN solo `onChange`.
 //     cursos            cursos del docente, o null mientras se cargan (el select queda deshabilitado).
 //     avanzadoAbierto   si "Opciones avanzadas" está desplegado (estado del padre: un error de validación lo vuelve a abrir).
 //     onToggleAvanzado  el docente apretó el botón de "Opciones avanzadas".
-//   Opcionales (solo si el padre quiere conservar el estado al volver al paso; si no se pasan, se guarda acá adentro):
-//     personalizarNiveles / onPersonalizarNiveles(abierto)  editor de nombres y porcentajes de los niveles abierto o cerrado.
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { Curso, FeedbackModo, ModalidadExamen } from '@/lib/api';
-import { PRESETS_NIVELES, aplicarPreset, esNumero, formatearPuntos, presetDe, puntosDeEjemplo, resumenNiveles, validarDistribucion, validarNiveles } from '@/lib/examen-form';
-import type { DatosForm, NivelForm } from '@/lib/examen-form';
+import {
+  MAX_NIVELES,
+  MIN_NIVELES,
+  agregarNivel,
+  cambiarCantidadNiveles,
+  esNumero,
+  formatearPuntos,
+  nivelDelMedio,
+  puntosDeEjemplo,
+  quitarNivel,
+  repartirPorcentajes,
+  resumenNiveles,
+  validarDistribucion,
+  validarNiveles,
+} from '@/lib/examen-form';
+import type { DatosForm } from '@/lib/examen-form';
+import estilos from './PasoDatos.module.css';
 
 export interface PasoDatosProps {
   datos: DatosForm;
@@ -24,32 +46,63 @@ export interface PasoDatosProps {
   cursos: Curso[] | null;
   avanzadoAbierto: boolean;
   onToggleAvanzado: () => void;
-  personalizarNiveles?: boolean;
-  onPersonalizarNiveles?: (abierto: boolean) => void;
 }
 
-export function PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAvanzado, personalizarNiveles, onPersonalizarNiveles }: PasoDatosProps) {
-  const [personalizarLocal, setPersonalizarLocal] = useState(false); // muestra el editor de nombres y porcentajes
-  const nivelesPersonalizar = personalizarNiveles ?? personalizarLocal;
-  const setNivelesPersonalizar = (abierto: boolean) => (onPersonalizarNiveles ? onPersonalizarNiveles(abierto) : setPersonalizarLocal(abierto));
-
+export function PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAvanzado }: PasoDatosProps) {
   const { niveles } = datos;
+  const [anuncio, setAnuncio] = useState(''); // texto de la región aria-live (cambios de cantidad y reparto)
+  const enfocarNivel = useRef<number | null>(null); // fila cuyo nombre recibe el foco después de agregar o quitar
 
-  function actualizarNivel(i: number, campo: keyof NivelForm, valor: string) {
+  // Después de agregar o quitar un nivel el foco pasa al nombre de la fila que corresponde (si no, se perdería con la fila quitada).
+  useEffect(() => {
+    if (enfocarNivel.current === null) return;
+    const campo = document.getElementById(`nivel-nombre-${enfocarNivel.current}`) as HTMLInputElement | null;
+    enfocarNivel.current = null;
+    campo?.focus();
+    campo?.select();
+  }, [niveles]);
+
+  function actualizarNivel(i: number, campo: 'nombre' | 'porcentaje', valor: string) {
     onChange({ niveles: niveles.map((n, idx) => (idx === i ? { ...n, [campo]: valor } : n)) });
   }
 
-  /** Cambia el reparto de porcentajes a uno de los presets (conserva los nombres que el docente haya puesto). */
-  function elegirPreset(id: string) {
-    onChange({ niveles: aplicarPreset(niveles, id) });
+  function cambiarCantidad(cantidad: number) {
+    const nuevos = cambiarCantidadNiveles(niveles, cantidad);
+    if (nuevos === niveles) return;
+    setAnuncio(`La escala tiene ahora ${nuevos.length} niveles.`);
+    onChange({ niveles: nuevos });
   }
 
-  // Escala de niveles (opciones avanzadas): preset activo, ejemplo en vivo y errores de las reglas.
-  const presetActual = presetDe(niveles);
-  const nivelEjemplo = niveles[2];
+  function agregar() {
+    const nuevos = agregarNivel(niveles);
+    if (nuevos === niveles) return;
+    enfocarNivel.current = nuevos.length - 2; // el nivel nuevo entra justo antes del último
+    setAnuncio(`Se agregó un nivel: la escala tiene ahora ${nuevos.length} niveles.`);
+    onChange({ niveles: nuevos });
+  }
+
+  function quitar(i: number) {
+    const nuevos = quitarNivel(niveles, i);
+    if (nuevos === niveles) return;
+    enfocarNivel.current = Math.min(i, nuevos.length - 1);
+    setAnuncio(`Se quitó el nivel «${niveles[i].nombre.trim() || i + 1}»: la escala tiene ahora ${nuevos.length} niveles.`);
+    onChange({ niveles: nuevos });
+  }
+
+  function repartir() {
+    setAnuncio('Los porcentajes quedaron repartidos en partes iguales.');
+    onChange({ niveles: repartirPorcentajes(niveles) });
+  }
+
+  // Escala de niveles (opciones avanzadas): ejemplo en vivo (con el nivel del medio) y errores de las reglas.
+  const nivelEjemplo = nivelDelMedio(niveles);
   const puntosEjemplo = nivelEjemplo ? puntosDeEjemplo(nivelEjemplo.porcentaje) : null;
   const erroresNiveles = validarNiveles(niveles);
   const avanzadoConError = erroresNiveles.length > 0 || validarDistribucion(datos).length > 0;
+  const enMinimo = niveles.length <= MIN_NIVELES;
+  const enMaximo = niveles.length >= MAX_NIVELES;
+  // Cantidades del select: de 3 a 7 (y la real, si un examen duplicado trajera una fuera de ese rango, para no mostrar otra).
+  const cantidades = Array.from(new Set([...Array.from({ length: MAX_NIVELES - MIN_NIVELES + 1 }, (_, k) => MIN_NIVELES + k), niveles.length])).sort((a, b) => a - b);
 
   return (
     <div>
@@ -180,78 +233,104 @@ export function PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAv
               Nivel de exigencia de la corrección
             </div>
             <p className="muted" style={{ marginBottom: 12, maxWidth: '68ch' }}>
-              En cada criterio de una pregunta abierta, la IA elige uno de 5 niveles de desempeño, y cada nivel da un porcentaje del
-              puntaje de ese criterio. Los valores estándar sirven para la mayoría de los casos.
+              En cada criterio de una pregunta abierta, la IA elige uno de los niveles de desempeño que definas acá (de {MIN_NIVELES} a {MAX_NIVELES}); cada
+              nivel da un porcentaje del puntaje de ese criterio.
             </p>
 
-            <div className="segmented" role="group" aria-label="Reparto del puntaje entre los niveles">
-              {PRESETS_NIVELES.map((preset) => (
-                <button key={preset.id} type="button" aria-pressed={presetActual === preset.id} onClick={() => elegirPreset(preset.id)}>
-                  {preset.nombre}
-                </button>
-              ))}
-              <button type="button" aria-pressed={presetActual === 'personalizado'} onClick={() => setNivelesPersonalizar(true)}>
-                Personalizado
+            <div className={estilos.controles}>
+              <div className={`field ${estilos.cantidad}`} style={{ marginBottom: 0 }}>
+                <label htmlFor="niveles-cantidad">Cantidad de niveles</label>
+                <select id="niveles-cantidad" value={niveles.length} onChange={(e) => cambiarCantidad(Number(e.target.value))}>
+                  {cantidades.map((c) => (
+                    <option key={c} value={c}>
+                      {c} niveles
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={repartir}>
+                Repartir porcentajes en partes iguales
               </button>
             </div>
+            <p className={estilos.soloLectores} role="status" aria-live="polite">
+              {anuncio}
+            </p>
 
-            <div className="niveles-barra" role="list" aria-label="Escala de niveles de desempeño">
+            <div className={estilos.barra} style={{ '--cantidad': niveles.length } as CSSProperties} role="list" aria-label="Escala de niveles de desempeño">
               {niveles.map((n) => (
-                <div key={n.orden} className="nivel-seg" role="listitem" style={{ borderTopColor: n.colorHex }}>
-                  <span className="nivel-seg-nombre">{n.nombre.trim() || 'Sin nombre'}</span>
-                  <span className="nivel-seg-pct">{n.porcentaje.trim() === '' ? '—' : `${n.porcentaje} %`}</span>
+                <div key={n.orden} className={estilos.segmento} role="listitem" style={{ borderTopColor: n.colorHex }}>
+                  <span className={estilos.segmentoNombre}>{n.nombre.trim() || 'Sin nombre'}</span>
+                  <span className={estilos.segmentoPct}>{n.porcentaje.trim() === '' ? '—' : `${n.porcentaje} %`}</span>
                 </div>
               ))}
             </div>
             {nivelEjemplo && puntosEjemplo !== null && (
-              <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+              <p className={`muted ${estilos.ejemplo}`}>
                 Ejemplo: en un criterio de 2 pts, «{nivelEjemplo.nombre.trim() || `nivel ${nivelEjemplo.orden}`}» otorga {formatearPuntos(puntosEjemplo)}{' '}
-                {puntosEjemplo === 1 ? 'pt' : 'pts'}.
+                {puntosEjemplo === 1 ? 'pt' : 'pts'}. Los colores se asignan solos, de rojo a verde.
               </p>
             )}
 
-            <button type="button" className="btn btn-ghost" onClick={() => setNivelesPersonalizar(!nivelesPersonalizar)} aria-expanded={nivelesPersonalizar}>
-              {nivelesPersonalizar ? 'Ocultar nombres y porcentajes' : 'Personalizar nombres y porcentajes'}
-            </button>
-
-            {nivelesPersonalizar && (
-              <div className="niveles-editor">
-                <span className="col-titulo">Nivel</span>
-                <span className="col-titulo">Nombre</span>
-                <span className="col-titulo">% del puntaje</span>
-                {niveles.map((n, i) => {
-                  const pct = Number(n.porcentaje);
-                  const pctInvalido = n.porcentaje.trim() === '' || !Number.isFinite(pct) || pct < 0 || pct > 100;
-                  return (
-                    <Fragment key={n.orden}>
-                      <span className="nivel-orden">{n.orden}</span>
-                      <div className="field">
+            <div className={estilos.editor}>
+              <span className={estilos.colTitulo} title="Número de nivel">N.º</span>
+              <span className={estilos.colTitulo}>Nombre</span>
+              <span className={estilos.colTitulo}>% del puntaje</span>
+              <span aria-hidden="true" />
+              {niveles.map((n, i) => {
+                const pct = Number(n.porcentaje);
+                const pctInvalido = n.porcentaje.trim() === '' || !Number.isFinite(pct) || pct < 0 || pct > 100;
+                return (
+                  <Fragment key={n.orden}>
+                    <span className={estilos.orden}>{n.orden}</span>
+                    <div className="field">
+                      <input
+                        id={`nivel-nombre-${i}`}
+                        aria-label={`Nombre del nivel ${n.orden}`}
+                        aria-invalid={!n.nombre.trim() || undefined}
+                        value={n.nombre}
+                        onChange={(e) => actualizarNivel(i, 'nombre', e.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <div className={estilos.sufijo}>
                         <input
-                          aria-label={`Nombre del nivel ${n.orden}`}
-                          aria-invalid={!n.nombre.trim() || undefined}
-                          value={n.nombre}
-                          onChange={(e) => actualizarNivel(i, 'nombre', e.target.value)}
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="any"
+                          aria-label={`Porcentaje del puntaje del nivel ${n.orden}`}
+                          aria-invalid={pctInvalido || undefined}
+                          value={n.porcentaje}
+                          onChange={(e) => actualizarNivel(i, 'porcentaje', e.target.value)}
                         />
+                        <span aria-hidden="true">%</span>
                       </div>
-                      <div className="field">
-                        <div className="input-sufijo">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            aria-label={`Porcentaje del puntaje del nivel ${n.orden}`}
-                            aria-invalid={pctInvalido || undefined}
-                            value={n.porcentaje}
-                            onChange={(e) => actualizarNivel(i, 'porcentaje', e.target.value)}
-                          />
-                          <span aria-hidden="true">%</span>
-                        </div>
-                      </div>
-                    </Fragment>
-                  );
-                })}
-              </div>
-            )}
+                    </div>
+                    <button
+                      type="button"
+                      className={`btn btn-secondary ${estilos.quitar}`}
+                      onClick={() => quitar(i)}
+                      disabled={enMinimo}
+                      aria-label={`Quitar el nivel ${n.orden}${n.nombre.trim() ? ` (${n.nombre.trim()})` : ''}`}
+                      title={enMinimo ? `La escala necesita al menos ${MIN_NIVELES} niveles` : undefined}
+                    >
+                      <span className={estilos.quitarTexto}>Quitar</span>
+                      <span className={estilos.quitarIcono} aria-hidden="true">
+                        ✕
+                      </span>
+                    </button>
+                  </Fragment>
+                );
+              })}
+            </div>
+            <div className={estilos.acciones}>
+              <button type="button" className="btn btn-secondary" onClick={agregar} disabled={enMaximo}>
+                + Agregar nivel
+              </button>
+              <span className="muted" style={{ fontSize: 13 }}>
+                {enMaximo ? `Llegaste al máximo de ${MAX_NIVELES} niveles.` : `Entre ${MIN_NIVELES} y ${MAX_NIVELES} niveles; el último es el mejor.`}
+              </span>
+            </div>
             {erroresNiveles.length > 0 && (
               <div role="alert" style={{ marginTop: 12 }}>
                 {erroresNiveles.map((m) => (
