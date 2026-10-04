@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { fechaLocalAIso } from '@/lib/fechas';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -15,12 +15,27 @@ import {
   createComision,
   createCurso,
   createExamen,
+  getExamen,
   listComisionesPorCurso,
   listCursos,
   listMatricesRubrica,
   publicarExamenAComision,
 } from '@/lib/api';
 import { useSesion } from '@/lib/auth';
+import {
+  NivelForm,
+  PreguntaForm,
+  construirOpciones,
+  criterioVacio,
+  examenAFormulario,
+  formatearPuntos,
+  nivelesPorDefecto,
+  preguntaVacia,
+  puntajeDeCriterios,
+  redondearPuntos,
+  totalCoincideConEscala,
+  totalDelExamen,
+} from '@/lib/examen-form';
 
 const TIPOS_LABEL: Record<TipoPregunta, string> = {
   desarrollo: 'Desarrollo',
@@ -35,91 +50,11 @@ const TIPOS_LABEL: Record<TipoPregunta, string> = {
   verdadero_falso: 'Verdadero / Falso',
 };
 
-interface NivelForm {
-  orden: number;
-  nombre: string;
-  colorHex: string;
-  porcentaje: string;
-}
-
-function nivelesPorDefecto(): NivelForm[] {
-  return [
-    { orden: 1, nombre: 'Insuficiente', colorHex: '#c0392b', porcentaje: '0' },
-    { orden: 2, nombre: 'Básico', colorHex: '#c8511b', porcentaje: '25' },
-    { orden: 3, nombre: 'Intermedio', colorHex: '#c9a227', porcentaje: '50' },
-    { orden: 4, nombre: 'Avanzado', colorHex: '#3b4fb0', porcentaje: '75' },
-    { orden: 5, nombre: 'Excelente', colorHex: '#1a7f4e', porcentaje: '100' },
-  ];
-}
-
-// Un criterio es una fila como en los trabajos prácticos: qué se evalúa, qué se espera y cuántos puntos vale.
-// Describir cada uno de los 5 niveles es opcional (se abre a pedido).
-interface CriterioForm {
-  matrizOrigenId?: string;
-  nombre: string;
-  descripcion: string;
-  puntajeMaximo: string;
-  detallar: boolean;
-  niveles: { orden: number; nombre: string; descripcion: string }[];
-}
-
-function criterioVacio(niveles: NivelForm[]): CriterioForm {
-  return {
-    nombre: '',
-    descripcion: '',
-    puntajeMaximo: '',
-    detallar: false,
-    niveles: niveles.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: '' })),
-  };
-}
-
-interface OpcionChoiceForm {
-  id: string;
-  texto: string;
-  correcta: boolean;
-}
-
-interface PreguntaForm {
-  tipo: TipoPregunta;
-  enunciado: string;
-  puntajeMaximo: string;
-  criterios: CriterioForm[];
-  opcionesChoice: OpcionChoiceForm[];
-  vfCorrecta: 'true' | 'false';
-  numRespuestaCorrecta: string;
-  numTolerancia: string;
-  paresIzquierda: string[];
-  paresDerecha: string[];
-}
-
-function preguntaVacia(niveles: NivelForm[]): PreguntaForm {
-  return {
-    tipo: 'desarrollo',
-    enunciado: '',
-    puntajeMaximo: '',
-    criterios: [criterioVacio(niveles)],
-    opcionesChoice: [
-      { id: 'a', texto: '', correcta: true },
-      { id: 'b', texto: '', correcta: false },
-    ],
-    vfCorrecta: 'true',
-    numRespuestaCorrecta: '',
-    numTolerancia: '0',
-    paresIzquierda: ['', ''],
-    paresDerecha: ['', ''],
-  };
-}
-
 const PASOS = ['Datos', 'Escala y niveles', 'Distribución esperada', 'Preguntas', 'Publicar'];
 const PASO_PREGUNTAS = 3;
 const PASO_PUBLICAR = 4;
 
 const esNumero = (v: string) => v.trim() !== '' && Number.isFinite(Number(v));
-
-/** Suma de puntos de los criterios completos de una pregunta abierta. */
-function puntajeDeCriterios(p: PreguntaForm): number {
-  return p.criterios.filter((c) => c.nombre.trim() && Number(c.puntajeMaximo) > 0).reduce((s, c) => s + Number(c.puntajeMaximo), 0);
-}
 
 /** "Nombre, email" por línea (o solo el email); acepta lo pegado desde una planilla (tabs, comas o punto y coma). */
 function parsearAlumnos(texto: string): { alumnos: { nombre: string; email: string }[]; errores: string[] } {
@@ -171,6 +106,7 @@ function NuevoExamenForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cursoIdParam = searchParams.get('cursoId') ?? '';
+  const desdeParam = searchParams.get('desde') ?? ''; // id de un examen para duplicar
   const { docente, cargando } = useSesion();
 
   const [paso, setPaso] = useState(0);
@@ -205,6 +141,12 @@ function NuevoExamenForm() {
   const [preguntas, setPreguntas] = useState<PreguntaForm[]>([preguntaVacia(nivelesPorDefecto())]);
   const [matrices, setMatrices] = useState<MatrizRubrica[]>([]);
 
+  // Duplicar desde un examen existente (?desde=<examenId>): se carga una sola vez y el formulario se precarga con sus datos.
+  const [cargandoDesde, setCargandoDesde] = useState(Boolean(desdeParam));
+  const [duplicandoTitulo, setDuplicandoTitulo] = useState<string | null>(null);
+  const [errorDesde, setErrorDesde] = useState<string | null>(null);
+  const desdeIniciado = useRef(false);
+
   // Paso 5: publicar (el examen ya está creado)
   const [examenCreadoId, setExamenCreadoId] = useState<string | null>(null);
   const [cursoDelExamenId, setCursoDelExamenId] = useState('');
@@ -237,6 +179,47 @@ function NuevoExamenForm() {
   }, [docente]);
 
   useEffect(() => {
+    // Una sola vez (aunque el efecto se vuelva a disparar), y el formulario no se muestra hasta que termina:
+    // así la precarga nunca pisa lo que el docente ya empezó a tipear.
+    if (!docente || !desdeParam || desdeIniciado.current) return;
+    desdeIniciado.current = true;
+    getExamen(desdeParam)
+      .then((examen) => {
+        const d = examenAFormulario(examen);
+        setCursoElegido(d.cursoId);
+        setTitulo(d.titulo);
+        setConsigna(d.consigna);
+        setModalidad(d.modalidad);
+        if (d.duracionMinutos !== null) setDuracionMinutos(d.duracionMinutos);
+        setEscalaMin(d.escalaMin);
+        setEscalaMax(d.escalaMax);
+        setFeedbackModo(d.feedbackModo);
+        setAntiCheatOn(d.antiCheat !== null);
+        if (d.antiCheat) {
+          setAcPantalla(d.antiCheat.pantallaCompleta);
+          setAcPestana(d.antiCheat.cambioPestana);
+          setAcPegado(d.antiCheat.pegado);
+        }
+        setDistOn(d.distribucion !== null);
+        if (d.distribucion) {
+          setUmbralAprobacion(d.distribucion.umbralAprobacion);
+          setAprobadosPct(d.distribucion.aprobadosPct);
+        }
+        setNiveles(d.niveles);
+        setPreguntas(d.preguntas);
+        setDuplicandoTitulo(examen.titulo);
+      })
+      .catch((err) => {
+        setErrorDesde(
+          err instanceof ApiError && err.status === 404
+            ? 'No encontramos el examen que querías duplicar (puede que ya no exista). Podés armar uno desde cero.'
+            : 'No pudimos cargar el examen que querías duplicar. Podés armar uno desde cero o volver a intentarlo más tarde.',
+        );
+      })
+      .finally(() => setCargandoDesde(false));
+  }, [docente, desdeParam]);
+
+  useEffect(() => {
     if (paso !== PASO_PUBLICAR || !cursoDelExamenId) return;
     listComisionesPorCurso(cursoDelExamenId)
       .then((cs) => {
@@ -257,6 +240,13 @@ function NuevoExamenForm() {
     return (
       <div className="page">
         <p className="muted">Identificate primero desde el inicio.</p>
+      </div>
+    );
+  }
+  if (cargandoDesde) {
+    return (
+      <div className="page">
+        <p className="muted">Cargando el examen que querés duplicar…</p>
       </div>
     );
   }
@@ -388,26 +378,6 @@ function NuevoExamenForm() {
     );
   }
 
-  function construirOpciones(p: PreguntaForm): unknown {
-    switch (p.tipo) {
-      case 'opcion_multiple':
-      case 'casillas':
-        return p.opcionesChoice.filter((o) => o.texto.trim()).map((o) => ({ id: o.id, texto: o.texto, correcta: o.correcta }));
-      case 'verdadero_falso':
-        return { correcta: p.vfCorrecta === 'true' };
-      case 'numerica':
-        return { respuestaCorrecta: Number(p.numRespuestaCorrecta), tolerancia: Number(p.numTolerancia || 0) };
-      case 'relacionar_pares':
-        return {
-          izquierda: p.paresIzquierda,
-          derecha: p.paresDerecha,
-          paresCorrectos: p.paresIzquierda.map((izq, i) => [izq, p.paresDerecha[i]]),
-        };
-      default:
-        return undefined;
-    }
-  }
-
   // ---------------------------------------------------------------- validación (paso a paso, con mensajes concretos)
   function validarPaso(p: number): string[] {
     const e: string[] = [];
@@ -468,6 +438,15 @@ function NuevoExamenForm() {
           });
         }
       });
+      // La nota es la suma de puntos y la escala no se normaliza: el total de las preguntas tiene que ser la escala máxima.
+      const total = totalDelExamen(preguntas);
+      if (esNumero(escalaMax) && !totalCoincideConEscala(total, Number(escalaMax))) {
+        const puedeCambiarEscala = !esNumero(escalaMin) || total > Number(escalaMin);
+        e.push(
+          `El total de puntos de las preguntas (${formatearPuntos(total)}) tiene que ser igual a la escala máxima (${formatearPuntos(Number(escalaMax))}). ` +
+            `Ajustá los puntajes de las preguntas${puedeCambiarEscala ? ` o cambiá la escala máxima a ${formatearPuntos(total)}` : ''}.`,
+        );
+      }
     }
     return e;
   }
@@ -613,6 +592,17 @@ function NuevoExamenForm() {
         <h1>{titulo || 'Configurar examen'}</h1>
       </header>
 
+      {duplicandoTitulo !== null && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          Estás duplicando «{duplicandoTitulo}». Revisá y ajustá lo que quieras: se crea como un examen nuevo y el original no cambia.
+        </div>
+      )}
+      {errorDesde && (
+        <div className="error-box" role="alert">
+          {errorDesde}
+        </div>
+      )}
+
       <div className="stepper">
         {PASOS.map((label, i) => {
           const volverPosible = !examenCreadoId && i < paso;
@@ -700,6 +690,15 @@ function NuevoExamenForm() {
               <input id="escalaMax" type="number" value={escalaMax} onChange={(e) => setEscalaMax(e.target.value)} />
             </div>
           </div>
+          <p className="muted" style={{ fontSize: 13, margin: '-6px 0 16px' }}>
+            El total de puntos de las preguntas tiene que sumar la escala máxima.
+            {esNumero(escalaMin) && Number(escalaMin) !== 0 && (
+              <>
+                <br />
+                La nota se calcula como la suma de puntos (de 0 al total): la escala mínima solo se usa para acotar el ajuste de vara.
+              </>
+            )}
+          </p>
           <div className="field">
             <label htmlFor="feedbackModo">Liberación de feedback</label>
             <select id="feedbackModo" value={feedbackModo} onChange={(e) => setFeedbackModo(e.target.value as FeedbackModo)}>
@@ -795,6 +794,57 @@ function NuevoExamenForm() {
 
       {paso === PASO_PREGUNTAS && (
         <div>
+          {(() => {
+            // Total a la vista mientras se arman las preguntas: tiene que ser igual a la escala máxima.
+            const total = totalDelExamen(preguntas);
+            const max = esNumero(escalaMax) ? Number(escalaMax) : null;
+            const coincide = max !== null && totalCoincideConEscala(total, max);
+            const diferencia = max !== null ? redondearPuntos(max - total) : 0; // > 0: faltan puntos; < 0: sobran
+            const puedeUsarComoEscala = max !== null && !coincide && (!esNumero(escalaMin) || total > Number(escalaMin));
+            return (
+              <div
+                className="card"
+                role="status"
+                style={{
+                  position: 'sticky',
+                  top: 60, // debajo de la barra superior (que también es sticky)
+                  zIndex: 25,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  marginBottom: 16,
+                  borderColor: coincide ? 'var(--color-success)' : 'var(--color-accent)',
+                  color: coincide ? 'var(--color-success)' : 'var(--color-accent-800)',
+                }}
+              >
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+                  <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    Total del examen: {formatearPuntos(total)}
+                    {max !== null && ` de ${formatearPuntos(max)}`} pts
+                  </strong>
+                  {max !== null && (
+                    <span className={`badge ${coincide ? 'badge-revisado' : 'badge-pendiente'}`}>
+                      {coincide ? 'OK' : diferencia > 0 ? `Faltan ${formatearPuntos(diferencia)} pts` : `Sobran ${formatearPuntos(-diferencia)} pts`}
+                    </span>
+                  )}
+                </div>
+                {puedeUsarComoEscala && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setEscalaMax(String(redondearPuntos(total)));
+                      setErrores([]);
+                    }}
+                  >
+                    Usar {formatearPuntos(total)} como escala máxima
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           {preguntas.map((p, pi) => {
             const cerrada = TIPOS_AUTOCORREGIBLES.includes(p.tipo);
             return (
