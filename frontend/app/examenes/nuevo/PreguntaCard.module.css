@@ -1,0 +1,298 @@
+/*
+ * Estilos de la lista de preguntas del wizard (PreguntaCard y PasoPreguntas): fila de la tarjeta plegada, cabecera de la
+ * desplegada, botones de acción, menú "+ Agregar pregunta" y el aviso del recuadro del total. Solo usa los tokens del
+ * design system (var(--color-…), var(--space-…)); las clases globales (.card, .btn, .tag…) siguen viniendo de globals.css.
+ */
+
+/* ---- tarjeta ---- */
+.tarjeta {
+  margin-bottom: 14px;
+  /* Al llevar el foco o el scroll a una tarjeta, que no quede tapada por la barra superior y el recuadro del total (ambos pegados). */
+  scroll-margin-top: 150px;
+}
+
+.tarjeta:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ---- tarjeta plegada: UNA fila ---- */
+.tarjeta.plegada {
+  padding: 10px 14px;
+}
+
+.fila {
+  display: grid;
+  align-items: center;
+  gap: 4px 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'meta puntos'
+    'resumen resumen'
+    'acciones acciones';
+}
+
+.meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.numero {
+  font-variant-numeric: tabular-nums;
+}
+
+.tipo {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.falta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-error);
+  white-space: nowrap;
+}
+
+.resumen {
+  grid-area: resumen;
+  min-width: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sinEnunciado {
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
+
+.puntos {
+  grid-area: puntos;
+  justify-self: end;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sinPuntos {
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.acciones {
+  grid-area: acciones;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+@media (min-width: 720px) {
+  .fila {
+    gap: 12px;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: 'meta resumen puntos acciones';
+  }
+}
+
+/* ---- tarjeta desplegada: cabecera ---- */
+.cabecera {
+  display: grid;
+  align-items: center;
+  gap: 10px 12px;
+  margin-bottom: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'numero tipo'
+    'acciones acciones';
+}
+
+.cabecera .numero {
+  grid-area: numero;
+}
+
+.tipoSelect {
+  grid-area: tipo;
+  min-width: 0;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 15px;
+  color: var(--color-text);
+  background: #fff;
+}
+
+.cabecera .acciones {
+  justify-content: flex-start;
+}
+
+@media (min-width: 720px) {
+  .cabecera {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'numero tipo acciones';
+  }
+
+  .cabecera .acciones {
+    justify-content: flex-end;
+  }
+}
+
+/* ---- botones de acción (Subir, Bajar, Duplicar, Editar/Plegar) ---- */
+.btnAccion.btnAccion {
+  min-height: 34px;
+  padding: 5px 11px;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.btnAccion svg {
+  flex-shrink: 0;
+}
+
+/* En la fila plegada los botones de mover y duplicar son solo ícono (el nombre completo va en aria-label y en el tooltip). */
+.soloIconos .btnTexto {
+  display: none;
+}
+
+.soloIconos .btnAccion.btnAccion[data-accion='subir'],
+.soloIconos .btnAccion.btnAccion[data-accion='bajar'],
+.soloIconos .btnAccion.btnAccion[data-accion='duplicar'] {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* ---- menú "+ Agregar pregunta" ---- */
+.menuRaiz {
+  position: relative;
+  display: inline-block;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 28;
+  width: min(400px, calc(100vw - 2 * var(--space-8)));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.menuArriba {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.menuGrupo {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
+.menuItem {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--color-accent-100);
+  outline: none;
+}
+
+.menuItem:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-accent-active);
+}
+
+.menuItemTitulo {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.menuItemDesc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ---- recuadro del total: botones y aviso ---- */
+.accionesTotal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.btnTotal.btnTotal {
+  min-height: 34px;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.aviso {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.aviso:empty {
+  margin: 0;
+}
+
+/* Texto solo para lectores de pantalla (avisos de "pregunta movida", "pregunta agregada"…). */
+.soloLectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 720px) {
+  /* En el celular el recuadro del total es más alto (los botones bajan de línea): se deja más margen al llevar el foco. */
+  .tarjeta {
+    scroll-margin-top: 210px;
+  }
+
+  .menuRaiz {
+    display: block;
+  }
+
+  .menu {
+    right: 0;
+    width: auto;
+  }
+}
