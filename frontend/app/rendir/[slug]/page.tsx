@@ -6,6 +6,8 @@
 //      arranca su reloj y le entrega las preguntas.
 //   3. Rinde con autoguardado (ver ExamenEnCurso). Si recarga la página retoma donde estaba
 //      y con el mismo vencimiento: cerrar la pestaña no da más tiempo.
+//   4. Entrega y se le avisa que la nota le llega por mail cuando el docente la revisa y la publica
+//      (acá no hay pantalla con la nota).
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -14,6 +16,8 @@ import { entrarPantallaCompleta, pantallaCompletaSoportada, salirDePantallaCompl
 import ExamenEnCurso from './ExamenEnCurso';
 
 const claveToken = (slug: string) => `ata_intento_${slug}`;
+// El email con el que ingresó, para decirle a dónde le llega la nota aunque recargue la página a mitad del examen.
+const claveEmail = (slug: string) => `ata_email_${slug}`;
 
 type Sesion = { token: string; estado: EstadoIntentoRendir };
 
@@ -61,11 +65,14 @@ export default function RendirExamenPage() {
         // ¿Había un intento en curso en esta pestaña? Se retoma sin volver a identificarse.
         const token = window.sessionStorage.getItem(claveToken(slug));
         if (token) {
+          const emailGuardado = window.sessionStorage.getItem(claveEmail(slug));
+          if (vivo && emailGuardado) setAlumnoEmail(emailGuardado);
           try {
             const estado = await getIntento(slug, token);
             if (vivo) setSesion({ token, estado });
           } catch (e) {
             window.sessionStorage.removeItem(claveToken(slug));
+            window.sessionStorage.removeItem(claveEmail(slug));
             if (vivo && e instanceof ApiError && e.status === 409) setTerminado('vencido');
           }
         }
@@ -97,6 +104,7 @@ export default function RendirExamenPage() {
         consentimiento: info.examen.antiCheat ? consentimiento : undefined,
       });
       window.sessionStorage.setItem(claveToken(slug), r.token);
+      window.sessionStorage.setItem(claveEmail(slug), alumnoEmail.trim());
       const { token, ...estado } = r;
       setSesion({ token, estado });
     } catch (err) {
@@ -109,6 +117,7 @@ export default function RendirExamenPage() {
 
   function alTerminar(como: 'entregado' | 'vencido') {
     window.sessionStorage.removeItem(claveToken(slug));
+    window.sessionStorage.removeItem(claveEmail(slug));
     salirDePantallaCompleta();
     setSesion(null);
     setTerminado(como);
@@ -139,8 +148,10 @@ export default function RendirExamenPage() {
           </div>
           <p className="muted">
             {terminado === 'entregado'
-              ? 'Tu respuesta se envió correctamente. Tu docente te va a avisar cuando esté el feedback.'
-              : 'Se entregó automáticamente lo que alcanzaste a completar. Tu docente te va a avisar cuando esté el feedback.'}
+              ? 'Tu respuesta se envió correctamente.'
+              : 'Se entregó automáticamente lo que alcanzaste a completar.'}{' '}
+            Tu docente va a revisar tu examen. Cuando tu nota esté lista te llega por mail, con el feedback, a{' '}
+            {alumnoEmail.trim() ? <strong>{alumnoEmail.trim()}</strong> : 'la dirección con la que ingresaste'}.
           </p>
         </div>
       </div>

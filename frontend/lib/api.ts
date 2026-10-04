@@ -564,11 +564,14 @@ export const revertirAjusteVara = (examenId: string, ajusteId: string) =>
 export const explicarVaraRespuesta = (examenId: string, respuestaId: string) =>
   request<ExplicacionVara>(`/examenes/${examenId}/respuestas/${respuestaId}/vara`);
 
+/** Publicar las notas es idempotente: si ya estaban publicadas se conserva la fecha original. */
+export type ExamenConPendientes = Examen & { pendientesDeRevision: number };
+
 export const liberarFeedback = (examenId: string) =>
-  request<Examen>(`/examenes/${examenId}/liberar-feedback`, { method: 'POST' });
+  request<ExamenConPendientes>(`/examenes/${examenId}/liberar-feedback`, { method: 'POST' });
 
 // ---- Rendir examen (público: el alumno no tiene sesión de docente) ----
-// Flujo: info del link -> iniciar (email + código, y aceptar el aviso si hay anti-cheat) ->
+// Flujo: info del link -> iniciar (con su email, y aceptar el aviso si hay anti-cheat) ->
 // autoguardado / eventos / entrega con el token del intento que devuelve `iniciar`.
 
 export interface InfoRendir {
