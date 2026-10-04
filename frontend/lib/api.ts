@@ -696,3 +696,10 @@ export const recorregirRespuestaExamen = (examenId: string, id: string) =>
 
 export const bulkAceptarRespuestas = (examenId: string) =>
   request<RespuestaExamen[]>(`/examenes/${examenId}/respuestas/bulk-aceptar`, { method: 'POST' });
+
+/**
+ * Reintenta la corrección con IA de las respuestas que quedaron sin corregir (`estado: 'pendiente_correccion'`).
+ * Responde enseguida con cuántas puso en cola; el backend las corrige en segundo plano, así que hay que refrescar la lista.
+ */
+export const corregirPendientes = (examenId: string) =>
+  request<{ pendientes: number }>(`/examenes/${examenId}/respuestas/corregir-pendientes`, { method: 'POST' });
