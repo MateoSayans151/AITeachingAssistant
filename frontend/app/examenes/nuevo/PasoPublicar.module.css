@@ -1,0 +1,322 @@
+/* Estilos propios del paso "Publicar" (los globales de globals.css alcanzan para el resto: .card, .btn, .field, .table, .muted…). */
+
+/* Texto solo para lectores de pantalla (el <caption> de la tabla, las leyendas de los grupos). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- aviso de borrador (arriba del paso) ---- */
+.aviso {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: 12px var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.aviso p {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* ---- cuadros de aviso dentro de la tarjeta (no bloqueantes) ---- */
+.nota {
+  margin: var(--space-2) 0 0;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.nota strong {
+  font-weight: 600;
+}
+
+.nota ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.nota li {
+  overflow-wrap: anywhere;
+}
+
+.errorCampo {
+  margin: -8px 0 var(--space-3);
+  font-size: 13px;
+  color: var(--color-error);
+}
+
+/* ---- alumnos reconocidos ---- */
+.reconocidos {
+  margin-top: var(--space-3);
+}
+
+.reconocidosTitulo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.tablaScroll {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.tablaScroll:focus-visible {
+  outline: 2px solid var(--color-accent-active);
+  outline-offset: 2px;
+}
+
+.tablaScroll .tabla th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+}
+
+.tablaScroll .tabla td {
+  padding: 8px 10px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.tablaScroll .tabla th:last-child,
+.tablaScroll .tabla td:last-child {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* En pantallas angostas cada alumno pasa a ser una tarjeta (nombre y botón arriba, email y sugerencia abajo): en tres columnas el
+   email no entra. Las filas conservan su rol de tabla (ver los role en el JSX). */
+@media (max-width: 560px) {
+  .tablaScroll .tabla,
+  .tablaScroll .tabla tbody,
+  .tablaScroll .tabla tr,
+  .tablaScroll .tabla td {
+    display: block;
+  }
+
+  .tablaScroll .tabla thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .tablaScroll .tabla tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px var(--space-2);
+    padding: 10px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .tablaScroll .tabla tr:last-child {
+    border-bottom: none;
+  }
+
+  .tablaScroll .tabla td {
+    padding: 0;
+    border: none;
+  }
+
+  .tablaScroll .tabla td:nth-child(1) {
+    grid-column: 1;
+    font-weight: 600;
+  }
+
+  .tablaScroll .tabla td:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .tablaScroll .tabla td:nth-child(3),
+  .tablaScroll .tabla td:last-child {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    width: auto;
+  }
+}
+
+.btnChico {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.quitar:hover {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.sugerencia {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 13px;
+}
+
+.sugerencia span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.quitados {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ---- resumen de lo que se publica ---- */
+.resumen {
+  margin: 0 0 var(--space-3);
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-100);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.resumen b {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-700);
+}
+
+.fechas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+}
+
+.fechas > div {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.modos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  border: 0;
+}
+
+.modos label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+/* ---- pantalla final ---- */
+.seccion {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.seccion h3 {
+  margin-bottom: var(--space-1);
+  font-size: 16px;
+}
+
+.linkBox {
+  margin: 0 0 var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-success) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-success-soft);
+  font-size: 15px;
+  font-weight: 500;
+  word-break: break-all;
+  user-select: all;
+}
+
+.fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.btnGrande {
+  min-height: 42px;
+  padding-inline: var(--space-6);
+  font-size: 15px;
+}
+
+.estadoEnvio {
+  margin-top: var(--space-3);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.estadoEnvio p + p {
+  margin-top: 4px;
+}
+
+.errorEnvio {
+  margin-top: var(--space-3);
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-error-soft);
+  color: var(--color-error);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.copiado {
+  font-size: 13px;
+  color: var(--color-success);
+}
