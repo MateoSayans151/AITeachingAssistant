@@ -5,9 +5,10 @@ import { RespuestasExamenService } from './respuestas-examen.service';
 import { IntentosService } from './intentos.service';
 import { RagModule } from '../rag/rag.module';
 import { ExamenesModule } from '../examenes/examenes.module';
+import { NotificacionesModule } from '../mail/notificaciones.module';
 
 @Module({
-  imports: [RagModule, ExamenesModule],
+  imports: [RagModule, ExamenesModule, NotificacionesModule],
   controllers: [RespuestasExamenController, RendirController],
   providers: [RespuestasExamenService, IntentosService],
 })

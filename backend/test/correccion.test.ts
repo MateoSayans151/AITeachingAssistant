@@ -289,7 +289,7 @@ function servicio(prisma: any, ai: any, rag: any = { buscarMaterial: async () =>
   if (env === undefined) delete process.env.IA_MAX_CONCURRENTES;
   else process.env.IA_MAX_CONCURRENTES = env;
   try {
-    const svc = new RespuestasExamenService(prisma, ai, rag);
+    const svc = new RespuestasExamenService(prisma, ai, rag, { configurado: false } as any);
     const logs = { warn: [] as string[], error: [] as string[] };
     (svc as any).logger = {
       warn: (m: unknown) => logs.warn.push(String(m)),

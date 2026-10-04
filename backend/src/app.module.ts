@@ -17,6 +17,7 @@ import { MaterialesCursoModule } from './materiales-curso/materiales-curso.modul
 import { MatricesRubricaModule } from './matrices-rubrica/matrices-rubrica.module';
 import { ExamenesModule } from './examenes/examenes.module';
 import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.module';
+import { NotificacionesModule } from './mail/notificaciones.module';
 
 @Module({
   imports: [
@@ -38,6 +39,8 @@ import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.mo
     MatricesRubricaModule,
     ExamenesModule,
     RespuestasExamenModule,
+    // Mails con la nota (Resend): lo usan Examenes (publicar notas) y RespuestasExamen (revisar).
+    NotificacionesModule,
   ],
   providers: [
     // Orden importa: primero el rate limit, después la autenticación (default-deny).

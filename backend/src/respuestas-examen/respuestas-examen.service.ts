@@ -7,6 +7,8 @@ import { corregirPreguntaCerrada } from './correccion-cerradas.util';
 import { RagService, armarConsultaRag } from '../rag/rag.service';
 import { MaterialCursoInput } from '../ai/ai.types';
 import { LimitadorConcurrencia, maxConcurrentesDesdeEnv } from '../ai/limitador-concurrencia.util';
+import { NotificacionesService } from '../mail/notificaciones.service';
+import { debeNotificarse } from './resultado.util';
 
 type RespuestaPorPregunta = {
   preguntaId: string;
@@ -31,6 +33,7 @@ export class RespuestasExamenService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly rag: RagService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   /**
@@ -282,7 +285,15 @@ export class RespuestasExamenService {
     };
   }
 
-  /** El docente confirma o edita la corrección sugerida. Igual criterio que CorreccionesService. */
+  /**
+   * El docente confirma o edita la corrección sugerida. Igual criterio que CorreccionesService.
+   * Si el examen es de feedback inmediato (o ya tiene las notas publicadas) el alumno recibe su resultado por mail
+   * apenas se revisa, en segundo plano: un fallo del envío no rompe la revisión (queda anotado y se reintenta con
+   * "reenviar"). Una respuesta que ya había sido notificada NO vuelve a mandar mail al re-corregirla o re-revisarla
+   * (`notificadoEn` no se toca): un segundo mail con otra nota desconcierta más de lo que ayuda, así que revisar de
+   * nuevo no es un disparador de envíos. "Reenviar" solo alcanza a los que no recibieron su mail (los que fallaron o
+   * quedaron sin enviar).
+   */
   async revisar(examenId: string, id: string, dto: RevisarRespuestaExamenDto) {
     const respuesta = await this.prisma.respuestaExamen.findUnique({ where: { id } });
     if (!respuesta || respuesta.examenId !== examenId) {
@@ -323,7 +334,7 @@ export class RespuestasExamenService {
         ? respuesta.feedbackGeneralSugerido
         : (dto.feedbackGeneralFinal ?? respuesta.feedbackGeneralSugerido);
 
-    return this.prisma.respuestaExamen.update({
+    const actualizada = await this.prisma.respuestaExamen.update({
       where: { id },
       data: {
         respuestasPorPregunta: respuestasPorPregunta as any,
@@ -334,6 +345,24 @@ export class RespuestasExamenService {
         revisadoEn: new Date(),
       },
     });
+    void this.notificarRevisadas(examenId, [id], dto.estadoRevision);
+    return actualizada;
+  }
+
+  /**
+   * Manda en segundo plano el mail de las respuestas recién revisadas, si les toca ya (feedback inmediato o notas
+   * publicadas) y el envío está configurado; si no, se omite en silencio y quedan como "sin enviar" en el resumen de
+   * notificaciones. Nunca rechaza: la revisión ya se guardó y no se rompe por esto.
+   */
+  private async notificarRevisadas(examenId: string, ids: string[], estadoRevision: string): Promise<void> {
+    try {
+      if (!this.notificaciones.configurado) return;
+      const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
+      if (!examen || !debeNotificarse({ estadoRevision }, examen)) return;
+      this.notificaciones.lanzarLote(examenId, ids);
+    } catch (err) {
+      this.logger.error(`No se pudo iniciar el envío de mails de la revisión (examen ${examenId})`, err as Error);
+    }
   }
 
   /**
@@ -368,6 +397,7 @@ export class RespuestasExamenService {
       }),
     );
 
+    void this.notificarRevisadas(examenId, pendientes.map((r) => r.id), 'aceptada');
     return this.findAllByExamen(examenId);
   }
 }

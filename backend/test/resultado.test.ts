@@ -136,6 +136,9 @@ function prismaExamenes(examenes: any[], respuestas: any[] = []) {
   } as any;
 }
 
+// El envío por mail se prueba en mail.test.ts: acá un doble que dice "configurado" y no manda nada.
+const notificacionesFalsas = () => ({ configurado: true, notificarExamen: async () => ({ aEnviar: 0 }) }) as any;
+
 test('liberarFeedback: setea la fecha y devuelve cuántas respuestas siguen sin revisar', async () => {
   const examenes = [{ id: 'ex-1', titulo: 'P1', feedbackLiberadoEn: null }];
   const respuestas = [
@@ -144,7 +147,7 @@ test('liberarFeedback: setea la fecha y devuelve cuántas respuestas siguen sin 
     { examenId: 'ex-1', estadoRevision: 'aceptada' },
     { examenId: 'ex-2', estadoRevision: 'pendiente' }, // de otro examen: no cuenta
   ];
-  const r = await new ExamenesService(prismaExamenes(examenes, respuestas)).liberarFeedback('ex-1');
+  const r = await new ExamenesService(prismaExamenes(examenes, respuestas), notificacionesFalsas()).liberarFeedback('ex-1');
   assert.ok(r.feedbackLiberadoEn instanceof Date);
   assert.equal(r.pendientesDeRevision, 2);
   assert.equal(r.titulo, 'P1');
@@ -154,14 +157,14 @@ test('liberarFeedback: es idempotente, la segunda vez conserva la fecha original
   const original = new Date('2030-01-01T10:00:00Z');
   const examenes = [{ id: 'ex-1', feedbackLiberadoEn: original }];
   const respuestas = [{ examenId: 'ex-1', estadoRevision: 'pendiente' }, { examenId: 'ex-1', estadoRevision: 'aceptada' }];
-  const svc = new ExamenesService(prismaExamenes(examenes, respuestas));
+  const svc = new ExamenesService(prismaExamenes(examenes, respuestas), notificacionesFalsas());
   const r = await svc.liberarFeedback('ex-1');
   assert.equal(r.feedbackLiberadoEn?.getTime(), original.getTime());
   assert.equal(r.pendientesDeRevision, 1);
 
   // Dos veces seguidas desde cero: la fecha de la primera es la que queda.
   const nuevo = [{ id: 'ex-2', feedbackLiberadoEn: null }];
-  const svc2 = new ExamenesService(prismaExamenes(nuevo));
+  const svc2 = new ExamenesService(prismaExamenes(nuevo), notificacionesFalsas());
   const primera = await svc2.liberarFeedback('ex-2');
   await new Promise((ok) => setTimeout(ok, 5));
   const segunda = await svc2.liberarFeedback('ex-2');
@@ -169,7 +172,7 @@ test('liberarFeedback: es idempotente, la segunda vez conserva la fecha original
 });
 
 test('liberarFeedback: un examen que no existe responde 404', async () => {
-  await assert.rejects(() => new ExamenesService(prismaExamenes([])).liberarFeedback('no-existe'), NotFoundException);
+  await assert.rejects(() => new ExamenesService(prismaExamenes([]), notificacionesFalsas()).liberarFeedback('no-existe'), NotFoundException);
 });
 
 // ---------------------------------------------------------------------------

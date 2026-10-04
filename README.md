@@ -234,6 +234,63 @@ nota**.
 - **DB**: ya vive en Supabase, no hace falta deployarla. Antes de abrir el deploy al público, verificá RLS con el `curl`
   del paso 3 de la [sección 1](#1-base-de-datos-supabase).
 
+## Mails con la nota (Resend)
+
+Cuando el docente **publica las notas** de un examen (o revisa una respuesta en un examen de feedback *inmediato*), cada
+alumno recibe **por mail** su nota y su feedback. **No hay una pantalla pública con el resultado**: el alumno solo
+entra con su email para rendir y la nota le llega a esa casilla. Los mails los manda el backend con
+[Resend](https://resend.com) (desde `backend/src/mail/`).
+
+**Puesta en marcha**
+
+1. **Cuenta.** Creá una en [resend.com](https://resend.com).
+2. **Dominio.** En *Domains → Add Domain* agregá un dominio y verificalo. Resend recomienda mandar desde un
+   **subdominio dedicado** (ej. `mail.tuDominio.com`) en vez del dominio raíz, para aislar la reputación de envío.
+3. **DNS.** Cargá en el proveedor de DNS de tu dominio los registros que te muestra Resend (típicamente SPF y DKIM) y apretá
+   *Verify*; puede tardar un rato en propagarse.
+4. **API key.** En *API Keys → Create API Key* elegí el permiso de envío (*Sending access*), idealmente restringida a ese
+   dominio. Copiala al crearla: no se vuelve a mostrar.
+5. **Variables** en `backend/.env` (ver `.env.example`):
+   - `RESEND_API_KEY`: la key del paso anterior.
+   - `EMAIL_FROM`: el remitente, de un dominio verificado. Ej.: `AI Teaching Assistant <notas@mail.tuDominio.com>`.
+   - `EMAIL_REDIRECT_TO` (opcional): ver *Modo prueba*.
+
+   Sin `RESEND_API_KEY` y `EMAIL_FROM` el backend **rechaza publicar las notas** (409, antes de marcar nada como
+   publicado): así un examen nunca queda "publicado" sin que salga ningún mail. La pantalla de respuestas lo avisa y
+   deshabilita el botón.
+
+**Modo prueba.** Con `EMAIL_REDIRECT_TO="vos@tuDominio.com"` **todos** los mails van a esa dirección en vez de a los
+alumnos, y el asunto lleva el prefijo `[PRUEBA → alumno@x.com]`. La pantalla de respuestas muestra un aviso mientras
+está activo. Sirve para ver cómo queda el mail antes de mandarle algo a un alumno real; dejalo sin definir en producción.
+Mientras no tengas un dominio verificado podés probar con `EMAIL_FROM="onboarding@resend.dev"`, pero ese remitente
+**solo entrega al mail con el que te registraste en Resend** (no a los alumnos).
+
+**Límites del plan gratuito de Resend** (según su documentación, consultada el 2026-10-04): 3.000 mails por mes y
+**100 por día** (el cupo diario se renueva a las 00:00 UTC; cuenta cada destinatario), hasta 3 dominios y 10 pedidos por
+segundo por equipo. Para un curso de más de 100 alumnos en un solo día no alcanza: al llegar al límite el envío se corta,
+los que quedan muestran *"Se alcanzó el límite de envíos de tu plan de Resend; reintentá más tarde"* y se completan
+después con **Reenviar a los que faltan**, o pasando a un plan pago.
+
+**Cómo funciona**
+
+- El envío corre **en segundo plano** (de a 2 a la vez, con una pausa entre uno y otro, para no pasarse del rate limit de
+  Resend); por eso el backend necesita un host de Node persistente (ver [Deploy](#4-deploy)).
+- La pantalla de respuestas muestra *"N enviados · N con error · N sin enviar"* con el último error, y un botón
+  **Reenviar a los que faltan** (los que fallaron o no salieron; nunca a los que ya recibieron su mail).
+- Cada alumno recibe su mail **una sola vez**: se registra cuándo salió (`notificado_en`) y el pedido a Resend lleva una
+  `Idempotency-Key`. Si el docente corrige o re-revisa una respuesta que ya había sido notificada, **no se manda un
+  segundo mail** solo.
+- El mail lleva el título del examen, la nota (en formato argentino), el feedback general y, cuando la suma de los
+  puntajes por pregunta explica la nota total, la nota por pregunta. Nunca sale la clave de respuestas, la nota sugerida
+  por la IA ni los criterios internos. Al responder el mail, la respuesta le llega al docente del curso.
+
+**Limitaciones conocidas**
+
+- El mail va a la dirección que figura en **la lista de la comisión**: si está mal cargada, el alumno no recibe su nota y
+  hoy no hay forma de enterarse desde la app.
+- *"Enviado"* significa que Resend **aceptó** el mail, no que llegó a la bandeja: los rebotes y los mails a spam no se
+  detectan (no hay webhooks de Resend todavía).
+
 ## Sobre el modelo de IA elegido
 
 Se comparó **Gemini 3.1 Flash-Lite** contra **GPT-5 nano** (ambos son las opciones "baratas" de cada
@@ -290,5 +347,5 @@ corrige a mano", no un problema de seguridad del proyecto.
 
 - Edición inline de la nota por criterio (hoy solo se edita la nota total y el feedback).
 - Carga de PDF/Word con extracción de texto (hoy es texto plano pegado o escrito).
-- Notificación al alumno cuando el docente confirma la corrección.
+- Notificación al alumno en los trabajos prácticos: para exámenes ya existe (ver [Mails con la nota](#mails-con-la-nota-resend)); falta avisar cuando el docente confirma la corrección de una entrega.
 - Cola de trabajo para la corrección con IA en vez de ejecutarla sincrónicamente al crear la entrega.

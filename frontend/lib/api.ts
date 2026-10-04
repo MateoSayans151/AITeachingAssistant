@@ -564,11 +564,41 @@ export const revertirAjusteVara = (examenId: string, ajusteId: string) =>
 export const explicarVaraRespuesta = (examenId: string, respuestaId: string) =>
   request<ExplicacionVara>(`/examenes/${examenId}/respuestas/${respuestaId}/vara`);
 
-/** Publicar las notas es idempotente: si ya estaban publicadas se conserva la fecha original. */
-export type ExamenConPendientes = Examen & { pendientesDeRevision: number };
+/**
+ * Publicar las notas es idempotente: si ya estaban publicadas se conserva la fecha original. Además lanza en segundo
+ * plano el mail con la nota a cada alumno ya revisado (`aEnviar` = cuántos); si el servidor no tiene el envío de mails
+ * configurado responde 409 y no publica nada.
+ */
+export type ExamenConPendientes = Examen & { pendientesDeRevision: number; aEnviar: number };
 
 export const liberarFeedback = (examenId: string) =>
   request<ExamenConPendientes>(`/examenes/${examenId}/liberar-feedback`, { method: 'POST' });
+
+// ---- Mails con la nota (los manda el backend con Resend) ----
+
+export interface ResumenNotificaciones {
+  /** El servidor tiene el envío de mails configurado (RESEND_API_KEY y EMAIL_FROM). Sin eso no se puede publicar. */
+  configurado: boolean;
+  /** Dirección a la que llegan TODOS los mails en vez de a los alumnos; null = modo normal. */
+  modoPrueba: string | null;
+  enviados: number;
+  /** Les tocaba el mail y el último intento falló. */
+  conError: number;
+  /** Les toca el mail y todavía no salió. */
+  sinEnviar: number;
+  /** Respuestas todavía sin revisar: no reciben nada hasta que las revises. */
+  sinRevisar: number;
+  /** Envíos de este examen que el servidor tiene en marcha ahora. */
+  enCurso: number;
+  ultimoError: string | null;
+}
+
+export const getResumenNotificaciones = (examenId: string) =>
+  request<ResumenNotificaciones>(`/examenes/${examenId}/notificaciones`);
+
+/** Reintenta en segundo plano el mail de los alumnos que todavía no lo recibieron. 409 si el envío no está configurado. */
+export const reenviarNotificaciones = (examenId: string) =>
+  request<{ aEnviar: number }>(`/examenes/${examenId}/notificaciones/reenviar`, { method: 'POST' });
 
 // ---- Rendir examen (público: el alumno no tiene sesión de docente) ----
 // Flujo: info del link -> iniciar (con su email, y aceptar el aviso si hay anti-cheat) ->

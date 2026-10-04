@@ -271,6 +271,7 @@ export default function RespuestasExamenPage() {
           examenId={examen.id}
           feedbackModo={examen.feedbackModo}
           liberadoEn={examen.feedbackLiberadoEn}
+          revisadas={revisadas}
           onChange={(actualizado) => setExamen((prev) => (prev ? { ...prev, feedbackLiberadoEn: actualizado.feedbackLiberadoEn } : prev))}
         />
       </div>
