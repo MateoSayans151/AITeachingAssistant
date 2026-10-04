@@ -112,7 +112,7 @@ export default function ExamenEnCurso({
         setGuardado('demasiado_grande');
       } else if (e instanceof ApiError && e.status === 401) {
         setGuardado('sin_conexion');
-        setErrorEntrega('Tu sesión del examen venció. Volvé a ingresar con tu email y código: lo que escribiste está guardado.');
+        setErrorEntrega('Tu sesión del examen venció. Volvé a ingresar con tu email: lo que escribiste está guardado.');
       } else {
         setGuardado('sin_conexion'); // sigue guardado en este dispositivo; se reintenta solo
       }

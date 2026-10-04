@@ -6,12 +6,12 @@ import { Public } from '../auth/public.decorator';
 
 // Único controller público del proyecto: para el alumno que entra desde el link de su
 // comisión. El link solo muestra datos generales; las preguntas se entregan al iniciar
-// (con email + código, y aceptando el aviso si hay anti-cheat). Nunca devuelve correcciones
-// ni notas (eso es del docente hasta que libere el feedback).
+// (con su email, y aceptando el aviso si hay anti-cheat). Nunca devuelve correcciones
+// ni notas: el resultado le llega al alumno por mail cuando el docente lo revisa y lo publica.
 //
 // @SkipThrottle: un aula entera comparte IP, así que el límite por IP del ThrottlerGuard
-// bloquearía a los alumnos entre sí (autoguardado cada pocos segundos). El freno a la
-// fuerza bruta del código está en IntentosService (solo cuenta intentos fallidos).
+// bloquearía a los alumnos entre sí (autoguardado cada pocos segundos). El freno a quien
+// prueba emails al azar está en IntentosService (solo cuenta intentos fallidos).
 @Public()
 @SkipThrottle()
 @Controller('rendir/:slug')

@@ -1,6 +1,10 @@
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsEmail, IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { normalizarEmail } from '../resultado.util';
 
 export class IniciarIntentoDto {
+  // Se normaliza antes de validar: el alumno puede tipearlo con mayúsculas o espacios de más.
+  @Transform(({ value }) => (typeof value === 'string' ? normalizarEmail(value) : value))
   @IsEmail()
   alumnoEmail: string;
 

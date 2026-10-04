@@ -85,8 +85,11 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     const claveIp = `ip|${ip}`;
     await this.fallosPorIp.verificar(claveIp);
 
-    const alumno = await this.prisma.alumno.findFirst({ where: { comisionId: ec.comisionId, email: dto.alumnoEmail } });
-    // El alumno se identifica solo con su email (sin código). El freno por IP limita que alguien
+    // Sin distinguir mayúsculas: también encuentra a quien quedó cargado en el listado como "Ana@Mail.com".
+    const alumno = await this.prisma.alumno.findFirst({
+      where: { comisionId: ec.comisionId, email: { equals: dto.alumnoEmail, mode: 'insensitive' } },
+    });
+    // El alumno se identifica solo con su email. El freno por IP limita que alguien
     // pruebe emails al azar para ver quién está en la comisión.
     if (!alumno) {
       await this.fallosPorIp.fallo(claveIp);
@@ -247,7 +250,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     try {
       payload = await this.jwt.verifyAsync(token);
     } catch {
-      throw new UnauthorizedException('La sesión del examen venció. Volvé a ingresar con tu email y código.');
+      throw new UnauthorizedException('La sesión del examen venció. Volvé a ingresar con tu email.');
     }
     if (payload.typ !== 'intento') throw new UnauthorizedException('Token inválido');
 

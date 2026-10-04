@@ -112,13 +112,20 @@ export class ExamenesService {
     return { ...examenComision, urlAcceso: `${frontendOrigin}/rendir/${examenComision.slugAcceso}` };
   }
 
+  /**
+   * Publica las notas del examen. Idempotente: solo escribe si todavía no estaban liberadas (así, aunque el
+   * docente toque el botón dos veces o lleguen dos pedidos a la vez, se conserva la fecha original).
+   * Devuelve además cuántas respuestas siguen sin revisar, para que la pantalla pueda avisarlo.
+   */
   async liberarFeedback(examenId: string) {
+    await this.prisma.examen.updateMany({
+      where: { id: examenId, feedbackLiberadoEn: null },
+      data: { feedbackLiberadoEn: new Date() },
+    });
     const examen = await this.prisma.examen.findUnique({ where: { id: examenId } });
     if (!examen) throw new NotFoundException(`Examen ${examenId} no encontrado`);
 
-    return this.prisma.examen.update({
-      where: { id: examenId },
-      data: { feedbackLiberadoEn: new Date() },
-    });
+    const pendientesDeRevision = await this.prisma.respuestaExamen.count({ where: { examenId, estadoRevision: 'pendiente' } });
+    return { ...examen, pendientesDeRevision };
   }
 }
