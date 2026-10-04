@@ -138,6 +138,83 @@ export function totalCoincideConEscala(total: number, escalaMax: number): boolea
   return Math.abs(redondearPuntos(total) - redondearPuntos(escalaMax)) <= TOLERANCIA_TOTAL + 1e-9;
 }
 
+// ---------------------------------------------------------------- niveles de desempeño: presets, validación y ejemplo
+
+/** Reparto del puntaje de un criterio entre los 5 niveles: la "exigencia" de la corrección. */
+export interface PresetNiveles {
+  id: string;
+  nombre: string;
+  porcentajes: number[];
+}
+
+export const PRESETS_NIVELES: PresetNiveles[] = [
+  { id: 'estandar', nombre: 'Estándar', porcentajes: [0, 25, 50, 75, 100] },
+  { id: 'exigente', nombre: 'Exigente', porcentajes: [0, 10, 30, 60, 100] },
+  { id: 'flexible', nombre: 'Flexible', porcentajes: [0, 35, 60, 85, 100] },
+];
+
+/** Id del preset que coincide exactamente con los porcentajes de los niveles, o 'personalizado'. */
+export function presetDe(niveles: NivelForm[]): string {
+  const valores = niveles.map((n) => Number(n.porcentaje));
+  const preset = PRESETS_NIVELES.find((p) => p.porcentajes.length === valores.length && p.porcentajes.every((x, i) => x === valores[i]));
+  return preset ? preset.id : 'personalizado';
+}
+
+/** Aplica los porcentajes de un preset conservando los nombres (y colores) que ya tengan los niveles. */
+export function aplicarPreset(niveles: NivelForm[], id: string): NivelForm[] {
+  const preset = PRESETS_NIVELES.find((p) => p.id === id);
+  if (!preset) return niveles;
+  return niveles.map((n, i) => ({ ...n, porcentaje: String(preset.porcentajes[i] ?? n.porcentaje) }));
+}
+
+/**
+ * Reglas de la escala de niveles. Además de nombre y rango 0-100: el primer nivel vale 0 % (lo que recibe una respuesta que no
+ * cumple), el último 100 % (si no, nadie podría sacar el puntaje completo y el total del examen no se alcanzaría nunca) y los
+ * porcentajes crecen de un nivel al siguiente (si no, la escala no tiene sentido para quien corrige).
+ */
+export function validarNiveles(niveles: NivelForm[]): string[] {
+  const e: string[] = [];
+  niveles.forEach((n) => {
+    if (!n.nombre.trim()) e.push(`El nivel ${n.orden} necesita un nombre.`);
+    const p = Number(n.porcentaje);
+    if (n.porcentaje.trim() === '' || !Number.isFinite(p) || p < 0 || p > 100) {
+      e.push(`El nivel ${n.orden} (${n.nombre || 'sin nombre'}) necesita un porcentaje entre 0 y 100.`);
+    }
+  });
+  if (e.length > 0 || niveles.length === 0) return e;
+
+  const valores = niveles.map((n) => Number(n.porcentaje));
+  const primero = niveles[0];
+  const ultimo = niveles[niveles.length - 1];
+  if (valores[0] !== 0) e.push(`El primer nivel (${primero.nombre}) tiene que valer 0 %: es lo que recibe una respuesta que no cumple el criterio.`);
+  if (valores[valores.length - 1] !== 100) {
+    e.push(`El último nivel (${ultimo.nombre}) tiene que valer 100 %: si no, nadie podría sacar el puntaje completo.`);
+  }
+  for (let i = 1; i < valores.length; i += 1) {
+    if (valores[i] <= valores[i - 1]) {
+      e.push(
+        `Los porcentajes tienen que ir creciendo de un nivel al siguiente: «${niveles[i - 1].nombre}» vale ${valores[i - 1]} % y «${niveles[i].nombre}» vale ${valores[i]} %.`,
+      );
+      break;
+    }
+  }
+  return e;
+}
+
+/** Ejemplo para entender la escala: cuántos puntos da un nivel en un criterio de `puntosCriterio` (por defecto 2). */
+export function puntosDeEjemplo(porcentaje: string, puntosCriterio = 2): number | null {
+  const p = Number(porcentaje);
+  if (porcentaje.trim() === '' || !Number.isFinite(p)) return null;
+  return redondearPuntos((puntosCriterio * p) / 100);
+}
+
+/** Resumen corto de la escala para mostrar con el bloque plegado: "Estándar · 0 / 25 / 50 / 75 / 100 %". */
+export function resumenNiveles(niveles: NivelForm[]): string {
+  const id = presetDe(niveles);
+  const nombre = id === 'personalizado' ? 'Personalizada' : (PRESETS_NIVELES.find((p) => p.id === id)?.nombre ?? '');
+  return `${nombre} · ${niveles.map((n) => n.porcentaje.trim() || '?').join(' / ')} %`;
+}
+
 // ---------------------------------------------------------------- mapeo inverso: examen existente -> formulario
 
 const CANT_NIVELES = 5;

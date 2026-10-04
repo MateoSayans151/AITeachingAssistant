@@ -60,3 +60,31 @@ export function validarPuntajes(preguntas: PreguntaPuntaje[], escalaMax: number)
   }
   return null;
 }
+
+export interface NivelEscala {
+  orden: number;
+  nombre?: string;
+  porcentaje: number;
+}
+
+/**
+ * La escala de niveles tiene que poder dar el puntaje completo y crecer: el último nivel (el de mayor orden) vale 100 % y los
+ * porcentajes aumentan de un nivel al siguiente. Si el último valiera menos, ningún alumno podría llegar a la escala máxima
+ * (el total del examen no se alcanzaría nunca); si no crecieran, elegir un nivel "mejor" daría menos puntos.
+ * Que el primer nivel valga 0 % es una convención del wizard, no una invariante: acá no se exige.
+ */
+export function validarNivelesEscala(niveles: NivelEscala[]): string | null {
+  if (niveles.length === 0) return null;
+  const ordenados = [...niveles].sort((a, b) => a.orden - b.orden);
+  const etiqueta = (n: NivelEscala) => n.nombre?.trim() || `nivel ${n.orden}`;
+  const ultimo = ordenados[ordenados.length - 1];
+  if (Number(ultimo.porcentaje) !== 100) {
+    return `El último nivel de la escala (${etiqueta(ultimo)}) tiene que valer 100 %: si no, nadie podría sacar el puntaje completo.`;
+  }
+  for (let i = 1; i < ordenados.length; i += 1) {
+    if (Number(ordenados[i].porcentaje) <= Number(ordenados[i - 1].porcentaje)) {
+      return `Los porcentajes de la escala tienen que ir creciendo de un nivel al siguiente: «${etiqueta(ordenados[i - 1])}» vale ${mostrar(ordenados[i - 1].porcentaje)} % y «${etiqueta(ordenados[i])}» vale ${mostrar(ordenados[i].porcentaje)} %.`;
+    }
+  }
+  return null;
+}

@@ -11,7 +11,7 @@ import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { VerificadorSesion } from '../src/auth/verificador-sesion';
 import { ExamenesController } from '../src/examenes/examenes.controller';
 import { ExamenesService, MENSAJE_EXAMEN_CON_ALUMNOS } from '../src/examenes/examenes.service';
-import { mismoPuntaje, puntajeDeCriterios, puntajeEfectivo, puntajeTotalExamen, redondearPuntaje, validarPuntajes } from '../src/examenes/puntaje.util';
+import { mismoPuntaje, puntajeDeCriterios, puntajeEfectivo, puntajeTotalExamen, redondearPuntaje, validarNivelesEscala, validarPuntajes } from '../src/examenes/puntaje.util';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -343,4 +343,40 @@ test('DELETE /examenes/:id: el 409 del servicio le llega tal cual al docente', a
     () => controller.remove('doc-1', 'ex-1'),
     (err: unknown) => err instanceof ConflictException && (err.getResponse() as any).message === MENSAJE_EXAMEN_CON_ALUMNOS,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Escala de niveles: el último vale 100 % y los porcentajes crecen
+// ---------------------------------------------------------------------------
+const nivelesCon = (porcentajes: number[]) => porcentajes.map((porcentaje, i) => ({ orden: i + 1, nombre: `N${i + 1}`, colorHex: '#000000', porcentaje }));
+
+test('validarNivelesEscala: acepta las escalas del wizard (estándar, exigente, flexible) y la de los fixtures (20..100)', () => {
+  for (const p of [[0, 25, 50, 75, 100], [0, 10, 30, 60, 100], [0, 35, 60, 85, 100], [20, 40, 60, 80, 100]]) {
+    assert.equal(validarNivelesEscala(nivelesCon(p)), null, p.join('/'));
+  }
+  assert.equal(validarNivelesEscala([]), null);
+});
+
+test('validarNivelesEscala: el último nivel tiene que valer 100 % (si no, el total del examen no se alcanza nunca)', () => {
+  assert.match(validarNivelesEscala(nivelesCon([0, 25, 50, 75, 90])) as string, /último nivel de la escala \(N5\) tiene que valer 100 %/);
+  assert.match(validarNivelesEscala(nivelesCon([0, 25, 50, 75, 120])) as string, /valer 100 %/, 'pasarse de 100 tampoco');
+});
+
+test('validarNivelesEscala: los porcentajes tienen que crecer, aunque lleguen desordenados; iguales tampoco sirven', () => {
+  assert.match(validarNivelesEscala(nivelesCon([0, 90, 50, 75, 100])) as string, /«N2» vale 90 % y «N3» vale 50 %/);
+  assert.match(validarNivelesEscala(nivelesCon([0, 50, 50, 75, 100])) as string, /«N2» vale 50 % y «N3» vale 50 %/);
+  const desordenados = [...nivelesCon([0, 25, 50, 75, 100])].reverse();
+  assert.equal(validarNivelesEscala(desordenados), null, 'se evalúa por `orden`, no por la posición en el arreglo');
+});
+
+test('crear un examen con una escala de niveles inválida se rechaza con 400 y no guarda nada; con una válida sí', async () => {
+  const malos = [[0, 25, 50, 75, 90], [0, 90, 50, 75, 100]];
+  for (const p of malos) {
+    const { error, creados } = await crear(dtoDe([cerrada(10)], { niveles: nivelesCon(p) }));
+    assert.ok(error instanceof BadRequestException, p.join('/'));
+    assert.equal(creados.length, 0);
+  }
+  const { error: ok, creados } = await crear(dtoDe([cerrada(10)], { niveles: nivelesCon([0, 25, 50, 75, 100]) }));
+  assert.equal(ok, null);
+  assert.equal(creados.length, 1);
 });

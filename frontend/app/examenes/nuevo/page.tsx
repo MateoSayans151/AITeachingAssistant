@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { fechaLocalAIso } from '@/lib/fechas';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -24,17 +24,23 @@ import {
 import { useSesion } from '@/lib/auth';
 import {
   NivelForm,
+  PRESETS_NIVELES,
   PreguntaForm,
+  aplicarPreset,
   construirOpciones,
   criterioVacio,
   examenAFormulario,
   formatearPuntos,
   nivelesPorDefecto,
   preguntaVacia,
+  presetDe,
   puntajeDeCriterios,
+  puntosDeEjemplo,
   redondearPuntos,
+  resumenNiveles,
   totalCoincideConEscala,
   totalDelExamen,
+  validarNiveles,
 } from '@/lib/examen-form';
 
 const TIPOS_LABEL: Record<TipoPregunta, string> = {
@@ -50,9 +56,11 @@ const TIPOS_LABEL: Record<TipoPregunta, string> = {
   verdadero_falso: 'Verdadero / Falso',
 };
 
-const PASOS = ['Datos', 'Escala y niveles', 'Distribución esperada', 'Preguntas', 'Publicar'];
-const PASO_PREGUNTAS = 3;
-const PASO_PUBLICAR = 4;
+// La escala de niveles y la distribución esperada ya no son pasos: viven en "Opciones avanzadas" del primer paso, porque
+// los valores por defecto sirven para la mayoría de los casos y no tiene sentido obligar a pasar por ahí.
+const PASOS = ['Datos', 'Preguntas', 'Publicar'];
+const PASO_PREGUNTAS = 1;
+const PASO_PUBLICAR = 2;
 
 const esNumero = (v: string) => v.trim() !== '' && Number.isFinite(Number(v));
 
@@ -129,15 +137,15 @@ function NuevoExamenForm() {
   const [acPestana, setAcPestana] = useState(true);
   const [acPegado, setAcPegado] = useState(true);
 
-  // Paso 3: distribución esperada (precarga la vara). Opcional.
+  // Paso 1, opciones avanzadas (plegadas por defecto): distribución esperada (precarga la vara, opcional) y escala de niveles.
+  const [avanzadoAbierto, setAvanzadoAbierto] = useState(false);
   const [distOn, setDistOn] = useState(false);
   const [umbralAprobacion, setUmbralAprobacion] = useState('6');
   const [aprobadosPct, setAprobadosPct] = useState('60');
-
-  // Paso 2: niveles
   const [niveles, setNiveles] = useState<NivelForm[]>(nivelesPorDefecto());
+  const [nivelesPersonalizar, setNivelesPersonalizar] = useState(false); // muestra el editor de nombres y porcentajes
 
-  // Paso 4: preguntas
+  // Paso 2: preguntas
   const [preguntas, setPreguntas] = useState<PreguntaForm[]>([preguntaVacia(nivelesPorDefecto())]);
   const [matrices, setMatrices] = useState<MatrizRubrica[]>([]);
 
@@ -254,6 +262,11 @@ function NuevoExamenForm() {
   // ---------------------------------------------------------------- edición de preguntas
   function actualizarNivel(i: number, campo: keyof NivelForm, valor: string) {
     setNiveles((prev) => prev.map((n, idx) => (idx === i ? { ...n, [campo]: valor } : n)));
+  }
+
+  /** Cambia el reparto de porcentajes a uno de los presets (conserva los nombres que el docente haya puesto). */
+  function elegirPreset(id: string) {
+    setNiveles((prev) => aplicarPreset(prev, id));
   }
 
   function actualizarPregunta<K extends keyof PreguntaForm>(i: number, campo: K, valor: PreguntaForm[K]) {
@@ -379,6 +392,17 @@ function NuevoExamenForm() {
   }
 
   // ---------------------------------------------------------------- validación (paso a paso, con mensajes concretos)
+  /** Errores de la distribución esperada (solo si se activó); dependen de la escala del primer paso. */
+  function validarDistribucion(): string[] {
+    const e: string[] = [];
+    if (!distOn) return e;
+    if (!esNumero(umbralAprobacion) || Number(umbralAprobacion) < Number(escalaMin) || Number(umbralAprobacion) > Number(escalaMax)) {
+      e.push(`La nota de aprobación tiene que estar entre ${escalaMin} y ${escalaMax} (la escala del examen).`);
+    }
+    if (!esNumero(aprobadosPct) || Number(aprobadosPct) < 0 || Number(aprobadosPct) > 100) e.push('El porcentaje de aprobados esperado tiene que estar entre 0 y 100.');
+    return e;
+  }
+
   function validarPaso(p: number): string[] {
     const e: string[] = [];
     if (p === 0) {
@@ -390,18 +414,7 @@ function NuevoExamenForm() {
       if (!esNumero(escalaMin) || !esNumero(escalaMax)) e.push('La escala necesita un mínimo y un máximo numéricos.');
       else if (Number(escalaMin) >= Number(escalaMax)) e.push('La escala mínima tiene que ser menor que la máxima.');
       if (modalidad === 'sesion_tiempo' && !(Number(duracionMinutos) >= 1)) e.push('La duración tiene que ser de al menos 1 minuto.');
-    }
-    if (p === 1) {
-      niveles.forEach((n) => {
-        if (!n.nombre.trim()) e.push(`El nivel ${n.orden} necesita un nombre.`);
-        if (!esNumero(n.porcentaje) || Number(n.porcentaje) < 0 || Number(n.porcentaje) > 100) e.push(`El nivel ${n.orden} (${n.nombre || 'sin nombre'}) necesita un porcentaje entre 0 y 100.`);
-      });
-    }
-    if (p === 2 && distOn) {
-      if (!esNumero(umbralAprobacion) || Number(umbralAprobacion) < Number(escalaMin) || Number(umbralAprobacion) > Number(escalaMax)) {
-        e.push(`La nota de aprobación tiene que estar entre ${escalaMin} y ${escalaMax} (la escala del examen).`);
-      }
-      if (!esNumero(aprobadosPct) || Number(aprobadosPct) < 0 || Number(aprobadosPct) > 100) e.push('El porcentaje de aprobados esperado tiene que estar entre 0 y 100.');
+      e.push(...validarNiveles(niveles), ...validarDistribucion());
     }
     if (p === PASO_PREGUNTAS) {
       preguntas.forEach((q, i) => {
@@ -451,9 +464,13 @@ function NuevoExamenForm() {
     return e;
   }
 
+  /** Un error de las opciones avanzadas no se ve si el bloque está plegado: se abre para que el motivo quede a la vista. */
+  const hayErrorAvanzado = () => validarNiveles(niveles).length > 0 || validarDistribucion().length > 0;
+
   function irASiguiente() {
     const e = validarPaso(paso);
     setErrores(e);
+    if (e.length > 0 && paso === 0 && hayErrorAvanzado()) setAvanzadoAbierto(true);
     if (e.length === 0) setPaso(paso + 1);
   }
 
@@ -465,10 +482,11 @@ function NuevoExamenForm() {
 
   async function handleCrearExamen() {
     // Se revisa todo junto: si algo de un paso anterior quedó mal, se vuelve ahí con el motivo.
-    for (const p of [0, 1, 2, PASO_PREGUNTAS]) {
+    for (const p of [0, PASO_PREGUNTAS]) {
       const e = validarPaso(p);
       if (e.length > 0) {
         setErrores(e);
+        if (p === 0 && hayErrorAvanzado()) setAvanzadoAbierto(true);
         setPaso(p);
         return;
       }
@@ -585,6 +603,13 @@ function NuevoExamenForm() {
     }
   }
 
+  // Escala de niveles (opciones avanzadas): preset activo, ejemplo en vivo y errores de las reglas.
+  const presetActual = presetDe(niveles);
+  const nivelEjemplo = niveles[2];
+  const puntosEjemplo = nivelEjemplo ? puntosDeEjemplo(nivelEjemplo.porcentaje) : null;
+  const erroresNiveles = validarNiveles(niveles);
+  const avanzadoConError = erroresNiveles.length > 0 || validarDistribucion().length > 0;
+
   return (
     <div className="page">
       <header className="page-header">
@@ -605,19 +630,31 @@ function NuevoExamenForm() {
 
       <div className="stepper">
         {PASOS.map((label, i) => {
+          const estado = i < paso ? 'done' : i === paso ? 'current' : 'pending';
           const volverPosible = !examenCreadoId && i < paso;
           return (
             <div
               className="step"
               key={label}
+              data-state={estado}
+              aria-current={estado === 'current' ? 'step' : undefined}
+              role={volverPosible ? 'button' : undefined}
+              tabIndex={volverPosible ? 0 : undefined}
               onClick={volverPosible ? () => irAPaso(i) : undefined}
-              style={volverPosible ? { cursor: 'pointer' } : undefined}
+              onKeyDown={
+                volverPosible
+                  ? (ev) => {
+                      if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        irAPaso(i);
+                      }
+                    }
+                  : undefined
+              }
               title={volverPosible ? 'Volver a este paso' : undefined}
             >
-              <span className="step-num">{i + 1}</span>
-              <span className="step-label" style={{ opacity: i === paso ? 1 : 0.5 }}>
-                {label}
-              </span>
+              <span className="step-num">{estado === 'done' ? `✓ ${i + 1}` : i + 1}</span>
+              <span className="step-label">{label}</span>
             </div>
           );
         })}
@@ -743,52 +780,143 @@ function NuevoExamenForm() {
               </div>
             )}
           </div>
-        </div>
-      )}
 
-      {paso === 1 && (
-        <div>
-          <p className="muted" style={{ marginBottom: 16 }}>
-            5 niveles de desempeño, cada uno con el % del puntaje de un criterio que representa. Se usan en todas
-            las preguntas abiertas de este examen. Los valores por defecto sirven para la mayoría de los casos.
-          </p>
-          {niveles.map((n, i) => (
-            <div key={n.orden} style={{ display: 'grid', gridTemplateColumns: '32px 1fr 90px 90px', gap: 10, marginBottom: 10, alignItems: 'center' }}>
-              <span className="nivel-dot" style={{ background: n.colorHex }} />
-              <input value={n.nombre} onChange={(e) => actualizarNivel(i, 'nombre', e.target.value)} />
-              <input type="color" value={n.colorHex} onChange={(e) => actualizarNivel(i, 'colorHex', e.target.value)} />
-              <input type="number" min="0" max="100" value={n.porcentaje} onChange={(e) => actualizarNivel(i, 'porcentaje', e.target.value)} />
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="accordion-bar" style={{ marginTop: 0 }}>
+              <button
+                type="button"
+                className="accordion-toggle"
+                onClick={() => setAvanzadoAbierto((v) => !v)}
+                aria-expanded={avanzadoAbierto}
+                aria-controls="opciones-avanzadas"
+              >
+                <svg className="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 2l4 4-4 4" />
+                </svg>
+                Opciones avanzadas
+                <span className={avanzadoConError ? 'accordion-summary-error' : 'accordion-summary'}>
+                  · Exigencia: {resumenNiveles(niveles)} · {distOn ? `esperás ${aprobadosPct} % de aprobados` : 'sin expectativa de aprobados'}
+                </span>
+              </button>
             </div>
-          ))}
-        </div>
-      )}
 
-      {paso === 2 && (
-        <div className="card">
-          <div className="card-title" style={{ marginBottom: 8 }}>
-            ¿Qué distribución esperás? (opcional)
+            {avanzadoAbierto && (
+              <div id="opciones-avanzadas" style={{ marginTop: 16 }}>
+                <div className="card-title" style={{ marginBottom: 6 }}>
+                  Nivel de exigencia de la corrección
+                </div>
+                <p className="muted" style={{ marginBottom: 12, maxWidth: '68ch' }}>
+                  En cada criterio de una pregunta abierta, la IA elige uno de 5 niveles de desempeño, y cada nivel da un porcentaje del
+                  puntaje de ese criterio. Los valores estándar sirven para la mayoría de los casos.
+                </p>
+
+                <div className="segmented" role="group" aria-label="Reparto del puntaje entre los niveles">
+                  {PRESETS_NIVELES.map((preset) => (
+                    <button key={preset.id} type="button" aria-pressed={presetActual === preset.id} onClick={() => elegirPreset(preset.id)}>
+                      {preset.nombre}
+                    </button>
+                  ))}
+                  <button type="button" aria-pressed={presetActual === 'personalizado'} onClick={() => setNivelesPersonalizar(true)}>
+                    Personalizado
+                  </button>
+                </div>
+
+                <div className="niveles-barra" role="list" aria-label="Escala de niveles de desempeño">
+                  {niveles.map((n) => (
+                    <div key={n.orden} className="nivel-seg" role="listitem" style={{ borderTopColor: n.colorHex }}>
+                      <span className="nivel-seg-nombre">{n.nombre.trim() || 'Sin nombre'}</span>
+                      <span className="nivel-seg-pct">{n.porcentaje.trim() === '' ? '—' : `${n.porcentaje} %`}</span>
+                    </div>
+                  ))}
+                </div>
+                {nivelEjemplo && puntosEjemplo !== null && (
+                  <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+                    Ejemplo: en un criterio de 2 pts, «{nivelEjemplo.nombre.trim() || `nivel ${nivelEjemplo.orden}`}» otorga {formatearPuntos(puntosEjemplo)}{' '}
+                    {puntosEjemplo === 1 ? 'pt' : 'pts'}.
+                  </p>
+                )}
+
+                <button type="button" className="btn btn-ghost" onClick={() => setNivelesPersonalizar((v) => !v)} aria-expanded={nivelesPersonalizar}>
+                  {nivelesPersonalizar ? 'Ocultar nombres y porcentajes' : 'Personalizar nombres y porcentajes'}
+                </button>
+
+                {nivelesPersonalizar && (
+                  <div className="niveles-editor">
+                    <span className="col-titulo">Nivel</span>
+                    <span className="col-titulo">Nombre</span>
+                    <span className="col-titulo">% del puntaje</span>
+                    {niveles.map((n, i) => {
+                      const pct = Number(n.porcentaje);
+                      const pctInvalido = n.porcentaje.trim() === '' || !Number.isFinite(pct) || pct < 0 || pct > 100;
+                      return (
+                        <Fragment key={n.orden}>
+                          <span className="nivel-orden">{n.orden}</span>
+                          <div className="field">
+                            <input
+                              aria-label={`Nombre del nivel ${n.orden}`}
+                              aria-invalid={!n.nombre.trim() || undefined}
+                              value={n.nombre}
+                              onChange={(e) => actualizarNivel(i, 'nombre', e.target.value)}
+                            />
+                          </div>
+                          <div className="field">
+                            <div className="input-sufijo">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                aria-label={`Porcentaje del puntaje del nivel ${n.orden}`}
+                                aria-invalid={pctInvalido || undefined}
+                                value={n.porcentaje}
+                                onChange={(e) => actualizarNivel(i, 'porcentaje', e.target.value)}
+                              />
+                              <span aria-hidden="true">%</span>
+                            </div>
+                          </div>
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+                {erroresNiveles.length > 0 && (
+                  <div role="alert" style={{ marginTop: 12 }}>
+                    {erroresNiveles.map((m) => (
+                      <p key={m} className="accordion-summary-error" style={{ fontSize: 13, margin: '0 0 4px' }}>
+                        {m}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="hr" style={{ margin: '24px 0 16px' }} />
+
+                <div className="card-title" style={{ marginBottom: 6 }}>
+                  Distribución esperada de aprobados (opcional)
+                </div>
+                <p className="muted" style={{ marginBottom: 12, maxWidth: '68ch' }}>
+                  Si ya sabés cuántos alumnos esperás que aprueben, cargalo acá. Cuando tengas respuestas corregidas por la IA, la vara
+                  parte de esta expectativa y te muestra qué ajuste haría falta, con vista previa y sin pisar la nota sugerida. Podés
+                  cambiarlo o ignorarlo después.
+                </p>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                  <input type="checkbox" checked={distOn} onChange={(e) => setDistOn(e.target.checked)} />
+                  Definir una expectativa de aprobados
+                </label>
+                {distOn && (
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    <div className="field" style={{ width: 220 }}>
+                      <label htmlFor="umbral-aprob">Nota de aprobación</label>
+                      <input id="umbral-aprob" type="number" step="any" value={umbralAprobacion} onChange={(e) => setUmbralAprobacion(e.target.value)} />
+                    </div>
+                    <div className="field" style={{ width: 220 }}>
+                      <label htmlFor="pct-aprob">Aprobados esperados (%)</label>
+                      <input id="pct-aprob" type="number" min="0" max="100" value={aprobadosPct} onChange={(e) => setAprobadosPct(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <p className="muted" style={{ marginBottom: 12 }}>
-            Si ya sabés cuántos alumnos esperás que aprueben, cargalo acá. Cuando tengas respuestas corregidas por la IA, la vara
-            parte de esta expectativa y te muestra qué ajuste haría falta, con vista previa y sin pisar la nota sugerida. Podés
-            cambiarlo o ignorarlo después.
-          </p>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-            <input type="checkbox" checked={distOn} onChange={(e) => setDistOn(e.target.checked)} />
-            Definir una expectativa de aprobados
-          </label>
-          {distOn && (
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <div className="field" style={{ width: 220 }}>
-                <label htmlFor="umbral-aprob">Nota de aprobación</label>
-                <input id="umbral-aprob" type="number" step="any" value={umbralAprobacion} onChange={(e) => setUmbralAprobacion(e.target.value)} />
-              </div>
-              <div className="field" style={{ width: 220 }}>
-                <label htmlFor="pct-aprob">Aprobados esperados (%)</label>
-                <input id="pct-aprob" type="number" min="0" max="100" value={aprobadosPct} onChange={(e) => setAprobadosPct(e.target.value)} />
-              </div>
-            </div>
-          )}
         </div>
       )}
 
