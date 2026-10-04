@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -15,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { NivelDescripcionInputDto } from '../../matrices-rubrica/dto/create-matriz-rubrica.dto';
+import { CANT_NIVELES_MAX, CANT_NIVELES_MIN, MENSAJE_RANGO_NIVELES } from '../niveles.util';
 
 // Mismos valores que el enum TipoPregunta en schema.prisma.
 export const TIPOS_PREGUNTA = [
@@ -48,6 +50,7 @@ export class NivelEscalaInputDto {
 
   @IsNumber()
   @Min(0)
+  @Max(100)
   porcentaje: number;
 }
 
@@ -68,13 +71,14 @@ export class CriterioPreguntaInputDto {
   @Min(0.01)
   puntajeMaximo: number;
 
-  // Opcional: qué implica cada uno de los 5 niveles en este criterio. Sin esto, la IA juzga con la
-  // descripción del criterio y la escala general del examen (como en los trabajos prácticos).
+  // Opcional: qué implica cada nivel de la escala del examen en este criterio. Sin esto, la IA juzga con la
+  // descripción del criterio y la escala general del examen (como en los trabajos prácticos). Ausente o [] = sin niveles
+  // detallados; si trae contenido tienen que ser TODOS los niveles de la escala (la cantidad depende de `niveles` del examen,
+  // así que se valida en ExamenesService.create y no acá).
   @IsOptional()
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => NivelDescripcionInputDto)
-  @ArrayMinSize(5)
-  @ArrayMaxSize(5)
   nivelesDescripcion?: NivelDescripcionInputDto[];
 }
 
@@ -152,11 +156,12 @@ export class CreateExamenDto {
   @IsNumber()
   escalaMax: number;
 
-  // Escala de 5 niveles de desempeño, cada uno con su % de equivalencia sobre el puntaje del criterio.
+  // Escala de niveles de desempeño (entre 3 y 7; 5 por defecto en el wizard), cada uno con su % de equivalencia sobre el
+  // puntaje del criterio. El detalle (orden 1..N, último = 100 %, porcentajes crecientes) se valida en ExamenesService.create.
   @ValidateNested({ each: true })
   @Type(() => NivelEscalaInputDto)
-  @ArrayMinSize(5)
-  @ArrayMaxSize(5)
+  @ArrayMinSize(CANT_NIVELES_MIN, { message: `La escala de niveles tiene que tener ${MENSAJE_RANGO_NIVELES}.` })
+  @ArrayMaxSize(CANT_NIVELES_MAX, { message: `La escala de niveles tiene que tener ${MENSAJE_RANGO_NIVELES}.` })
   niveles: NivelEscalaInputDto[];
 
   @IsIn(['inmediato', 'manual'])

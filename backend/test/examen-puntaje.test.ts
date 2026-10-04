@@ -354,7 +354,8 @@ test('validarNivelesEscala: acepta las escalas del wizard (estándar, exigente, 
   for (const p of [[0, 25, 50, 75, 100], [0, 10, 30, 60, 100], [0, 35, 60, 85, 100], [20, 40, 60, 80, 100]]) {
     assert.equal(validarNivelesEscala(nivelesCon(p)), null, p.join('/'));
   }
-  assert.equal(validarNivelesEscala([]), null);
+  // Sin niveles ya no es "nada que validar": la escala tiene entre 3 y 7 (ver niveles-variables.test.ts).
+  assert.match(validarNivelesEscala([]) as string, /entre 3 y 7 niveles/);
 });
 
 test('validarNivelesEscala: el último nivel tiene que valer 100 % (si no, el total del examen no se alcanza nunca)', () => {

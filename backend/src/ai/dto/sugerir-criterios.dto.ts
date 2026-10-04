@@ -6,6 +6,7 @@ import {
   TIPOS_PREGUNTA_ABIERTA,
   TipoPreguntaAbierta,
 } from '../ai.types';
+import { CANT_NIVELES_MAX, CANT_NIVELES_MIN } from '../../examenes/niveles.util';
 
 export const MAX_LARGO_ENUNCIADO = 5000;
 
@@ -27,4 +28,11 @@ export class SugerirCriteriosDto {
   @Min(CANTIDAD_CRITERIOS_MIN)
   @Max(CANTIDAD_CRITERIOS_MAX)
   cantidad?: number;
+
+  // Cuántos niveles de desempeño describir por criterio: los de la escala del examen (3 a 7; por defecto 5).
+  @IsOptional()
+  @IsInt()
+  @Min(CANT_NIVELES_MIN)
+  @Max(CANT_NIVELES_MAX)
+  cantidadNiveles?: number;
 }

@@ -515,8 +515,12 @@ export interface CriterioSugerido {
   niveles: string[];
 }
 
-/** Solo para preguntas abiertas (desarrollo, resolución de problema, demostración, análisis de caso, respuesta corta). */
-export const sugerirCriterios = (data: { enunciado: string; tipo: TipoPregunta; cantidad?: number }) =>
+/**
+ * Solo para preguntas abiertas (desarrollo, resolución de problema, demostración, análisis de caso, respuesta corta).
+ * `cantidadNiveles` (entero de 3 a 7, por defecto 5) es la cantidad de niveles de la escala del examen: cada criterio sugerido
+ * trae exactamente esa cantidad de descripciones en `niveles`.
+ */
+export const sugerirCriterios = (data: { enunciado: string; tipo: TipoPregunta; cantidad?: number; cantidadNiveles?: number }) =>
   request<{ criterios: CriterioSugerido[] }>('/examenes/sugerir-criterios', { method: 'POST', body: JSON.stringify(data) });
 
 // ---- Vara: regla explícita y auditable (nunca pisa la nota sugerida) ----

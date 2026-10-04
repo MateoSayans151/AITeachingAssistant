@@ -496,15 +496,16 @@ test('controller: devuelve la forma del contrato { criterios } con un servicio d
   const r = await controller.sugerirCriterios(dto);
   assert.deepEqual(r, { criterios: CRITERIOS_FALSOS });
   assert.deepEqual(Object.keys(r), ['criterios']);
-  assert.deepEqual(llamadas, [{ enunciado: 'Explicá la Revolución de Mayo', tipo: 'analisis_caso', cantidad: 2 }]);
+  assert.deepEqual(llamadas, [{ enunciado: 'Explicá la Revolución de Mayo', tipo: 'analisis_caso', cantidad: 2, cantidadNiveles: 5 }]);
 });
 
-test('controller: sin `cantidad` pide 3 criterios', async () => {
+test('controller: sin `cantidad` pide 3 criterios y sin `cantidadNiveles`, 5 niveles', async () => {
   const { ai, llamadas } = iaFalsa();
   const controller = new SugerenciasController(ai);
   const dto = (await validar({ enunciado: 'x', tipo: 'respuesta_corta' })) as SugerirCriteriosDto;
   await controller.sugerirCriterios(dto);
   assert.equal(llamadas[0].cantidad, 3);
+  assert.equal(llamadas[0].cantidadNiveles, 5);
 });
 
 test('controller: un fallo del proveedor da 502 genérico y no filtra el mensaje original', async () => {
@@ -753,12 +754,11 @@ test('matriz DTO: con 5 niveles válidos pasa, y se transforma a instancias del 
   assert.equal(dto.criterios[0].nivelesDescripcion?.length, 5);
 });
 
-test('matriz DTO: con contenido tienen que ser exactamente 5 válidos (3 inválidos, 6, descripción vacía, orden 0, no-array -> rechazo)', async () => {
+test('matriz DTO: con contenido tienen que ser entre 3 y 7 válidos (1, 2, 8, descripción vacía, orden 0, no-array -> rechazo)', async () => {
   const rechazos: Array<[string, unknown]> = [
-    ['3 niveles', cinco().slice(0, 3)],
     ['1 nivel', cinco().slice(0, 1)],
-    ['4 niveles', cinco().slice(0, 4)],
-    ['6 niveles', [...cinco(), { orden: 6, nombre: 'Nivel 6', descripcion: 'x' }]],
+    ['2 niveles', cinco().slice(0, 2)],
+    ['8 niveles', [...cinco(), ...[6, 7, 8].map((orden) => ({ orden, nombre: `Nivel ${orden}`, descripcion: 'x' }))]],
     ['5 con una descripción vacía', cinco().map((n, i) => (i === 2 ? { ...n, descripcion: '' } : n))],
     ['5 con un nombre vacío', cinco().map((n, i) => (i === 0 ? { ...n, nombre: '' } : n))],
     ['5 con orden 0', cinco().map((n, i) => (i === 4 ? { ...n, orden: 0 } : n))],
@@ -770,6 +770,12 @@ test('matriz DTO: con contenido tienen que ser exactamente 5 válidos (3 inváli
   ];
   for (const [caso, nivelesDescripcion] of rechazos) {
     await assert.rejects(() => validar(matrizCon({ nivelesDescripcion }), CreateMatrizRubricaDto), BadRequestException, caso);
+  }
+  // Cualquier cantidad entre 3 y 7 vale (la matriz no depende de la escala de ningún examen).
+  for (const k of [3, 4, 5, 6, 7]) {
+    const niveles = Array.from({ length: k }, (_, i) => ({ orden: i + 1, nombre: `Nivel ${i + 1}`, descripcion: `Qué implica ${i + 1}` }));
+    const dto = (await validar(matrizCon({ nivelesDescripcion: niveles }), CreateMatrizRubricaDto)) as CreateMatrizRubricaDto;
+    assert.equal(dto.criterios[0].nivelesDescripcion?.length, k, `${k} niveles`);
   }
 });
 
