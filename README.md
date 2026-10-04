@@ -87,14 +87,57 @@ MVP: no hay carga de PDF/imagen todavía.
 
 1. Creá un proyecto en [supabase.com](https://supabase.com).
 2. Andá a **SQL Editor** y corré el contenido de [`supabase/schema.sql`](./supabase/schema.sql).
-   Esto crea las 6 tablas: `docentes`, `trabajos_practicos`, `criterios_rubrica`, `entregas`,
-   `correcciones`, `resumenes_curso`.
-3. Andá a **Settings → Database → Connection string** y copiá la de tipo **Transaction pooler**
-   (puerto 6543). La vas a necesitar en el paso 2.
+   Esto crea las 24 tablas del esquema (docentes, trabajos prácticos y sus entregas/correcciones; cursos,
+   comisiones, alumnos, exámenes, preguntas, respuestas, intentos y eventos de integridad, vara auditable, índice
+   RAG del material de cátedra, etc.) y deja la base al día: el archivo ya incluye el contenido de todas las
+   migraciones de [`supabase/migrations/`](./supabase/migrations/), la de RLS del paso 3 incluida.
+3. **Activá RLS (seguridad, no te lo saltees).** Si creaste la base con `schema.sql` ya está aplicado (es el bloque
+   del final). Si en cambio creaste las tablas con Prisma (`db push` / `migrate dev`), o la base ya existía de
+   antes, corré en el SQL Editor [`supabase/migrations/20261004_rls_todas_las_tablas.sql`](./supabase/migrations/20261004_rls_todas_las_tablas.sql):
+   Prisma no activa RLS. Es idempotente: se puede volver a correr cada vez que se agregue una tabla.
 
-> Alternativa: en vez de correr `schema.sql` a mano, podés dejar que Prisma cree las tablas por vos
-> con `npx prisma migrate dev` (ver paso 2). Los dos caminos crean el mismo esquema — no hace falta
-> hacer los dos.
+   **Por qué:** el frontend publica la anon key de Supabase, así que es pública: si la Data API (PostgREST) está
+   expuesta y las tablas no tienen RLS, cualquiera puede leer y escribir `public` desde afuera, incluida la clave
+   de respuestas de los exámenes. La migración activa RLS en todas las tablas **sin crear policies** a propósito
+   (nadie con la anon key ve nada) y le quita los permisos a `anon`/`authenticated`. El backend no se afecta: se
+   conecta con Prisma como `postgres`, que saltea RLS, y es el único que toca estas tablas.
+
+   **Cómo verificarlo** (con la base ya con algún docente cargado: contra una tabla vacía un `[]` no prueba nada):
+
+   ```bash
+   SUPABASE_URL="https://<PROJECT-REF>.supabase.co"   # Settings → API
+   ANON_KEY="<la anon/publishable key>"
+   curl "$SUPABASE_URL/rest/v1/docentes?select=*" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY"
+   ```
+
+   Tiene que devolver `[]` o un error de permisos (`permission denied for table docentes`); **nunca filas**. Si
+   devuelve datos, RLS no quedó activo: volvé a correr la migración. En el SQL Editor, esta consulta tiene que dar
+   0 filas: `select tablename from pg_tables where schemaname = 'public' and not rowsecurity;`
+4. Andá a **Settings → Database → Connection string** y copiá la de tipo **Transaction pooler**
+   (puerto 6543). La vas a necesitar en el paso 2. El formato real (usuario `postgres.<project-ref>`, host
+   `aws-0-<region>.pooler.supabase.com`, contraseña URL-encoded, sin corchetes) está explicado en
+   [`backend/.env.example`](./backend/.env.example).
+
+**Si ya tenías la base creada** de antes, no vuelvas a correr `schema.sql` entero (los `create type` del principio
+fallan si el tipo ya existe): aplicá en el SQL Editor, en orden de nombre de archivo, las migraciones de
+[`supabase/migrations/`](./supabase/migrations/) que todavía no corriste. Son idempotentes, así que si no estás seguro
+de cuáles te faltan podés correrlas todas:
+
+| Migración | Qué agrega |
+|---|---|
+| `20260921_add_rag_materiales.sql` | Extensión pgvector y `rag_fragmentos_material` (índice RAG del material de cátedra) |
+| `20260929_fase0_auth_y_codigo_alumno.sql` | `docentes.password_hash` y `alumnos.codigo_acceso` (código de acceso por alumno) |
+| `20260930_fase1_intentos_y_anticheat.sql` | Intentos de examen (reloj del servidor, autoguardado), `eventos_integridad` y `examenes.anti_cheat` |
+| `20261001_fase2_vara_auditable.sql` | `ajustes_vara`, `ajustes_vara_detalle` y la nota con vara por respuesta |
+| `20261002_endurecimiento_fallos_acceso.sql` | `fallos_acceso`: el freno a los intentos fallidos de código vive en la base |
+| `20261003_supabase_auth.sql` | `docentes.auth_user_id` (login con Supabase Auth) |
+| `20261003_tp_link_alumnos.sql` | Link de entrega de trabajos prácticos (`slug_acceso`, modo seguro, ventana) e `intentos_entrega` |
+| `20261004_rls_todas_las_tablas.sql` | RLS en todas las tablas, sin policies (paso 3) |
+
+> Alternativa: en vez de correr `schema.sql` a mano, podés dejar que Prisma cree las tablas con
+> `npx prisma db push` (ver paso 2). **No es equivalente:** Prisma no modela `rag_fragmentos_material` (el RAG la
+> usa con SQL crudo) ni activa RLS, así que después tenés que correr a mano
+> `20260921_add_rag_materiales.sql` y `20261004_rls_todas_las_tablas.sql`. Por eso el camino recomendado es `schema.sql`.
 
 ## 2. Backend (NestJS)
 
@@ -106,7 +149,8 @@ cp .env.example .env
 
 Completá `.env`:
 
-- `DATABASE_URL`: el connection string de Supabase del paso 1.
+- `DATABASE_URL`: el connection string de Supabase del paso 1 (el formato y la alternativa del Session pooler
+  para `prisma db push` están comentados en `.env.example`).
 - `AI_PROVIDER`: `google` (default, Gemini 3.1 Flash-Lite) o `anthropic` (Claude Haiku 4.5).
 - `GOOGLE_GENERATIVE_AI_API_KEY`: tu clave de [Google AI Studio](https://aistudio.google.com/apikey)
   (si usás `google`).
@@ -117,7 +161,7 @@ Generá el cliente de Prisma y sincronizá el esquema:
 
 ```bash
 npx prisma generate
-npx prisma db push   # si NO corriste schema.sql a mano en Supabase
+npx prisma db push   # si NO corriste schema.sql a mano en Supabase (y entonces ver la nota del paso 1)
 ```
 
 Levantá el servidor:
@@ -162,17 +206,33 @@ mockup de Claude Design "Cátedra - Evaluaciones IA" (paleta ámbar, tipografía
 sombras suaves) — se mantuvieron los nombres de clase que ya usaban las páginas (`.page`, `.card`,
 `.btn`, `.field`, `.table`, `.tabs`…) para no tener que tocar cada `page.tsx`. La barra superior
 persistente (`app/components/TopNav.tsx`) también sale de ese mockup. Quedan afuera del alcance actual,
-por no tener backend equivalente todavía: el drag-and-drop de la barra de vara, los popovers de
-calendario (se usan inputs nativos) y el sistema de anti-trampa.
+por no tener backend equivalente todavía: el drag-and-drop de la barra de vara y los popovers de
+calendario (se usan inputs nativos).
+
+**Anti-trampa (señales de integridad).** Está implementado, con consentimiento. El docente activa por examen qué
+señales quiere (salida de pantalla completa, cambio de pestaña, pegado de texto; ver
+[`backend/src/respuestas-examen/anticheat.util.ts`](./backend/src/respuestas-examen/anticheat.util.ts)). Si hay alguna
+activa, el alumno ve **qué se monitorea** y tiene que aceptarlo para empezar: el servidor rechaza el inicio sin ese
+consentimiento y solo registra los eventos que el docente activó. Las señales se guardan como eventos del intento y se
+muestran en la revisión del docente como información para su criterio: **nunca bloquean el examen ni modifican la
+nota**.
 
 ## 4. Deploy
 
-- **Frontend**: Vercel, apuntando a la carpeta `frontend/`. Variable de entorno
-  `NEXT_PUBLIC_API_URL` = URL pública del backend + `/api`.
-- **Backend**: Vercel también funciona (hay soporte oficial para NestJS), o cualquier host de Node.
-  Variables de entorno: las mismas de `.env`, más `FRONTEND_ORIGIN` apuntando a la URL de Vercel del
+- **Frontend**: Vercel, apuntando a la carpeta `frontend/`. Variables de entorno: `NEXT_PUBLIC_API_URL` = URL
+  pública del backend + `/api`, y `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` (ver el login de
+  docentes más arriba).
+- **Backend**: un host de **Node persistente** (Render, Railway, Fly.io o similar), **no** serverless (Vercel
+  Functions). Build: `npm install && npx prisma generate && npm run build`; start: `npm run start:prod`, parado en
+  `backend/`. Variables de entorno: las mismas de `.env`, más `FRONTEND_ORIGIN` apuntando a la URL de Vercel del
   frontend (para CORS).
-- **DB**: ya vive en Supabase, no hace falta deployarla.
+  Por qué no serverless: el backend hace trabajo en segundo plano dentro del proceso: la corrección con IA se dispara
+  "fire and forget" al entregar (`respuestas-examen.service.ts`, y lo mismo al entregar un trabajo práctico desde el link),
+  y un `setInterval` cierra los intentos vencidos (`intentos.service.ts` para exámenes, `intentos-tp.service.ts` para
+  trabajos prácticos). En serverless el proceso se congela o se mata apenas se responde el request, así que esas tareas
+  pueden cortarse a la mitad o no correr nunca.
+- **DB**: ya vive en Supabase, no hace falta deployarla. Antes de abrir el deploy al público, verificá RLS con el `curl`
+  del paso 3 de la [sección 1](#1-base-de-datos-supabase).
 
 ## Sobre el modelo de IA elegido
 
@@ -184,10 +244,11 @@ token, pero para el volumen de un MVP de facultad la diferencia de costo es marg
 diferencia de calidad. Por eso quedó como default, con Claude Haiku 4.5 como alternativa intercambiable
 por variable de entorno (gracias al AI SDK, cambiar de proveedor no requiere tocar código).
 
-**Nota:** los nombres exactos de modelos "preview" (como `gemini-3.1-flash-lite`) pueden cambiar antes
-de production. Confirmá el ID exacto en la consola del proveedor antes de dar por cerrada esta
-decisión, y considerá correr la comparación de calidad que ya proponía el documento de Clase 3
-(15-20 entregas reales, dos o tres modelos, evaluar feedback y no solo precio).
+**Nota:** el ID `gemini-3.1-flash-lite` se verificó contra la doc oficial de Gemini el 2026-10-04 y figura como
+modelo estable (la variante `gemini-3.1-flash-lite-preview` ya está dada de baja: no usarla). Igual conviene
+confirmarlo con una llamada real antes de dar por cerrada esta decisión, y considerar correr la comparación de
+calidad que ya proponía el documento de Clase 3 (15-20 entregas reales, dos o tres modelos, evaluar feedback y no
+solo precio).
 
 ## Seguridad: inyección de prompt
 
