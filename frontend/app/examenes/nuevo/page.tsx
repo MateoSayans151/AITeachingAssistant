@@ -3,6 +3,9 @@
 // Wizard de "Nuevo examen". Este archivo es el orquestador: guarda el estado (`datos`, `preguntas`, paso, errores), valida paso
 // a paso, navega entre pasos, crea el examen y precarga el formulario cuando se duplica uno (?desde=<examenId>). Cada paso se
 // dibuja en su componente: PasoDatos, PasoPreguntas (con PreguntaCard y RubricaEditor) y PasoPublicar (autocontenido).
+//
+// Además guarda un borrador en el navegador mientras se arma el examen (ver lib/borrador-examen.ts): si se cierra la pestaña, al
+// volver se ofrece continuar donde se dejó. El examen se crea en el servidor recién al final del paso 2.
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -15,6 +18,7 @@ import {
   esNumero,
   examenAFormulario,
   formatearPuntos,
+  hayErrorEnAjustes,
   mensajesDelServidor,
   nivelesPorDefecto,
   preguntaVacia,
@@ -28,9 +32,13 @@ import {
   validarPregunta,
 } from '@/lib/examen-form';
 import type { DatosForm, PreguntaForm } from '@/lib/examen-form';
+import { plegarCompletas } from '@/lib/examen-preguntas';
+import { borradorTieneContenido, claveBorrador, haceCuanto, leerBorrador, serializarBorrador } from '@/lib/borrador-examen';
+import type { Borrador } from '@/lib/borrador-examen';
 import { PasoDatos } from './PasoDatos';
 import { PasoPreguntas } from './PasoPreguntas';
 import { PasoPublicar } from './PasoPublicar';
+import { VistaPreviaButton } from './VistaPreviaAlumno';
 
 // La escala de niveles y la distribución esperada ya no son pasos: viven en "Opciones avanzadas" del primer paso, porque
 // los valores por defecto sirven para la mayoría de los casos y no tiene sentido obligar a pasar por ahí.
@@ -62,8 +70,14 @@ function NuevoExamenForm() {
   const [cursos, setCursos] = useState<Curso[] | null>(null);
   const [matrices, setMatrices] = useState<MatrizRubrica[]>([]);
 
-  // Opciones avanzadas del paso 1 (plegadas por defecto). Viven acá para que un error de validación pueda abrirlas.
+  // "Cómo se rinde" y "Opciones avanzadas" del paso 1 (plegados por defecto). Viven acá para que un error de validación pueda abrirlos.
+  const [ajustesAbierto, setAjustesAbierto] = useState(false);
   const [avanzadoAbierto, setAvanzadoAbierto] = useState(false);
+
+  // Borrador guardado en el navegador: el que se encontró al entrar (a decidir) y cuándo fue el último autoguardado.
+  const [borradorPendiente, setBorradorPendiente] = useState<Borrador | null>(null);
+  const [guardadoEn, setGuardadoEn] = useState<number | null>(null);
+  const borradorRevisado = useRef(false);
 
   // Duplicar desde un examen existente (?desde=<examenId>): se carga una sola vez y el formulario se precarga con sus datos.
   const [cargandoDesde, setCargandoDesde] = useState(Boolean(desdeParam));
@@ -117,7 +131,8 @@ function NuevoExamenForm() {
           aprobadosPct: d.distribucion ? d.distribucion.aprobadosPct : prev.aprobadosPct,
           niveles: d.niveles,
         }));
-        setPreguntas(d.preguntas);
+        // Un examen largo se abre con las preguntas plegadas (todas completas: vienen de uno ya creado).
+        setPreguntas(d.preguntas.length > 3 ? plegarCompletas(d.preguntas) : d.preguntas);
         setDuplicandoTitulo(examen.titulo);
       })
       .catch((err) => {
@@ -129,6 +144,46 @@ function NuevoExamenForm() {
       })
       .finally(() => setCargandoDesde(false));
   }, [docente, desdeParam]);
+
+  // Las matrices se vuelven a pedir al volver a esta pestaña: así aparece la que el docente creó en /matrices/nueva (otra pestaña).
+  useEffect(() => {
+    if (!docente) return;
+    const recargar = () => {
+      listMatricesRubrica().then(setMatrices).catch(() => undefined);
+    };
+    window.addEventListener('focus', recargar);
+    return () => window.removeEventListener('focus', recargar);
+  }, [docente]);
+
+  // Borrador: ¿había un examen sin terminar guardado en este navegador? No se restaura solo: se le pregunta al docente.
+  useEffect(() => {
+    if (!docente || borradorRevisado.current) return;
+    borradorRevisado.current = true;
+    if (desdeParam) return; // duplicando: se parte del examen original, no de un borrador
+    try {
+      const b = leerBorrador(window.localStorage.getItem(claveBorrador(docente.id)));
+      if (b && borradorTieneContenido(b.datos, b.preguntas)) setBorradorPendiente(b);
+    } catch {
+      /* storage bloqueado (modo privado, políticas): se sigue sin borrador */
+    }
+  }, [docente, desdeParam]);
+
+  // Autoguardado, con 0,8 s de pausa tras el último cambio. No guarda un formulario vacío (no pisa un borrador anterior) ni
+  // mientras haya un borrador por decidir, ni una vez creado el examen.
+  useEffect(() => {
+    if (!docente || examenCreadoId || borradorPendiente || cargandoDesde || !borradorRevisado.current) return;
+    if (!borradorTieneContenido(datos, preguntas)) return;
+    const t = setTimeout(() => {
+      try {
+        const ahora = Date.now();
+        window.localStorage.setItem(claveBorrador(docente.id), serializarBorrador(datos, preguntas, ahora));
+        setGuardadoEn(ahora);
+      } catch {
+        /* sin lugar o bloqueado: solo que no hay borrador, el formulario sigue funcionando */
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [datos, preguntas, docente, examenCreadoId, borradorPendiente, cargandoDesde]);
 
   if (cargando) {
     return (
@@ -186,13 +241,36 @@ function NuevoExamenForm() {
     return e;
   }
 
-  /** Un error de las opciones avanzadas no se ve si el bloque está plegado: se abre para que el motivo quede a la vista. */
+  /** Un error de un bloque plegado ("Cómo se rinde", "Opciones avanzadas") no se ve: se abre para que el motivo quede a la vista. */
   const hayErrorAvanzado = () => validarNiveles(datos.niveles).length > 0 || validarDistribucion(datos).length > 0;
+  const abrirBloquesConError = () => {
+    if (hayErrorAvanzado()) setAvanzadoAbierto(true);
+    if (hayErrorEnAjustes(datos)) setAjustesAbierto(true);
+  };
+
+  function continuarBorrador() {
+    const b = borradorPendiente;
+    if (!b) return;
+    // Si el curso del borrador ya no existe, se vuelve al primero de la lista (o a crear uno).
+    const cursoExiste = b.datos.cursoElegido === 'nuevo' || cursos === null || cursos.some((c) => c.id === b.datos.cursoElegido);
+    setDatos({ ...b.datos, cursoElegido: cursoExiste ? b.datos.cursoElegido : (cursos?.[0]?.id ?? 'nuevo') });
+    setPreguntas(b.preguntas);
+    setBorradorPendiente(null);
+  }
+
+  function descartarBorrador() {
+    try {
+      window.localStorage.removeItem(claveBorrador(docente!.id));
+    } catch {
+      /* nada que borrar */
+    }
+    setBorradorPendiente(null);
+  }
 
   function irASiguiente() {
     const e = validarPaso(paso);
     setErrores(e);
-    if (e.length > 0 && paso === 0 && hayErrorAvanzado()) setAvanzadoAbierto(true);
+    if (e.length > 0 && paso === 0) abrirBloquesConError();
     if (e.length === 0) setPaso(paso + 1);
   }
 
@@ -208,7 +286,7 @@ function NuevoExamenForm() {
       const e = validarPaso(p);
       if (e.length > 0) {
         setErrores(e);
-        if (p === 0 && hayErrorAvanzado()) setAvanzadoAbierto(true);
+        if (p === 0) abrirBloquesConError();
         setPaso(p);
         return;
       }
@@ -243,6 +321,11 @@ function NuevoExamenForm() {
       });
       setExamenCreadoId(examen.id);
       setCursoDelExamenId(cursoId);
+      try {
+        if (docente) window.localStorage.removeItem(claveBorrador(docente.id)); // ya está en el servidor: el borrador no hace falta
+      } catch {
+        /* nada que borrar */
+      }
       setPaso(PASO_PUBLICAR);
     } catch (err) {
       const detalle = mensajesDelServidor(err);
@@ -271,6 +354,26 @@ function NuevoExamenForm() {
       {errorDesde && (
         <div className="error-box" role="alert">
           {errorDesde}
+        </div>
+      )}
+      {borradorPendiente && (
+        <div className="card" role="region" aria-label="Borrador sin terminar" style={{ marginBottom: 20 }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            Tenés un examen sin terminar
+          </div>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            «{borradorPendiente.datos.titulo.trim() || 'Sin título'}» · {borradorPendiente.preguntas.length}{' '}
+            {borradorPendiente.preguntas.length === 1 ? 'pregunta' : 'preguntas'} · guardado {haceCuanto(borradorPendiente.guardadoEn)}. Lo
+            guardamos en este navegador mientras lo armabas.
+          </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-primary" onClick={continuarBorrador}>
+              Continuar donde lo dejé
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={descartarBorrador}>
+              Descartar y empezar de cero
+            </button>
+          </div>
         </div>
       )}
 
@@ -328,6 +431,8 @@ function NuevoExamenForm() {
           datos={datos}
           onChange={cambiarDatos}
           cursos={cursos}
+          ajustesAbierto={ajustesAbierto}
+          onToggleAjustes={() => setAjustesAbierto((v) => !v)}
           avanzadoAbierto={avanzadoAbierto}
           onToggleAvanzado={() => setAvanzadoAbierto((v) => !v)}
         />
@@ -341,6 +446,8 @@ function NuevoExamenForm() {
           matrices={matrices}
           escalaMin={datos.escalaMin}
           escalaMax={datos.escalaMax}
+          errores={errores}
+          onMatrizCreada={(m) => setMatrices((prev) => [m, ...prev.filter((x) => x.id !== m.id)])}
           onUsarComoEscala={(total) => {
             patchDatos({ escalaMax: String(redondearPuntos(total)) });
             setErrores([]);
@@ -349,11 +456,16 @@ function NuevoExamenForm() {
       )}
 
       {paso === PASO_PUBLICAR && examenCreadoId && (
-        <PasoPublicar examenId={examenCreadoId} cursoId={cursoDelExamenId} tituloExamen={datos.titulo.trim()} />
+        <PasoPublicar
+          examenId={examenCreadoId}
+          cursoId={cursoDelExamenId}
+          tituloExamen={datos.titulo.trim()}
+          duracionMinutos={datos.modalidad === 'sesion_tiempo' && Number(datos.duracionMinutos) >= 1 ? Number(datos.duracionMinutos) : null}
+        />
       )}
 
       {paso < PASO_PUBLICAR && (
-        <div style={{ marginTop: 28, display: 'flex', gap: 12 }}>
+        <div style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           {paso > 0 && (
             <button type="button" className="btn btn-secondary" onClick={() => irAPaso(paso - 1)} disabled={loading}>
               Atrás
@@ -365,9 +477,13 @@ function NuevoExamenForm() {
             </button>
           ) : (
             <button type="button" className="btn btn-primary" onClick={handleCrearExamen} disabled={loading}>
-              {loading ? 'Creando…' : 'Crear examen y continuar'}
+              {loading ? 'Guardando…' : 'Guardar y continuar'}
             </button>
           )}
+          <VistaPreviaButton datos={datos} preguntas={preguntas} />
+          <span className="muted" aria-live="polite" style={{ fontSize: 13 }}>
+            {guardadoEn !== null && !borradorPendiente ? 'Borrador guardado en este navegador ✓' : ''}
+          </span>
         </div>
       )}
     </div>

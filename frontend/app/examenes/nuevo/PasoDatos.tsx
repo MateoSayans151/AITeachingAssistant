@@ -1,7 +1,9 @@
 'use client';
 
-// PasoDatos: el paso 1 del wizard. Curso, título, consigna, modalidad, escala, feedback, señales de integridad y el bloque
-// plegable "Opciones avanzadas" (escala de niveles de desempeño y distribución esperada de aprobados).
+// PasoDatos: el paso 1 del wizard. Lo obligatorio está siempre a la vista (curso, título, consigna) y el resto va en dos bloques
+// plegables, porque casi siempre alcanza con los valores por defecto (un "modo rápido"): "Cómo se rinde" (modalidad y duración,
+// escala, liberación del feedback, señales de integridad) y "Opciones avanzadas" (escala de niveles de desempeño y distribución
+// esperada de aprobados). Cada bloque muestra un resumen de lo configurado y un error de validación lo vuelve a abrir.
 //
 // La escala de niveles es SIEMPRE el editor personalizado: de 3 a 7 niveles (5 por defecto), con nombre y porcentaje editables,
 // "Quitar" por fila, "+ Agregar nivel", "Cantidad de niveles" y "Repartir porcentajes en partes iguales". El color de cada nivel
@@ -9,13 +11,15 @@
 // `@/lib/examen-form` (agregarNivel, quitarNivel, repartirPorcentajes, cambiarCantidadNiveles).
 //
 // Contrato:
-//   PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAvanzado })
+//   PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAjustes, avanzadoAbierto, onToggleAvanzado })
 //     datos             DatosForm completo (el estado vive en el padre).
 //     onChange(patch)   se llama con los campos que cambiaron (Partial<DatosForm>); el padre los mezcla con `datos`. Cuando
 //                       cambia la escala avisa con `onChange({ niveles })` (el arreglo completo, ya normalizado: orden 1..N y
 //                       colores por posición): el padre se apoya en eso para reconciliar los niveles de cada criterio
 //                       (`reconciliarNiveles`). Cada acción del docente hace UN solo `onChange`.
 //     cursos            cursos del docente, o null mientras se cargan (el select queda deshabilitado).
+//     ajustesAbierto    si "Cómo se rinde" está desplegado (estado del padre: un error de validación lo vuelve a abrir).
+//     onToggleAjustes   el docente apretó el botón de "Cómo se rinde".
 //     avanzadoAbierto   si "Opciones avanzadas" está desplegado (estado del padre: un error de validación lo vuelve a abrir).
 //     onToggleAvanzado  el docente apretó el botón de "Opciones avanzadas".
 
@@ -29,10 +33,12 @@ import {
   cambiarCantidadNiveles,
   esNumero,
   formatearPuntos,
+  hayErrorEnAjustes,
   nivelDelMedio,
   puntosDeEjemplo,
   quitarNivel,
   repartirPorcentajes,
+  resumenAjustes,
   resumenNiveles,
   validarDistribucion,
   validarNiveles,
@@ -44,11 +50,13 @@ export interface PasoDatosProps {
   datos: DatosForm;
   onChange: (patch: Partial<DatosForm>) => void;
   cursos: Curso[] | null;
+  ajustesAbierto: boolean;
+  onToggleAjustes: () => void;
   avanzadoAbierto: boolean;
   onToggleAvanzado: () => void;
 }
 
-export function PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAvanzado }: PasoDatosProps) {
+export function PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAjustes, avanzadoAbierto, onToggleAvanzado }: PasoDatosProps) {
   const { niveles } = datos;
   const [anuncio, setAnuncio] = useState(''); // texto de la región aria-live (cambios de cantidad y reparto)
   const enfocarNivel = useRef<number | null>(null); // fila cuyo nombre recibe el foco después de agregar o quitar
@@ -99,6 +107,7 @@ export function PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAv
   const puntosEjemplo = nivelEjemplo ? puntosDeEjemplo(nivelEjemplo.porcentaje) : null;
   const erroresNiveles = validarNiveles(niveles);
   const avanzadoConError = erroresNiveles.length > 0 || validarDistribucion(datos).length > 0;
+  const ajustesConError = hayErrorEnAjustes(datos);
   const enMinimo = niveles.length <= MIN_NIVELES;
   const enMaximo = niveles.length >= MAX_NIVELES;
   // Cantidades del select: de 3 a 7 (y la real, si un examen duplicado trajera una fuera de ese rango, para no mostrar otra).
@@ -131,79 +140,95 @@ export function PasoDatos({ datos, onChange, cursos, avanzadoAbierto, onToggleAv
         <label htmlFor="consigna">Consigna / instrucciones generales</label>
         <textarea id="consigna" value={datos.consigna} onChange={(e) => onChange({ consigna: e.target.value })} required />
       </div>
-      <div className="field">
-        <label htmlFor="modalidad">Modalidad</label>
-        <select id="modalidad" value={datos.modalidad} onChange={(e) => onChange({ modalidad: e.target.value as ModalidadExamen })}>
-          <option value="ventana_dias">Ventana de varios días (el alumno entra cuando quiere dentro del rango)</option>
-          <option value="sesion_tiempo">Sesión con tiempo límite</option>
-        </select>
-      </div>
-      {datos.modalidad === 'sesion_tiempo' && (
-        <div className="field">
-          <label htmlFor="duracion">Duración (minutos)</label>
-          <input id="duracion" type="number" min="1" value={datos.duracionMinutos} onChange={(e) => onChange({ duracionMinutos: e.target.value })} />
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 16 }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label htmlFor="escalaMin">Escala mínima</label>
-          <input id="escalaMin" type="number" value={datos.escalaMin} onChange={(e) => onChange({ escalaMin: e.target.value })} />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label htmlFor="escalaMax">Escala máxima</label>
-          <input id="escalaMax" type="number" value={datos.escalaMax} onChange={(e) => onChange({ escalaMax: e.target.value })} />
-        </div>
-      </div>
-      <p className="muted" style={{ fontSize: 13, margin: '-6px 0 16px' }}>
-        El total de puntos de las preguntas tiene que sumar la escala máxima.
-        {esNumero(datos.escalaMin) && Number(datos.escalaMin) !== 0 && (
-          <>
-            <br />
-            La nota se calcula como la suma de puntos (de 0 al total): la escala mínima solo se usa para acotar el ajuste de vara.
-          </>
-        )}
-      </p>
-      <div className="field">
-        <label htmlFor="feedbackModo">Liberación de feedback</label>
-        <select id="feedbackModo" value={datos.feedbackModo} onChange={(e) => onChange({ feedbackModo: e.target.value as FeedbackModo })}>
-          <option value="manual">Manual (el docente libera el feedback cuando quiere)</option>
-          <option value="inmediato">Inmediato (apenas el docente termina de revisar cada respuesta)</option>
-        </select>
-      </div>
       <div className="card" style={{ marginBottom: 16 }}>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
-          <input type="checkbox" checked={datos.antiCheatOn} onChange={(e) => onChange({ antiCheatOn: e.target.checked })} />
-          Registrar señales de integridad durante el examen
-        </label>
-        <p className="muted" style={{ margin: '6px 0 0' }}>
-          Solo se registran eventos (no se bloquea nada ni se baja la nota): vos los ves junto a cada respuesta y decidís. Antes de
-          empezar, el alumno ve exactamente qué se monitorea y tiene que aceptarlo.
-        </p>
-        {datos.antiCheatOn && (
-          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-            <label style={{ display: 'flex', gap: 8 }}>
-              <input type="checkbox" checked={datos.acPantalla} onChange={(e) => onChange({ acPantalla: e.target.checked })} />
-              Pantalla completa: registra cada vez que el alumno sale de ella
-            </label>
-            <label style={{ display: 'flex', gap: 8 }}>
-              <input type="checkbox" checked={datos.acPestana} onChange={(e) => onChange({ acPestana: e.target.checked })} />
-              Cambio de pestaña o ventana
-            </label>
-            <label style={{ display: 'flex', gap: 8 }}>
-              <input type="checkbox" checked={datos.acPegado} onChange={(e) => onChange({ acPegado: e.target.checked })} />
-              Pegado de texto en las respuestas
-            </label>
-            {!datos.acPantalla && !datos.acPestana && !datos.acPegado && <p className="muted">Sin ningún control marcado, el examen se rinde sin monitoreo.</p>}
-            {datos.modalidad === 'ventana_dias' && (
-              <p className="muted">
-                Ojo: en una ventana de varios días el alumno rinde desde su casa, y estos controles dicen poco. Suelen tener más
-                sentido en una sesión con tiempo límite.
-              </p>
+        <div className="accordion-bar" style={{ marginTop: 0 }}>
+          <button type="button" className="accordion-toggle" onClick={onToggleAjustes} aria-expanded={ajustesAbierto} aria-controls="como-se-rinde">
+            <svg className="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 2l4 4-4 4" />
+            </svg>
+            Cómo se rinde
+            <span className={ajustesConError ? 'accordion-summary-error' : 'accordion-summary'}>· {resumenAjustes(datos)}</span>
+          </button>
+        </div>
+
+        {ajustesAbierto && (
+          <div id="como-se-rinde" style={{ marginTop: 16 }}>
+          <div className="field">
+            <label htmlFor="modalidad">Modalidad</label>
+            <select id="modalidad" value={datos.modalidad} onChange={(e) => onChange({ modalidad: e.target.value as ModalidadExamen })}>
+              <option value="ventana_dias">Ventana de varios días (el alumno entra cuando quiere dentro del rango)</option>
+              <option value="sesion_tiempo">Sesión con tiempo límite</option>
+            </select>
+          </div>
+          {datos.modalidad === 'sesion_tiempo' && (
+            <div className="field">
+              <label htmlFor="duracion">Duración (minutos)</label>
+              <input id="duracion" type="number" min="1" value={datos.duracionMinutos} onChange={(e) => onChange({ duracionMinutos: e.target.value })} />
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="escalaMin">Escala mínima</label>
+              <input id="escalaMin" type="number" value={datos.escalaMin} onChange={(e) => onChange({ escalaMin: e.target.value })} />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="escalaMax">Escala máxima</label>
+              <input id="escalaMax" type="number" value={datos.escalaMax} onChange={(e) => onChange({ escalaMax: e.target.value })} />
+            </div>
+          </div>
+          <p className="muted" style={{ fontSize: 13, margin: '-6px 0 16px' }}>
+            El total de puntos de las preguntas tiene que sumar la escala máxima.
+            {esNumero(datos.escalaMin) && Number(datos.escalaMin) !== 0 && (
+              <>
+                <br />
+                La nota se calcula como la suma de puntos (de 0 al total): la escala mínima solo se usa para acotar el ajuste de vara.
+              </>
             )}
-            <p className="muted">
-              En secundaria, los alumnos son menores: el aviso del examen no reemplaza el consentimiento institucional (términos de uso
-              del colegio), que conviene resolver aparte.
+          </p>
+          <div className="field">
+            <label htmlFor="feedbackModo">Liberación de feedback</label>
+            <select id="feedbackModo" value={datos.feedbackModo} onChange={(e) => onChange({ feedbackModo: e.target.value as FeedbackModo })}>
+              <option value="manual">Manual (el docente libera el feedback cuando quiere)</option>
+              <option value="inmediato">Inmediato (apenas el docente termina de revisar cada respuesta)</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 4 }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
+              <input type="checkbox" checked={datos.antiCheatOn} onChange={(e) => onChange({ antiCheatOn: e.target.checked })} />
+              Registrar señales de integridad durante el examen
+            </label>
+            <p className="muted" style={{ margin: '6px 0 0' }}>
+              Solo se registran eventos (no se bloquea nada ni se baja la nota): vos los ves junto a cada respuesta y decidís. Antes de
+              empezar, el alumno ve exactamente qué se monitorea y tiene que aceptarlo.
             </p>
+            {datos.antiCheatOn && (
+              <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                <label style={{ display: 'flex', gap: 8 }}>
+                  <input type="checkbox" checked={datos.acPantalla} onChange={(e) => onChange({ acPantalla: e.target.checked })} />
+                  Pantalla completa: registra cada vez que el alumno sale de ella
+                </label>
+                <label style={{ display: 'flex', gap: 8 }}>
+                  <input type="checkbox" checked={datos.acPestana} onChange={(e) => onChange({ acPestana: e.target.checked })} />
+                  Cambio de pestaña o ventana
+                </label>
+                <label style={{ display: 'flex', gap: 8 }}>
+                  <input type="checkbox" checked={datos.acPegado} onChange={(e) => onChange({ acPegado: e.target.checked })} />
+                  Pegado de texto en las respuestas
+                </label>
+                {!datos.acPantalla && !datos.acPestana && !datos.acPegado && <p className="muted">Sin ningún control marcado, el examen se rinde sin monitoreo.</p>}
+                {datos.modalidad === 'ventana_dias' && (
+                  <p className="muted">
+                    Ojo: en una ventana de varios días el alumno rinde desde su casa, y estos controles dicen poco. Suelen tener más
+                    sentido en una sesión con tiempo límite.
+                  </p>
+                )}
+                <p className="muted">
+                  En secundaria, los alumnos son menores: el aviso del examen no reemplaza el consentimiento institucional (términos de uso
+                  del colegio), que conviene resolver aparte.
+                </p>
+              </div>
+            )}
+          </div>
           </div>
         )}
       </div>

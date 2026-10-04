@@ -284,16 +284,28 @@ test('criteriosParaMatriz: nivelesDescripcion solo si TODOS los criterios tienen
   assert.equal(criteriosParaMatriz(conEspacios, NIVELES)[0].nivelesDescripcion![0].descripcion, 'Detalle Insuficiente');
 });
 
-test('criteriosParaMatriz: la cantidad de niveles tiene que coincidir con la escala del examen (y con los 5 que acepta el servidor)', () => {
-  // Detalle de 3 niveles en un examen de 3: no es lo que acepta el servidor en una matriz (5), se omite.
-  const p3 = { ...preguntaVacia(NIVELES_3), tipo: 'desarrollo' as const, puntajeMaximo: '10', criterios: [criterio('1', 'Tres', true, NIVELES_3)] };
-  const resultado = criteriosParaMatriz(p3, NIVELES_3);
-  assert.equal(resultado.length, 1);
-  assert.equal(resultado[0].nivelesDescripcion, undefined);
+test('criteriosParaMatriz: el detalle por nivel viaja solo si coincide con la escala del examen y esa escala es de 3 a 7 niveles', () => {
+  const escalaDe = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ orden: i + 1, nombre: `N${i + 1}`, colorHex: '#000000', porcentaje: String(Math.round((100 * i) / (n - 1))) }));
+
+  // Detalle de 3 niveles en un examen de 3, y de 7 en uno de 7: es lo que acepta el servidor (3 a 7), viaja completo.
+  for (const n of [3, 5, 7]) {
+    const niv = escalaDe(n);
+    const p = { ...preguntaVacia(niv), tipo: 'desarrollo' as const, puntajeMaximo: '10', criterios: [criterio('1', 'Crit', true, niv)] };
+    assert.equal(criteriosParaMatriz(p, niv)[0].nivelesDescripcion?.length, n, `${n} niveles`);
+  }
 
   // Criterios con 5 niveles pero el examen ahora tiene 3: no coincide con la escala, se omite.
   assert.ok(criteriosParaMatriz(abierta('10', ['1'], true), NIVELES_3).every((c) => c.nivelesDescripcion === undefined));
-  // Sin escala se toman los 5 del criterio.
+
+  // Una escala fuera de rango (2 u 8 niveles) no es válida en una matriz: se guarda sin detalle en vez de provocar un 400.
+  for (const n of [2, 8]) {
+    const niv = escalaDe(n);
+    const p = { ...preguntaVacia(niv), tipo: 'desarrollo' as const, puntajeMaximo: '10', criterios: [criterio('1', 'Crit', true, niv)] };
+    assert.equal(criteriosParaMatriz(p, niv)[0].nivelesDescripcion, undefined, `${n} niveles`);
+  }
+
+  // Sin escala se toman los niveles del propio criterio.
   assert.equal(criteriosParaMatriz(abierta('10', ['1'], true))[0].nivelesDescripcion?.length, 5);
 });
 

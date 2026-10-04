@@ -303,9 +303,9 @@ export function PreguntaCard({
           onChange={onChange}
           niveles={niveles}
           matrices={matrices}
-          // TODO(integración): RubricaEditor todavía no declara estas props (las agrega otro agente): se pasan con un cast mínimo
-          // para que compile sin ellas. Cuando estén en `RubricaEditorProps`, pasarlas directo y borrar el cast.
-          {...({ onMatrizCreada, onAplicarATodas } as object)}
+          onMatrizCreada={onMatrizCreada}
+          onAplicarATodas={onAplicarATodas}
+          errores={errores}
         />
       )}
 

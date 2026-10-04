@@ -171,7 +171,9 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
     if (tieneCriteriosCargados(actual) && !window.confirm('Esto reemplaza los criterios actuales. ¿Seguir?')) return;
     setIa({ estado: 'pensando' });
     try {
-      const { criterios } = await sugerirCriterios({ enunciado: actual.enunciado, tipo: actual.tipo });
+      // La IA describe tantos niveles como tiene la escala del examen (3 a 7), así el detalle por nivel queda utilizable.
+      const cantidadNiveles = niveles.length >= 3 && niveles.length <= 7 ? niveles.length : undefined;
+      const { criterios } = await sugerirCriterios({ enunciado: actual.enunciado, tipo: actual.tipo, cantidadNiveles });
       if (!montado.current) return;
       if (criterios.length === 0) throw new Error('sin criterios');
       // Si mientras esperaba cambió el tipo de pregunta, la sugerencia ya no corresponde.

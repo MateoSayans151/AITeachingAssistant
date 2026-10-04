@@ -419,8 +419,9 @@ export function tieneCriteriosCargados(p: PreguntaForm): boolean {
   return p.criterios.some((c) => c.nombre.trim() || c.descripcion.trim() || c.peso.trim() || c.niveles.some((nv) => nv.descripcion.trim()));
 }
 
-/** Cantidad de niveles que el servidor exige en una matriz cuando se manda el detalle por nivel. */
-export const NIVELES_POR_MATRIZ = 5;
+/** Cantidad de niveles que acepta el servidor en una matriz cuando se manda el detalle por nivel (de 3 a 7, como la escala del examen). */
+export const NIVELES_MATRIZ_MIN = 3;
+export const NIVELES_MATRIZ_MAX = 7;
 
 /** Menor peso que acepta el servidor en un criterio de matriz. */
 const PESO_MINIMO_MATRIZ = 0.01;
@@ -437,15 +438,16 @@ export interface CriterioMatrizPayload {
  * Criterios de la pregunta listos para guardarlos como matriz de rúbrica, o [] si todavía no se puede: no hay ninguno o alguno
  * está a medias (nombre, qué se espera y un peso de al menos 0,01 son obligatorios; las filas totalmente en blanco se saltean).
  * `nivelesDescripcion` solo va si TODOS los criterios tienen todos sus niveles descritos, son tantos como la escala del examen
- * (`nivelesExamen`) y son los 5 que acepta el servidor; si no, se omite en todos (la matriz se guarda sin detalle).
+ * (`nivelesExamen`) y esa cantidad es de 3 a 7 (lo que acepta el servidor); si no, se omite en todos (la matriz se guarda sin detalle).
  */
 export function criteriosParaMatriz(p: PreguntaForm, nivelesExamen?: NivelForm[]): CriterioMatrizPayload[] {
   const cargados = p.criterios.filter((c) => c.nombre.trim() || c.descripcion.trim() || c.peso.trim());
   const listo = (c: CriterioForm) => c.nombre.trim() && c.descripcion.trim() && Number.isFinite(Number(c.peso)) && Number(c.peso) >= PESO_MINIMO_MATRIZ;
   if (cargados.length === 0 || !cargados.every(listo)) return [];
 
-  const escala = nivelesExamen ? nivelesExamen.length : NIVELES_POR_MATRIZ;
-  const conDetalle = cargados.every((c) => c.niveles.length === escala && c.niveles.length === NIVELES_POR_MATRIZ && estadoDetalle(c).completo);
+  const escala = nivelesExamen ? nivelesExamen.length : (cargados[0]?.niveles.length ?? 0);
+  const escalaValida = escala >= NIVELES_MATRIZ_MIN && escala <= NIVELES_MATRIZ_MAX;
+  const conDetalle = escalaValida && cargados.every((c) => c.niveles.length === escala && estadoDetalle(c).completo);
   return cargados.map((c) => ({
     nombre: c.nombre.trim(),
     descripcion: c.descripcion.trim(),
@@ -735,6 +737,23 @@ export function validarDatos(d: DatosForm): string[] {
   if (d.modalidad === 'sesion_tiempo' && !(Number(d.duracionMinutos) >= 1)) e.push('La duración tiene que ser de al menos 1 minuto.');
   e.push(...validarNiveles(d.niveles), ...validarDistribucion(d));
   return e;
+}
+
+// ---------------------------------------------------------------- "Cómo se rinde": ajustes plegables del primer paso
+
+/** true si algún ajuste de "Cómo se rinde" (escala, duración de la sesión) tiene un error: hay que abrir el bloque para mostrarlo. */
+export function hayErrorEnAjustes(d: DatosForm): boolean {
+  if (!esNumero(d.escalaMin) || !esNumero(d.escalaMax)) return true;
+  if (Number(d.escalaMin) >= Number(d.escalaMax)) return true;
+  return d.modalidad === 'sesion_tiempo' && !(Number(d.duracionMinutos) >= 1);
+}
+
+/** Resumen de una línea de los ajustes, para mostrar con el bloque plegado ("ventana de varios días · escala 0 a 10 · …"). */
+export function resumenAjustes(d: DatosForm): string {
+  const como = d.modalidad === 'sesion_tiempo' ? `sesión de ${d.duracionMinutos.trim() || '?'} min` : 'ventana de varios días';
+  const feedback = d.feedbackModo === 'inmediato' ? 'feedback inmediato' : 'feedback manual';
+  const integridad = d.antiCheatOn && (d.acPantalla || d.acPestana || d.acPegado) ? 'con señales de integridad' : 'sin señales de integridad';
+  return `${como} · escala ${d.escalaMin.trim() || '?'} a ${d.escalaMax.trim() || '?'} · ${feedback} · ${integridad}`;
 }
 
 // ---------------------------------------------------------------- mapeo inverso: examen existente -> formulario
