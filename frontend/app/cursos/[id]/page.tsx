@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Curso, MaterialCurso, createMaterialCurso, eliminarMaterialCurso, getCurso } from '@/lib/api';
+import { Comision, Curso, MaterialCurso, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso } from '@/lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
   borrador: 'Borrador',
@@ -96,12 +96,57 @@ export default function CursoDetallePage() {
           )}
 
           {curso.comisiones?.map((comision) => (
-            <div key={comision.id} className="card">
-              <div className="card-title">{comision.nombre}</div>
-              <div className="card-meta">{comision._count?.alumnos ?? 0} alumnos</div>
-            </div>
+            <ComisionCard key={comision.id} comision={comision} />
           ))}
         </>
+      )}
+    </div>
+  );
+}
+
+/** Comisión con su listado de alumnos (entran a rendir con su email). */
+function ComisionCard({ comision }: { comision: Comision }) {
+  const [detalle, setDetalle] = useState<Comision | null>(null);
+  const [abierto, setAbierto] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle() {
+    if (!abierto && !detalle) {
+      try {
+        setDetalle(await getComision(comision.id));
+      } catch {
+        setError('No se pudo cargar el listado.');
+        return;
+      }
+    }
+    setAbierto(!abierto);
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title">{comision.nombre}</div>
+      <div className="card-meta">{comision._count?.alumnos ?? 0} alumnos</div>
+      <button type="button" className="btn btn-secondary" style={{ marginTop: 12 }} onClick={toggle}>
+        {abierto ? 'Ocultar alumnos' : 'Ver alumnos'}
+      </button>
+      {error && <div className="error-box" style={{ marginTop: 12 }}>{error}</div>}
+      {abierto && detalle && (
+        <table className="table" style={{ marginTop: 12 }}>
+          <thead>
+            <tr>
+              <th>Alumno</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detalle.alumnos?.map((a) => (
+              <tr key={a.id}>
+                <td>{a.nombre}</td>
+                <td>{a.email}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

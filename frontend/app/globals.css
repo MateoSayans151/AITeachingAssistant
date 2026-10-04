@@ -240,6 +240,12 @@ h4 {
   cursor: pointer;
 }
 
+/* Aro de foco con el color de la marca (el nativo, azul, desentona sobre el ámbar). Solo al navegar con teclado. */
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent-active);
+  outline-offset: 2px;
+}
+
 .btn-primary {
   background: var(--color-accent);
   color: #fff;
@@ -290,9 +296,14 @@ h4 {
   margin-bottom: 6px;
 }
 
+/* Los inputs de las filas de criterio y de nivel no viven dentro de un .field, así que
+   comparten el mismo estilo por selector propio. */
 .field input,
 .field textarea,
-.field select {
+.field select,
+.criterio-row input,
+.nivel-row input,
+.nivel-row textarea {
   width: 100%;
   min-height: 38px;
   border: 1px solid var(--color-border);
@@ -306,13 +317,19 @@ h4 {
 
 .field input:hover,
 .field textarea:hover,
-.field select:hover {
+.field select:hover,
+.criterio-row input:hover,
+.nivel-row input:hover,
+.nivel-row textarea:hover {
   border-color: var(--color-neutral-800);
 }
 
 .field input:focus,
 .field textarea:focus,
-.field select:focus {
+.field select:focus,
+.criterio-row input:focus,
+.nivel-row input:focus,
+.nivel-row textarea:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
@@ -322,12 +339,217 @@ h4 {
   min-height: 120px;
 }
 
+/* Campo marcado por la validación del formulario. */
+input[aria-invalid='true'],
+input[aria-invalid='true']:hover,
+textarea[aria-invalid='true'],
+textarea[aria-invalid='true']:hover {
+  border-color: var(--color-error);
+  background: var(--color-error-soft);
+}
+
 .criterio-row {
   display: grid;
   grid-template-columns: 2fr 3fr 100px auto;
   gap: 10px;
   align-items: start;
   margin-bottom: 10px;
+}
+
+/* Variante con etiqueta visible sobre cada campo y puntaje de ancho fijo. */
+.criterio-row-labeled {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) 120px auto;
+  align-items: end;
+  margin-bottom: 0;
+}
+
+.mini-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mini-field > span {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.mini-field input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .criterio-row-labeled {
+    grid-template-columns: 1fr;
+  }
+
+  .criterio-row-labeled > .btn-icon {
+    justify-self: end;
+  }
+}
+
+/* ---- tarjeta de criterio (matrices de rúbrica) ---- */
+.card-invalid {
+  border-color: color-mix(in srgb, var(--color-error) 55%, transparent);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.accordion-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.accordion-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.accordion-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.accordion-toggle .chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.accordion-toggle[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+.accordion-summary {
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.accordion-summary-error {
+  font-weight: 600;
+  color: var(--color-error);
+}
+
+/* ---- fila de nivel de desempeño ---- */
+.nivel-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.nivel-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.nivel-row textarea {
+  resize: none;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+/* Medidor de 5 segmentos: cuántos se llenan marca el nivel; el color va de gris a ámbar. */
+.nivel-meter {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.nivel-meter i {
+  width: 5px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--color-neutral-300);
+}
+
+@media (max-width: 720px) {
+  .nivel-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .nivel-label {
+    height: auto;
+  }
+}
+
+/* ---- botón de ícono (acciones destructivas compactas) ---- */
+.btn-icon {
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: var(--color-neutral-800);
+}
+
+.btn-icon:hover:not(:disabled) {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+}
+
+/* ---- barra de acciones fija al pie del formulario ---- */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-6);
+  padding: var(--space-3) 0;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.action-bar-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.action-bar-total {
+  font-weight: 600;
+}
+
+.action-bar-error {
+  font-size: 13px;
+  color: var(--color-error);
 }
 
 /* ---- etiquetas de estado (badge/tag) ---- */
@@ -394,6 +616,35 @@ h4 {
   font-size: 15px;
   font-weight: 600;
   color: var(--color-text);
+}
+
+/* Estado de cada paso: hecho y actual pintan la línea con el acento; los pendientes quedan en gris legible (no por opacidad). */
+.stepper .step[data-state='done'],
+.stepper .step[data-state='current'] {
+  border-top-color: var(--color-accent);
+}
+
+.stepper .step[data-state='current'] .step-label {
+  font-weight: 700;
+}
+
+.stepper .step[data-state='pending'] .step-num,
+.stepper .step[data-state='pending'] .step-label {
+  color: var(--color-text-secondary);
+}
+
+.stepper .step[role='button'] {
+  cursor: pointer;
+}
+
+.stepper .step[role='button']:hover .step-label {
+  text-decoration: underline;
+}
+
+.stepper .step[role='button']:focus-visible {
+  outline: 2px solid var(--color-accent-active);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .muted {
@@ -488,12 +739,6 @@ h4 {
   font-weight: 600;
 }
 
-.nivel-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
 
 /* ---- diálogo modal (opcional, por si se agrega alguno) ---- */
 .dialog-backdrop {

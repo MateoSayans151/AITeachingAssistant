@@ -2,17 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Curso, Docente, listCursos } from '@/lib/api';
+import { Curso, listCursos } from '@/lib/api';
+import { useDocente } from '@/lib/auth';
 
 export default function CursosPage() {
-  const [docente, setDocente] = useState<Docente | null>(null);
+  const docente = useDocente();
   const [cursos, setCursos] = useState<Curso[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem('ata_docente');
-    if (raw) setDocente(JSON.parse(raw));
-  }, []);
 
   useEffect(() => {
     if (!docente) return;
@@ -32,13 +28,16 @@ export default function CursosPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">Cátedra</div>
+        <div className="eyebrow">Cursos y exámenes</div>
         <h1>Tus cursos</h1>
         <p>Cursos con sus comisiones y exámenes. Cada examen se publica a una o más comisiones.</p>
       </header>
 
-      <div style={{ marginBottom: 24 }}>
-        <Link href="/cursos/nuevo" className="btn btn-primary">
+      <div style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link href="/examenes/nuevo" className="btn btn-primary">
+          + Nuevo examen
+        </Link>
+        <Link href="/cursos/nuevo" className="btn btn-secondary">
           + Nuevo curso
         </Link>
       </div>

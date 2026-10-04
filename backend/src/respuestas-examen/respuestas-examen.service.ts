@@ -1,11 +1,14 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { TIPOS_AUTOCORREGIBLES } from '../examenes/dto/create-examen.dto';
-import { RegistrarRespuestaDto } from './dto/registrar-respuesta.dto';
 import { RevisarRespuestaExamenDto } from './dto/revisar-respuesta-examen.dto';
-import { corregirPreguntaCerrada, sanitizarOpcionesParaAlumno } from './correccion-cerradas.util';
-import { RagService } from '../rag/rag.service';
+import { corregirPreguntaCerrada } from './correccion-cerradas.util';
+import { RagService, armarConsultaRag } from '../rag/rag.service';
+import { MaterialCursoInput } from '../ai/ai.types';
+import { LimitadorConcurrencia, maxConcurrentesDesdeEnv } from '../ai/limitador-concurrencia.util';
+import { NotificacionesService } from '../mail/notificaciones.service';
+import { debeNotificarse } from './resultado.util';
 
 type RespuestaPorPregunta = {
   preguntaId: string;
@@ -19,108 +22,100 @@ type RespuestaPorPregunta = {
 @Injectable()
 export class RespuestasExamenService {
   private readonly logger = new Logger(RespuestasExamenService.name);
+  // Tope de llamadas a la IA (RAG + LLM) en simultáneo en todo el proceso (env IA_MAX_CONCURRENTES).
+  readonly limitador = new LimitadorConcurrencia(maxConcurrentesDesdeEnv(process.env.IA_MAX_CONCURRENTES));
+  // Correcciones en marcha por id de respuesta, incluidas las que esperan turno en el limitador.
+  private readonly enCurso = new Map<string, Promise<void>>();
+  // Ids que una tanda de "corregir pendientes" tomó y todavía no procesó: un 2º click no los duplica.
+  private readonly enLote = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly rag: RagService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
-  /** Trae el examen (sin claves de respuesta) para la página pública de rendir. */
-  async obtenerParaRendir(slug: string) {
-    const examenComision = await this.prisma.examenComision.findUnique({
-      where: { slugAcceso: slug },
-      include: {
-        examen: { include: { preguntas: { orderBy: { orden: 'asc' }, include: { criterios: true } } } },
-        comision: true,
-      },
-    });
-    if (!examenComision) throw new NotFoundException('Link de acceso inválido');
-
-    this.validarVentana(examenComision);
-
-    return {
-      examen: {
-        id: examenComision.examen.id,
-        titulo: examenComision.examen.titulo,
-        consigna: examenComision.examen.consigna,
-        modalidad: examenComision.examen.modalidad,
-        duracionMinutos: examenComision.examen.duracionMinutos,
-        preguntas: examenComision.examen.preguntas.map((p) => ({
-          id: p.id,
-          tipo: p.tipo,
-          enunciado: p.enunciado,
-          puntajeMaximo: p.puntajeMaximo,
-          opciones: sanitizarOpcionesParaAlumno(p.tipo, p.opciones),
-        })),
-      },
-      comision: { id: examenComision.comision.id, nombre: examenComision.comision.nombre },
-    };
-  }
-
-  private validarVentana(examenComision: { fechaInicio: Date | null; fechaFin: Date | null }) {
-    const ahora = new Date();
-    if (examenComision.fechaInicio && ahora < examenComision.fechaInicio) {
-      throw new BadRequestException('Todavía no se abrió la ventana de entrega de este examen');
-    }
-    if (examenComision.fechaFin && ahora > examenComision.fechaFin) {
-      throw new BadRequestException('La ventana de entrega de este examen ya cerró');
-    }
-  }
-
   /**
-   * Simulación consciente del "alumno rinde por link": no hay autenticación de alumnos
-   * en el proyecto, así que identificamos al alumno por email contra el roster ya cargado
-   * de la comisión, sin timer ni anti-cheat de sesión. Ver plan de implementación.
+   * Crea la respuesta de un alumno a partir de lo que entregó (o de su último borrador, si
+   * venció el tiempo) y dispara la corrección. La corrección corre en segundo plano: el
+   * alumno no espera a la IA, y si falla la respuesta queda pendiente para re-corregir a mano.
    */
-  async crear(slug: string, dto: RegistrarRespuestaDto) {
-    const examenComision = await this.prisma.examenComision.findUnique({
-      where: { slugAcceso: slug },
-      include: { examen: true },
-    });
-    if (!examenComision) throw new NotFoundException('Link de acceso inválido');
-    this.validarVentana(examenComision);
-
-    const alumno = await this.prisma.alumno.findFirst({
-      where: { comisionId: examenComision.comisionId, email: dto.alumnoEmail },
-    });
-    if (!alumno) {
-      throw new NotFoundException('Ese email no está en el listado de esta comisión. Consultá con tu docente.');
-    }
-
-    const existente = await this.prisma.respuestaExamen.findUnique({
-      where: { examenId_alumnoId: { examenId: examenComision.examenId, alumnoId: alumno.id } },
-    });
-    if (existente) throw new BadRequestException('Ya enviaste una respuesta para este examen');
-
-    const respuestasPorPreguntaInicial: RespuestaPorPregunta[] = dto.respuestas.map((r) => ({
-      preguntaId: r.preguntaId,
-      contenidoRespuesta: r.contenido ?? null,
+  async crearDesdeContenido(examenId: string, alumnoId: string, contenidoPorPregunta: Record<string, unknown>) {
+    const preguntas = await this.prisma.pregunta.findMany({ where: { examenId }, orderBy: { orden: 'asc' }, select: { id: true } });
+    // Una entrada por pregunta del examen (las que no contestó quedan en null).
+    const inicial: RespuestaPorPregunta[] = preguntas.map((p) => ({
+      preguntaId: p.id,
+      contenidoRespuesta: contenidoPorPregunta[p.id] ?? null,
       notaSugerida: 0,
       notaFinal: null,
     }));
 
     const respuesta = await this.prisma.respuestaExamen.create({
-      data: {
-        examenId: examenComision.examenId,
-        alumnoId: alumno.id,
-        respuestasPorPregunta: respuestasPorPreguntaInicial as any,
-      },
+      data: { examenId, alumnoId, respuestasPorPregunta: inicial as any },
     });
 
-    // Igual que EntregasService.create(): se corrige sincrónicamente y, si la IA falla,
-    // la respuesta queda creada igual (pendiente_correccion) para reintentar a mano.
-    try {
-      await this.corregir(respuesta.id);
-    } catch (err) {
-      this.logger.error(`Falló la corrección automática de la respuesta ${respuesta.id}`, err as Error);
-    }
-
-    return this.prisma.respuestaExamen.findUnique({ where: { id: respuesta.id }, include: { alumno: true } });
+    void this.corregir(respuesta.id).catch((err) =>
+      this.logger.error(`Falló la corrección automática de la respuesta ${respuesta.id}`, err as Error),
+    );
+    return respuesta;
   }
 
-  /** Corrige (o re-corrige) una respuesta: cerradas en código, abiertas con IA. */
+  /**
+   * Corrige (o re-corrige) una respuesta: cerradas en código, abiertas con IA. Es el único punto
+   * que corrige. Si esa respuesta ya se está corrigiendo (o espera turno para la IA) se engancha
+   * a esa corrección en vez de lanzar otra: no se paga la IA dos veces ni se pisan los resultados.
+   * Si la IA falla, el error se propaga y la respuesta queda como estaba (pendiente_correccion).
+   */
   async corregir(respuestaId: string) {
+    let tarea = this.enCurso.get(respuestaId);
+    if (!tarea) {
+      tarea = this.corregirUnaVez(respuestaId).finally(() => this.enCurso.delete(respuestaId));
+      this.enCurso.set(respuestaId, tarea);
+    }
+    await tarea;
+    return this.prisma.respuestaExamen.findUnique({ where: { id: respuestaId }, include: { alumno: true } });
+  }
+
+  /**
+   * Reintenta en segundo plano las respuestas del examen que quedaron en pendiente_correccion
+   * (429 del proveedor, IA caída). Responde enseguida con cuántas hay; las que ya se están
+   * corrigiendo o ya tomó otra tanda se cuentan pero no se lanzan de nuevo: terminan solas.
+   */
+  async corregirPendientes(examenId: string): Promise<{ pendientes: number }> {
+    const pendientes = await this.prisma.respuestaExamen.findMany({
+      where: { examenId, estado: 'pendiente_correccion' },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const nuevas = pendientes.map((p) => p.id).filter((id) => !this.enCurso.has(id) && !this.enLote.has(id));
+    nuevas.forEach((id) => this.enLote.add(id));
+    void this.corregirLote(nuevas);
+    return { pendientes: pendientes.length };
+  }
+
+  /**
+   * Corrige los ids de a pocos (tantos como llamadas simultáneas admite el limitador, así no se
+   * disparan cientos de lecturas a la base de golpe). Un error en una respuesta se loguea y sigue
+   * con las demás; nunca rechaza.
+   */
+  async corregirLote(ids: string[]): Promise<void> {
+    const cola = [...ids];
+    const trabajador = async () => {
+      for (let id = cola.shift(); id !== undefined; id = cola.shift()) {
+        try {
+          await this.corregir(id);
+        } catch (err) {
+          this.logger.error(`Falló la re-corrección de la respuesta ${id}`, err as Error);
+        } finally {
+          this.enLote.delete(id);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(this.limitador.maximo, cola.length) }, trabajador));
+  }
+
+  private async corregirUnaVez(respuestaId: string): Promise<void> {
     const respuesta = await this.prisma.respuestaExamen.findUnique({
       where: { id: respuestaId },
       include: {
@@ -147,28 +142,33 @@ export class RespuestasExamenService {
 
     let resultadoAbiertas = { porPregunta: [] as any[], notaTotalSugerida: 0, feedbackGeneralSugerido: '' };
     if (abiertas.length > 0) {
-      const consultaRag = abiertas
-        .map((p) => `${p.enunciado}\n${String(contenidoPorPregunta.get(p.id) ?? '')}`)
-        .join('\n\n');
-      const materialRecuperado = await this.rag.buscarMaterial(respuesta.examen.cursoId, consultaRag);
-      resultadoAbiertas = await this.ai.corregirRespuestaExamen({
-        preguntas: abiertas.map((p) => ({
-          id: p.id,
-          enunciado: p.enunciado,
-          criterios: p.criterios.map((c) => ({
-            id: c.id,
-            nombre: c.nombre,
-            descripcion: c.descripcion,
-            puntajeMaximo: Number(c.puntajeMaximo),
-            nivelesDescripcion: c.nivelesDescripcion as any,
+      // RAG + LLM van juntos bajo el limitador: son las llamadas externas que se saturan
+      // cuando entrega medio curso a la vez.
+      resultadoAbiertas = await this.limitador.ejecutar(async () => {
+        const materialRecuperado = await this.materialDeCatedra(
+          respuestaId,
+          respuesta.examen.cursoId,
+          abiertas.map((p) => ({ enunciado: p.enunciado, respuesta: String(contenidoPorPregunta.get(p.id) ?? '') })),
+        );
+        return this.ai.corregirRespuestaExamen({
+          preguntas: abiertas.map((p) => ({
+            id: p.id,
+            enunciado: p.enunciado,
+            criterios: p.criterios.map((c) => ({
+              id: c.id,
+              nombre: c.nombre,
+              descripcion: c.descripcion,
+              puntajeMaximo: Number(c.puntajeMaximo),
+              nivelesDescripcion: c.nivelesDescripcion as any,
+            })),
           })),
-        })),
-        respuestasAlumno: abiertas.map((p) => ({
-          preguntaId: p.id,
-          texto: String(contenidoPorPregunta.get(p.id) ?? ''),
-        })),
-        niveles: respuesta.examen.niveles as any,
-        materialCurso: materialRecuperado,
+          respuestasAlumno: abiertas.map((p) => ({
+            preguntaId: p.id,
+            texto: String(contenidoPorPregunta.get(p.id) ?? ''),
+          })),
+          niveles: respuesta.examen.niveles as any,
+          materialCurso: materialRecuperado,
+        });
       });
     }
 
@@ -208,20 +208,49 @@ export class RespuestasExamenService {
           resultadoAbiertas.feedbackGeneralSugerido || 'Corrección automática (preguntas de clave/opción).',
         estado: 'corregido',
         estadoRevision: 'pendiente',
+        // La nota base cambió: la vara que se le había aplicado ya no corresponde.
+        notaConVara: null,
+        ajusteVaraId: null,
         notaTotalFinal: null,
         feedbackGeneralFinal: null,
         revisadoEn: null,
       },
     });
-
-    return this.prisma.respuestaExamen.findUnique({ where: { id: respuestaId }, include: { alumno: true } });
   }
 
-  findAllByExamen(examenId: string) {
-    return this.prisma.respuestaExamen.findMany({
+  /**
+   * El material de cátedra es un apoyo, no un requisito: si la búsqueda falla (pgvector sin
+   * migrar, cuota de embeddings agotada...) se corrige sin él en vez de tumbar la corrección.
+   */
+  private async materialDeCatedra(
+    respuestaId: string,
+    cursoId: string,
+    preguntas: Array<{ enunciado: string; respuesta: string }>,
+  ): Promise<MaterialCursoInput[]> {
+    try {
+      return await this.rag.buscarMaterial(cursoId, armarConsultaRag(preguntas));
+    } catch (err) {
+      this.logger.warn(
+        `No se pudo traer el material de cátedra para la respuesta ${respuestaId}; se corrige sin material: ${(err as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  async findAllByExamen(examenId: string) {
+    const respuestas = await this.prisma.respuestaExamen.findMany({
       where: { examenId },
       orderBy: { createdAt: 'asc' },
       include: { alumno: true },
+    });
+    const intentos = await this.prisma.intentoExamen.findMany({
+      where: { examenId },
+      include: { _count: { select: { eventos: true } } },
+    });
+    const porAlumno = new Map(intentos.map((i) => [i.alumnoId, i]));
+    return respuestas.map((r) => {
+      const i = porAlumno.get(r.alumnoId);
+      return { ...r, intento: i ? { estado: i.estado, eventos: i._count.eventos } : null };
     });
   }
 
@@ -236,14 +265,48 @@ export class RespuestasExamenService {
     if (!respuesta || respuesta.examenId !== examenId) {
       throw new NotFoundException(`Respuesta ${id} no encontrada`);
     }
-    return respuesta;
+    const intento = await this.prisma.intentoExamen.findUnique({
+      where: { examenId_alumnoId: { examenId, alumnoId: respuesta.alumnoId } },
+      include: { eventos: { orderBy: { ocurridoEn: 'asc' } } },
+    });
+    return {
+      ...respuesta,
+      // Señales de integridad: informativas para el criterio del docente, no tocan la nota.
+      integridad: intento
+        ? {
+            estado: intento.estado,
+            inicioEn: intento.inicioEn,
+            entregadoEn: intento.entregadoEn,
+            expiraEn: intento.expiraEn,
+            consentimientoEn: intento.consentimientoEn,
+            eventos: intento.eventos.map((e) => ({ tipo: e.tipo, ocurridoEn: e.ocurridoEn, detalle: e.detalle })),
+          }
+        : null,
+    };
   }
 
-  /** El docente confirma o edita la corrección sugerida. Igual criterio que CorreccionesService. */
+  /**
+   * El docente confirma o edita la corrección sugerida. Igual criterio que CorreccionesService.
+   * Si el examen es de feedback inmediato (o ya tiene las notas publicadas) el alumno recibe su resultado por mail
+   * apenas se revisa, en segundo plano: un fallo del envío no rompe la revisión (queda anotado y se reintenta con
+   * "reenviar"). Una respuesta que ya había sido notificada NO vuelve a mandar mail al re-corregirla o re-revisarla
+   * (`notificadoEn` no se toca): un segundo mail con otra nota desconcierta más de lo que ayuda, así que revisar de
+   * nuevo no es un disparador de envíos. "Reenviar" solo alcanza a los que no recibieron su mail (los que fallaron o
+   * quedaron sin enviar).
+   */
   async revisar(examenId: string, id: string, dto: RevisarRespuestaExamenDto) {
     const respuesta = await this.prisma.respuestaExamen.findUnique({ where: { id } });
     if (!respuesta || respuesta.examenId !== examenId) {
       throw new NotFoundException(`Respuesta ${id} no encontrada`);
+    }
+
+    // Aceptar confirma la nota que sugirió la IA: si nunca corrigió (notaTotalSugerida null) no hay
+    // nada que confirmar, y aceptar dejaría una nota 0 como si fuera la definitiva. Editar sí vale:
+    // el docente puede calificar a mano lo que la IA no pudo corregir.
+    if (dto.estadoRevision === 'aceptada' && respuesta.notaTotalSugerida == null) {
+      throw new ConflictException(
+        'Esta respuesta todavía no fue corregida por la IA: corregila primero o cargá la nota a mano.',
+      );
     }
 
     const actuales = respuesta.respuestasPorPregunta as RespuestaPorPregunta[];
@@ -259,11 +322,11 @@ export class RespuestasExamenService {
       }));
     }
 
-    // Igual que en bulkAceptar: si ya se le aplicó una vara mientras estaba "pendiente",
-    // respetamos ese ajuste en vez de pisarlo con la sugerencia cruda de la IA.
+    // Aceptar confirma la nota sugerida tal como está hoy: con la vara vigente, si tiene una.
+    // Editar es decisión del docente y se impone a la vara.
     const notaTotalFinal =
       dto.estadoRevision === 'aceptada'
-        ? Number(respuesta.notaTotalFinal ?? respuesta.notaTotalSugerida ?? 0)
+        ? Number(respuesta.notaConVara ?? respuesta.notaTotalSugerida ?? 0)
         : (dto.notaTotalFinal ?? respuestasPorPregunta.reduce((sum, r) => sum + Number(r.notaFinal ?? 0), 0));
 
     const feedbackGeneralFinal =
@@ -271,7 +334,7 @@ export class RespuestasExamenService {
         ? respuesta.feedbackGeneralSugerido
         : (dto.feedbackGeneralFinal ?? respuesta.feedbackGeneralSugerido);
 
-    return this.prisma.respuestaExamen.update({
+    const actualizada = await this.prisma.respuestaExamen.update({
       where: { id },
       data: {
         respuestasPorPregunta: respuestasPorPregunta as any,
@@ -282,12 +345,34 @@ export class RespuestasExamenService {
         revisadoEn: new Date(),
       },
     });
+    void this.notificarRevisadas(examenId, [id], dto.estadoRevision);
+    return actualizada;
   }
 
-  /** Acepta en bloque todas las respuestas todavía pendientes de revisión de un examen. */
+  /**
+   * Manda en segundo plano el mail de las respuestas recién revisadas, si les toca ya (feedback inmediato o notas
+   * publicadas) y el envío está configurado; si no, se omite en silencio y quedan como "sin enviar" en el resumen de
+   * notificaciones. Nunca rechaza: la revisión ya se guardó y no se rompe por esto.
+   */
+  private async notificarRevisadas(examenId: string, ids: string[], estadoRevision: string): Promise<void> {
+    try {
+      if (!this.notificaciones.configurado) return;
+      const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
+      if (!examen || !debeNotificarse({ estadoRevision }, examen)) return;
+      this.notificaciones.lanzarLote(examenId, ids);
+    } catch (err) {
+      this.logger.error(`No se pudo iniciar el envío de mails de la revisión (examen ${examenId})`, err as Error);
+    }
+  }
+
+  /**
+   * Acepta en bloque las respuestas corregidas y todavía pendientes de revisión de un examen.
+   * Las que la IA nunca corrigió (siguen en pendiente_correccion, sin nota sugerida) quedan afuera:
+   * aceptarlas las marcaría como revisadas sin nota.
+   */
   async bulkAceptar(examenId: string) {
     const pendientes = await this.prisma.respuestaExamen.findMany({
-      where: { examenId, estadoRevision: 'pendiente' },
+      where: { examenId, estado: 'corregido', estadoRevision: 'pendiente', notaTotalSugerida: { not: null } },
     });
     if (pendientes.length === 0) return [];
 
@@ -301,9 +386,8 @@ export class RespuestasExamenService {
           where: { id: r.id },
           data: {
             respuestasPorPregunta: respuestasPorPregunta as any,
-            // Si ya se le aplicó una vara mientras estaba "pendiente", notaTotalFinal ya
-            // tiene ese valor ajustado — no lo pisamos con la sugerencia cruda de la IA.
-            notaTotalFinal: r.notaTotalFinal ?? r.notaTotalSugerida,
+            // Se confirma la sugerencia con la vara vigente, si tiene una.
+            notaTotalFinal: r.notaConVara ?? r.notaTotalSugerida,
             feedbackGeneralFinal: r.feedbackGeneralSugerido,
             estadoRevision: 'aceptada',
             estado: 'revisado',
@@ -313,6 +397,7 @@ export class RespuestasExamenService {
       }),
     );
 
+    void this.notificarRevisadas(examenId, pendientes.map((r) => r.id), 'aceptada');
     return this.findAllByExamen(examenId);
   }
 }

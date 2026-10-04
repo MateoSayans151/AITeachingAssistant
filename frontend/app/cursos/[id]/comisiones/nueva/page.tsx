@@ -36,7 +36,10 @@ export default function NuevaComisionPage() {
     setLoading(true);
     setError(null);
     try {
-      const alumnosValidos = alumnos.filter((a) => a.nombre && a.email);
+      // El email va sin espacios y en minúsculas: el alumno rinde con él y el match no distingue mayúsculas.
+      const alumnosValidos = alumnos
+        .map((a) => ({ ...a, email: a.email.trim().toLowerCase() }))
+        .filter((a) => a.nombre && a.email);
       await createComision(params.id, {
         nombre,
         alumnos: alumnosValidos.length > 0 ? alumnosValidos : undefined,
@@ -68,7 +71,7 @@ export default function NuevaComisionPage() {
         <div className="field">
           <label>Alumnos</label>
           <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-            Cada alumno se identifica por su email cuando entra a rendir un examen por link.
+            Cada alumno rinde ingresando su email, así que cargalo con el mismo que usa.
           </div>
 
           {alumnos.map((a, i) => (

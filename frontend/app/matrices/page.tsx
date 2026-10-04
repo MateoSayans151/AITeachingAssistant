@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Docente, MatrizRubrica, listMatricesRubrica } from '@/lib/api';
+import { MatrizRubrica, listMatricesRubrica } from '@/lib/api';
+import { useDocente } from '@/lib/auth';
+import { pesosEnPorcentaje } from '@/lib/examen-form';
+
+const formatoPorcentaje = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 
 export default function MatricesPage() {
-  const [docente, setDocente] = useState<Docente | null>(null);
+  const docente = useDocente();
   const [matrices, setMatrices] = useState<MatrizRubrica[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem('ata_docente');
-    if (raw) setDocente(JSON.parse(raw));
-  }, []);
 
   useEffect(() => {
     if (!docente) return;
@@ -32,9 +31,12 @@ export default function MatricesPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">Cátedra</div>
+        <div className="eyebrow">Matrices</div>
         <h1>Matrices de rúbrica</h1>
-        <p>Librería reutilizable: al crear una pregunta abierta en un examen podés partir de una de estas matrices.</p>
+        <p>
+          Librería reutilizable: al crear una pregunta abierta en un examen podés partir de una de estas matrices. El peso de cada
+          criterio define cómo se reparten los puntos de la pregunta.
+        </p>
       </header>
 
       <div style={{ marginBottom: 24 }}>
@@ -47,12 +49,22 @@ export default function MatricesPage() {
       {matrices === null && !error && <p className="muted">Cargando…</p>}
       {matrices?.length === 0 && <div className="empty-state">Todavía no cargaste ninguna matriz.</div>}
 
-      {matrices?.map((m) => (
-        <div key={m.id} className="card">
-          <div className="card-title">{m.nombre}</div>
-          <div className="card-meta">{m.criterios.length} criterios</div>
-        </div>
-      ))}
+      {matrices?.map((m) => {
+        const porcentajes = pesosEnPorcentaje(m.criterios.map((c) => c.puntajeMaximo)); // en la matriz, `puntajeMaximo` es el peso
+        return (
+          <div key={m.id} className="card">
+            <div className="card-title">{m.nombre}</div>
+            <div className="card-meta">{m.criterios.length} {m.criterios.length === 1 ? 'criterio' : 'criterios'}</div>
+            <ul style={{ listStyle: 'none', marginTop: 10, display: 'grid', gap: 4, fontSize: 14 }} aria-label={`Criterios de ${m.nombre}`}>
+              {m.criterios.map((c, i) => (
+                <li key={c.id}>
+                  {c.nombre} <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>· {formatoPorcentaje.format(porcentajes[i])} %</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }

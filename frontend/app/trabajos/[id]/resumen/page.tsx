@@ -1,11 +1,33 @@
-import Link from 'next/link';
-import { getTrabajoPractico, getUltimoResumenCurso } from '@/lib/api';
+'use client';
 
-export default async function ResumenCursoPage({ params }: { params: { id: string } }) {
-  const [tp, resumen] = await Promise.all([
-    getTrabajoPractico(params.id),
-    getUltimoResumenCurso(params.id).catch(() => null),
-  ]);
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { ResumenCurso, TrabajoPractico, getTrabajoPractico, getUltimoResumenCurso } from '@/lib/api';
+import { useSesion } from '@/lib/auth';
+
+// Componente de cliente: el pedido a la API necesita la sesión del navegador (en el servidor de Next no existe).
+export default function ResumenCursoPage() {
+  const params = useParams<{ id: string }>();
+  const { docente, cargando } = useSesion();
+  const [tp, setTp] = useState<TrabajoPractico | null>(null);
+  const [resumen, setResumen] = useState<ResumenCurso | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!docente) return;
+    Promise.all([getTrabajoPractico(params.id), getUltimoResumenCurso(params.id).catch(() => null)])
+      .then(([t, r]) => {
+        setTp(t);
+        setResumen(r);
+      })
+      .catch((e) => setError(e.message));
+  }, [docente, params.id]);
+
+  if (cargando) return <div className="page"><p className="muted">Cargando…</p></div>;
+  if (!docente) return <div className="page"><p className="muted">Identificate primero desde el inicio.</p></div>;
+  if (error) return <div className="page"><div className="error-box">{error}</div></div>;
+  if (!tp) return <div className="page"><p className="muted">Cargando…</p></div>;
 
   return (
     <div className="page">

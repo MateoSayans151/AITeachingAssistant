@@ -1,21 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Docente, createCurso } from '@/lib/api';
+import { createCurso } from '@/lib/api';
+import { useDocente } from '@/lib/auth';
 
 export default function NuevoCursoPage() {
   const router = useRouter();
-  const [docente, setDocente] = useState<Docente | null>(null);
+  const docente = useDocente();
   const [nombre, setNombre] = useState('');
   const [materia, setMateria] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem('ata_docente');
-    if (raw) setDocente(JSON.parse(raw));
-  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,7 +19,7 @@ export default function NuevoCursoPage() {
     setLoading(true);
     setError(null);
     try {
-      const curso = await createCurso({ docenteId: docente.id, nombre, materia: materia || undefined });
+      const curso = await createCurso({ nombre, materia: materia || undefined });
       router.push(`/cursos/${curso.id}`);
     } catch (err) {
       setError('No se pudo crear el curso. Intentá de nuevo.');

@@ -8,7 +8,7 @@ create table if not exists rag_fragmentos_material (
   curso_id uuid not null references cursos(id) on delete cascade,
   indice integer not null check (indice >= 0),
   contenido text not null,
-  -- text-embedding-004 reducido a 768 dimensiones.
+  -- gemini-embedding-001 reducido a 768 dimensiones (RAG_EMBEDDING_MODEL_ID / RAG_EMBEDDING_DIMENSIONS).
   embedding extensions.vector(768) not null,
   created_at timestamptz not null default now(),
   unique (material_id, indice)

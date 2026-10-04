@@ -5,7 +5,7 @@
 El RAG queda dentro del backend NestJS, sin crear ni gestionar branches de Supabase.
 
 1. Al crear un material, `RagService` lo divide en fragmentos de aproximadamente 2.200 caracteres con solapamiento.
-2. Genera un embedding de 768 dimensiones por fragmento con `text-embedding-004` y lo guarda en `rag_fragmentos_material` (pgvector).
+2. Genera un embedding de 768 dimensiones por fragmento con `gemini-embedding-001` (modelo y dimensiones configurables con `RAG_EMBEDDING_MODEL_ID` y `RAG_EMBEDDING_DIMENSIONS`; los fragmentos se embeben como `RETRIEVAL_DOCUMENT` y la consulta como `RETRIEVAL_QUERY`) y lo guarda en `rag_fragmentos_material` (pgvector).
 3. Antes de corregir las preguntas abiertas, genera un embedding de la consigna y las respuestas del alumno y recupera los seis fragmentos mas cercanos, siempre filtrados por `curso_id`.
 4. Solo esos fragmentos llegan a `AiService`. La rubrica sigue determinando la nota y la validacion de notas sigue ocurriendo en codigo.
 
@@ -15,6 +15,7 @@ La migracion a aplicar en la base elegida es `supabase/migrations/20260921_add_r
 
 - El `curso_id` se filtra dentro de la consulta vectorial; no se recuperan fragmentos de otra materia.
 - Al borrar un material, sus fragmentos se borran por `ON DELETE CASCADE`.
+- `rag_fragmentos_material` queda cubierta por la migracion de RLS `supabase/migrations/20261004_rls_todas_las_tablas.sql` (deny-all para `anon`/`authenticated`, sin policies): solo el backend la lee y escribe, con SQL crudo desde `RagService`, conectado como `postgres`.
 - Si falla el embedding al crear un material, el texto se conserva y se puede reintentar la indexacion mediante el endpoint.
 - No cambiar `RAG_EMBEDDING_MODEL_ID` ni `RAG_EMBEDDING_DIMENSIONS` sin reindexar: vectores de modelos o dimensiones distintas no se pueden comparar.
 - La indexacion es sincronica y adecuada para texto plano del MVP. Para PDF/Word o lotes grandes deberia pasar a una cola.
