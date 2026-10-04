@@ -83,6 +83,36 @@ criterio, pero la rúbrica sigue mandando sobre la nota — no se evalúa como i
 válido solo porque no aparece en el material. Mismo criterio "texto plano, a propósito" del resto del
 MVP: no hay carga de PDF/imagen todavía.
 
+### Armar y publicar un examen (Cátedra)
+
+**Nuevo examen** (`/examenes/nuevo`) son 3 pasos: *Datos* → *Preguntas* → *Publicar*. Lo obligatorio del primer paso es el curso,
+el título y la consigna; el resto está plegado con un resumen de lo configurado (un error de validación vuelve a abrir el bloque):
+
+- **Cómo se rinde:** ventana de varios días o sesión con tiempo límite, escala de notas, liberación del feedback y señales de integridad.
+- **Opciones avanzadas:** la escala de **niveles de desempeño** (siempre personalizada: de **3 a 7 niveles**, 5 por defecto, con nombre
+  y porcentaje; el color se calcula solo, de rojo a verde) y la distribución esperada de aprobados que precarga la vara.
+- **Borrador automático:** mientras se arma, el formulario se guarda en el navegador (una clave por docente). Si se cierra la
+  pestaña, al volver se ofrece *Continuar donde lo dejé* o *Descartar*. Al crear el examen en el servidor el borrador se borra.
+- **Preguntas:** 10 tipos, agrupados en *Se corrigen solas* (opción múltiple, casillas, verdadero/falso, numérica, relacionar
+  pares) y *Las corrige la IA* (desarrollo, resolución de problema, demostración, análisis de caso, respuesta corta). Cada tarjeta se
+  puede plegar, subir/bajar y duplicar. **La nota es la suma de puntos y el total tiene que ser igual a la escala máxima**
+  (el wizard muestra el total y *Repartir X pts en partes iguales*; el servidor lo vuelve a validar).
+- **Relacionar pares:** el servidor entrega la columna derecha **mezclada** (con una semilla estable), porque en el orden en que se
+  carga cada opción queda alineada con su pareja correcta.
+- **Rúbricas:** una pregunta abierta tiene sus *puntos* y cada criterio un *peso*; los puntos se reparten según el peso. El detalle
+  de qué implica cada nivel es opcional. Las **matrices** guardan criterios con peso para reutilizarlos: se pueden crear desde la
+  propia pregunta (*Guardar estos criterios como matriz*), aplicar a una pregunta y copiar a todas las abiertas.
+  **Sugerir criterios con IA** (`POST /api/examenes/sugerir-criterios`, tope de 20 por minuto) propone un borrador a partir del
+  enunciado para que el docente lo edite; no se aplica solo.
+- **Vista previa del alumno:** el botón muestra el examen tal como lo ve el alumno, con el mismo componente de pregunta y sin
+  clave de respuestas. Nada de lo que se escribe ahí se guarda.
+- **Publicar:** se pega la lista de alumnos (se avisa de emails duplicados, inválidos o con typos de dominio como `gmial.com`),
+  se elige el nombre de la comisión y las fechas opcionales, y se genera el link. **Enviar el link por mail a los alumnos**
+  (`POST /api/examenes/:id/invitaciones`) usa Resend, igual que las notas: el plan gratuito permite 100 mails por día y el avance
+  del envío se guarda en memoria del servidor (se pierde si se reinicia).
+- **Duplicar y eliminar:** *Duplicar y editar* abre el wizard precargado con el examen (`/examenes/nuevo?desde=<id>`). *Eliminar*
+  solo se puede si nadie empezó ni entregó el examen.
+
 ## 1. Base de datos (Supabase)
 
 1. Creá un proyecto en [supabase.com](https://supabase.com).
@@ -346,6 +376,9 @@ corrige a mano", no un problema de seguridad del proyecto.
 ## Qué falta para una v2
 
 - Edición inline de la nota por criterio (hoy solo se edita la nota total y el feedback).
-- Carga de PDF/Word con extracción de texto (hoy es texto plano pegado o escrito).
+- Carga de PDF/Word como material de cátedra (hoy es texto plano pegado o escrito). Falta: un endpoint `multipart` (`multer` ya está
+  instalado), extracción de texto (no hay librería de PDF; un PDF escaneado necesitaría OCR), columnas de archivo y de estado de
+  indexación, indexar en segundo plano y por lotes (hoy se piden todos los embeddings a la vez), límites (por ejemplo 10 MB por
+  archivo y 20 archivos por curso) y la pantalla de subida con estados *Indexando / Listo / Error*.
 - Notificación al alumno en los trabajos prácticos: para exámenes ya existe (ver [Mails con la nota](#mails-con-la-nota-resend)); falta avisar cuando el docente confirma la corrección de una entrega.
 - Cola de trabajo para la corrección con IA en vez de ejecutarla sincrónicamente al crear la entrega.
