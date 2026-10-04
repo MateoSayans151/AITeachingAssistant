@@ -1,8 +1,13 @@
-// Formulario del wizard de "Nuevo examen": tipos, funciones puras de armado (opciones, total de puntos) y el mapeo
-// inverso desde un examen ya creado (para duplicarlo). Sin React ni estado: todo lo que se pueda probar suelto va acá.
+// Formulario del wizard de "Nuevo examen": tipos, funciones puras de armado (opciones, puntos, payload, validación) y el
+// mapeo inverso desde un examen ya creado (para duplicarlo). Sin React ni estado: todo lo que se pueda probar suelto va acá.
+//
+// Modelo de puntos: TODA pregunta (cerrada o abierta) tiene sus propios puntos en `PreguntaForm.puntajeMaximo`. En una
+// pregunta abierta esos puntos se reparten entre los criterios de la rúbrica según su `peso` relativo (`puntosPorCriterio`).
 
-import { TIPOS_AUTOCORREGIBLES } from './api';
-import type { AntiCheatConfig, Examen, FeedbackModo, ModalidadExamen, Pregunta, TipoPregunta } from './api';
+import { ApiError, TIPOS_AUTOCORREGIBLES } from './api';
+import type { AntiCheatConfig, Examen, FeedbackModo, MatrizRubrica, ModalidadExamen, Pregunta, TipoPregunta } from './api';
+
+export const esNumero = (v: string) => v.trim() !== '' && Number.isFinite(Number(v));
 
 export interface NivelForm {
   orden: number;
@@ -21,13 +26,61 @@ export function nivelesPorDefecto(): NivelForm[] {
   ];
 }
 
-// Un criterio es una fila como en los trabajos prácticos: qué se evalúa, qué se espera y cuántos puntos vale.
+// ---------------------------------------------------------------- datos del examen (paso 1)
+
+/** Todo lo que se carga en el paso "Datos": se guarda junto (un solo objeto) para poder serializar el formulario entero. */
+export interface DatosForm {
+  /** '' (sin elegir) | id de un curso | 'nuevo' (se crea con `cursoNuevoNombre`). */
+  cursoElegido: string;
+  cursoNuevoNombre: string;
+  titulo: string;
+  consigna: string;
+  modalidad: ModalidadExamen;
+  duracionMinutos: string;
+  escalaMin: string;
+  escalaMax: string;
+  feedbackModo: FeedbackModo;
+  antiCheatOn: boolean;
+  acPantalla: boolean;
+  acPestana: boolean;
+  acPegado: boolean;
+  /** Distribución esperada de aprobados (opcional, en "Opciones avanzadas"). */
+  distOn: boolean;
+  umbralAprobacion: string;
+  aprobadosPct: string;
+  niveles: NivelForm[];
+}
+
+export function datosPorDefecto(): DatosForm {
+  return {
+    cursoElegido: '',
+    cursoNuevoNombre: '',
+    titulo: '',
+    consigna: '',
+    modalidad: 'ventana_dias',
+    duracionMinutos: '60',
+    escalaMin: '0',
+    escalaMax: '10',
+    feedbackModo: 'manual',
+    antiCheatOn: false,
+    acPantalla: true,
+    acPestana: true,
+    acPegado: true,
+    distOn: false,
+    umbralAprobacion: '6',
+    aprobadosPct: '60',
+    niveles: nivelesPorDefecto(),
+  };
+}
+
+// Un criterio es una fila como en los trabajos prácticos: qué se evalúa, qué se espera y cuánto pesa dentro de la pregunta.
 // Describir cada uno de los 5 niveles es opcional (se abre a pedido).
 export interface CriterioForm {
   matrizOrigenId?: string;
   nombre: string;
   descripcion: string;
-  puntajeMaximo: string;
+  /** Peso relativo (> 0): los puntos de la pregunta se reparten entre sus criterios en proporción a este número. */
+  peso: string;
   detallar: boolean;
   niveles: { orden: number; nombre: string; descripcion: string }[];
 }
@@ -36,7 +89,7 @@ export function criterioVacio(niveles: NivelForm[]): CriterioForm {
   return {
     nombre: '',
     descripcion: '',
-    puntajeMaximo: '',
+    peso: '',
     detallar: false,
     niveles: niveles.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: '' })),
   };
@@ -51,6 +104,7 @@ export interface OpcionChoiceForm {
 export interface PreguntaForm {
   tipo: TipoPregunta;
   enunciado: string;
+  /** Puntos de la pregunta, para TODOS los tipos (en las abiertas se reparten entre los criterios según su peso). */
   puntajeMaximo: string;
   criterios: CriterioForm[];
   opcionesChoice: OpcionChoiceForm[];
@@ -59,6 +113,8 @@ export interface PreguntaForm {
   numTolerancia: string;
   paresIzquierda: string[];
   paresDerecha: string[];
+  /** Solo de interfaz (tarjeta plegada): no se manda al backend. */
+  plegada: boolean;
 }
 
 export function preguntaVacia(niveles: NivelForm[]): PreguntaForm {
@@ -76,12 +132,8 @@ export function preguntaVacia(niveles: NivelForm[]): PreguntaForm {
     numTolerancia: '0',
     paresIzquierda: ['', ''],
     paresDerecha: ['', ''],
+    plegada: false,
   };
-}
-
-/** Suma de puntos de los criterios completos de una pregunta abierta. */
-export function puntajeDeCriterios(p: PreguntaForm): number {
-  return p.criterios.filter((c) => c.nombre.trim() && Number(c.puntajeMaximo) > 0).reduce((s, c) => s + Number(c.puntajeMaximo), 0);
 }
 
 /** Lo que se manda como `opciones` de una pregunta cerrada (las abiertas no llevan). */
@@ -117,13 +169,40 @@ export function formatearPuntos(n: number): string {
   return String(redondearPuntos(n)).replace('.', ',');
 }
 
-/** Lo que vale la pregunta en el total: cerradas, su puntaje máximo; abiertas, la suma de sus criterios completos. */
+/** Lo que vale la pregunta en el total: sus puntos (`puntajeMaximo`) si son válidos (> 0), para todos los tipos. */
 export function puntajeEfectivoDe(p: PreguntaForm): number {
-  if (TIPOS_AUTOCORREGIBLES.includes(p.tipo)) {
-    const n = Number(p.puntajeMaximo);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-  return puntajeDeCriterios(p);
+  const n = Number(p.puntajeMaximo);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Peso válido de un criterio (> 0); vacío o inválido cuenta como 0: ni suma ni recibe puntos. */
+function pesoValidoDe(c: CriterioForm): number {
+  const n = Number(c.peso);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Reparte los puntos de una pregunta abierta entre sus criterios según su peso (`P * peso_i / Σpesos`), a 2 decimales. El
+ * redondeo se corrige en el último criterio con peso válido para que la suma sea EXACTAMENTE P redondeado a 2 decimales
+ * (P = 10 con tres pesos iguales → 3,33 + 3,33 + 3,34): el servidor exige que P coincida con la suma de sus criterios.
+ * Devuelve un número por criterio, en el mismo orden; sin P válido o sin ningún peso válido, todo en 0.
+ */
+export function puntosPorCriterio(p: PreguntaForm): number[] {
+  const pesos = p.criterios.map(pesoValidoDe);
+  const puntos = pesos.map(() => 0);
+  const total = puntajeEfectivoDe(p);
+  const sumaPesos = pesos.reduce((s, w) => s + w, 0);
+  if (total <= 0 || sumaPesos <= 0) return puntos;
+
+  let ultimo = -1;
+  pesos.forEach((w, i) => {
+    if (w <= 0) return;
+    puntos[i] = redondearPuntos((total * w) / sumaPesos);
+    ultimo = i;
+  });
+  const resto = puntos.reduce((s, x, i) => (i === ultimo ? s : s + x), 0);
+  puntos[ultimo] = redondearPuntos(redondearPuntos(total) - resto);
+  return puntos;
 }
 
 /** Suma de los puntos de todas las preguntas (es la nota máxima alcanzable: la escala no se normaliza). */
@@ -136,6 +215,108 @@ export const TOLERANCIA_TOTAL = 0.01;
 
 export function totalCoincideConEscala(total: number, escalaMax: number): boolean {
   return Math.abs(redondearPuntos(total) - redondearPuntos(escalaMax)) <= TOLERANCIA_TOTAL + 1e-9;
+}
+
+// ---------------------------------------------------------------- payload y validación de una pregunta
+
+/** Una pregunta tal como la recibe `createExamen`. */
+export interface PreguntaPayload {
+  tipo: TipoPregunta;
+  enunciado: string;
+  puntajeMaximo: number;
+  opciones?: unknown;
+  criterios?: {
+    matrizOrigenId?: string;
+    nombre: string;
+    descripcion: string;
+    puntajeMaximo: number;
+    nivelesDescripcion?: { orden: number; nombre: string; descripcion: string }[];
+  }[];
+}
+
+/**
+ * Pregunta del formulario -> lo que se manda al backend. En las abiertas, `puntajeMaximo` es P y cada criterio lleva los
+ * puntos que le tocan según su peso (`puntosPorCriterio`); los criterios incompletos (sin nombre o sin peso) no se mandan y
+ * el reparto se calcula solo sobre los que se mandan, así la suma siempre da P.
+ */
+export function construirPregunta(p: PreguntaForm): PreguntaPayload {
+  const cerrada = TIPOS_AUTOCORREGIBLES.includes(p.tipo);
+  const base = { tipo: p.tipo, enunciado: p.enunciado.trim(), puntajeMaximo: Number(p.puntajeMaximo) };
+  if (cerrada) return { ...base, opciones: construirOpciones(p) };
+
+  const enviados = p.criterios.filter((c) => c.nombre.trim() && pesoValidoDe(c) > 0);
+  const puntos = puntosPorCriterio({ ...p, criterios: enviados });
+  return {
+    ...base,
+    criterios: enviados.map((c, i) => ({
+      matrizOrigenId: c.matrizOrigenId,
+      nombre: c.nombre.trim(),
+      descripcion: c.descripcion.trim(),
+      puntajeMaximo: puntos[i],
+      // Solo si el docente describió los 5 niveles.
+      nivelesDescripcion: c.niveles.every((nv) => nv.descripcion.trim()) ? c.niveles : undefined,
+    })),
+  };
+}
+
+/** Errores de una pregunta, con mensajes concretos ("Pregunta 2: ..."). `indice` es la posición base 0. */
+export function validarPregunta(q: PreguntaForm, indice: number): string[] {
+  const e: string[] = [];
+  const n = `Pregunta ${indice + 1}`;
+  if (!q.enunciado.trim()) e.push(`${n}: falta el enunciado.`);
+  if (TIPOS_AUTOCORREGIBLES.includes(q.tipo)) {
+    if (!(Number(q.puntajeMaximo) > 0)) e.push(`${n}: falta el puntaje máximo.`);
+    if (q.tipo === 'opcion_multiple' || q.tipo === 'casillas') {
+      const llenas = q.opcionesChoice.filter((o) => o.texto.trim());
+      if (llenas.length < 2) e.push(`${n}: cargá al menos 2 opciones con texto.`);
+      else if (!llenas.some((o) => o.correcta)) e.push(`${n}: marcá cuál es la opción correcta${q.tipo === 'casillas' ? ' (o cuáles)' : ''}.`);
+    }
+    if (q.tipo === 'numerica') {
+      if (!esNumero(q.numRespuestaCorrecta)) e.push(`${n}: falta la respuesta correcta (un número).`);
+      if (q.numTolerancia.trim() !== '' && !(Number(q.numTolerancia) >= 0)) e.push(`${n}: la tolerancia tiene que ser 0 o más.`);
+    }
+    if (q.tipo === 'relacionar_pares') {
+      const incompletos = q.paresIzquierda.some((izq, k) => !izq.trim() || !(q.paresDerecha[k] ?? '').trim());
+      if (q.paresIzquierda.length < 2 || incompletos) e.push(`${n}: completá los dos lados de cada par (mínimo 2 pares).`);
+    }
+    return e;
+  }
+
+  if (!(Number(q.puntajeMaximo) > 0)) e.push(`${n}: falta el puntaje de la pregunta.`);
+  const completos = q.criterios.filter((c) => c.nombre.trim() && Number(c.peso) > 0);
+  if (completos.length === 0) e.push(`${n}: agregá al menos un criterio con su nombre y su peso.`);
+  q.criterios.forEach((c, k) => {
+    const algo = c.nombre.trim() || c.descripcion.trim() || c.peso.trim();
+    if (!algo) return;
+    const cn = `${n}, criterio ${k + 1}`;
+    if (!c.nombre.trim()) e.push(`${cn}: falta el nombre.`);
+    if (!(Number(c.peso) > 0)) e.push(`${cn}: falta el peso.`);
+    if (!c.descripcion.trim()) e.push(`${cn}: falta qué se espera para cumplirlo.`);
+    const llenos = c.niveles.filter((nv) => nv.descripcion.trim()).length;
+    if (c.detallar && llenos > 0 && llenos < c.niveles.length) e.push(`${cn}: describí los 5 niveles o dejá el detalle vacío.`);
+  });
+  return e;
+}
+
+/**
+ * Usa una matriz de rúbrica como criterios de la pregunta. Los puntos de cada criterio de la matriz pasan a leerse como
+ * PESO relativo. Si la pregunta todavía no tiene puntos propios toma la suma de la matriz (como antes); si ya los tiene, los
+ * respeta y los criterios se reescalan solos.
+ */
+export function aplicarMatriz(p: PreguntaForm, matriz: MatrizRubrica): PreguntaForm {
+  const criterios = matriz.criterios.map(
+    (c): CriterioForm => ({
+      matrizOrigenId: matriz.id,
+      nombre: c.nombre,
+      descripcion: c.descripcion,
+      peso: numAString(c.puntajeMaximo),
+      detallar: true, // la matriz ya trae descritos los 5 niveles
+      niveles: c.nivelesDescripcion.map((nv) => ({ orden: nv.orden, nombre: nv.nombre, descripcion: nv.descripcion })),
+    }),
+  );
+  const suma = criterios.reduce((s, c) => s + Number(c.peso), 0);
+  const sinPuntos = !(Number(p.puntajeMaximo) > 0);
+  return { ...p, criterios, puntajeMaximo: sinPuntos ? String(redondearPuntos(suma)) : p.puntajeMaximo };
 }
 
 // ---------------------------------------------------------------- niveles de desempeño: presets, validación y ejemplo
@@ -213,6 +394,32 @@ export function resumenNiveles(niveles: NivelForm[]): string {
   const id = presetDe(niveles);
   const nombre = id === 'personalizado' ? 'Personalizada' : (PRESETS_NIVELES.find((p) => p.id === id)?.nombre ?? '');
   return `${nombre} · ${niveles.map((n) => n.porcentaje.trim() || '?').join(' / ')} %`;
+}
+
+/** Errores de la distribución esperada (solo si se activó); dependen de la escala del examen. */
+export function validarDistribucion(d: DatosForm): string[] {
+  const e: string[] = [];
+  if (!d.distOn) return e;
+  if (!esNumero(d.umbralAprobacion) || Number(d.umbralAprobacion) < Number(d.escalaMin) || Number(d.umbralAprobacion) > Number(d.escalaMax)) {
+    e.push(`La nota de aprobación tiene que estar entre ${d.escalaMin} y ${d.escalaMax} (la escala del examen).`);
+  }
+  if (!esNumero(d.aprobadosPct) || Number(d.aprobadosPct) < 0 || Number(d.aprobadosPct) > 100) e.push('El porcentaje de aprobados esperado tiene que estar entre 0 y 100.');
+  return e;
+}
+
+/** Errores del paso "Datos" (incluye la escala de niveles y la distribución esperada, que viven en "Opciones avanzadas"). */
+export function validarDatos(d: DatosForm): string[] {
+  const e: string[] = [];
+  if (!d.titulo.trim()) e.push('Falta el título del examen.');
+  if (!d.consigna.trim()) e.push('Falta la consigna o las instrucciones generales.');
+  if (d.cursoElegido === 'nuevo' ? !d.cursoNuevoNombre.trim() : !d.cursoElegido) {
+    e.push(d.cursoElegido === 'nuevo' ? 'Falta el nombre del curso nuevo.' : 'Elegí un curso.');
+  }
+  if (!esNumero(d.escalaMin) || !esNumero(d.escalaMax)) e.push('La escala necesita un mínimo y un máximo numéricos.');
+  else if (Number(d.escalaMin) >= Number(d.escalaMax)) e.push('La escala mínima tiene que ser menor que la máxima.');
+  if (d.modalidad === 'sesion_tiempo' && !(Number(d.duracionMinutos) >= 1)) e.push('La duración tiene que ser de al menos 1 minuto.');
+  e.push(...validarNiveles(d.niveles), ...validarDistribucion(d));
+  return e;
 }
 
 // ---------------------------------------------------------------- mapeo inverso: examen existente -> formulario
@@ -306,14 +513,17 @@ function preguntaAFormulario(q: Pregunta, niveles: NivelForm[]): PreguntaForm {
         matrizOrigenId: c.matrizOrigenId ?? undefined,
         nombre: c.nombre,
         descripcion: c.descripcion,
-        puntajeMaximo: numAString(c.puntajeMaximo),
+        peso: numAString(c.puntajeMaximo), // en el modelo viejo cada criterio valía puntos: pasan a ser el peso (mismo reparto)
         detallar: detallado,
         niveles: detallado
           ? nd.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: n.descripcion }))
           : niveles.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: '' })),
       };
     });
-  return criterios.length > 0 ? { ...base, criterios } : base;
+  // Puntos de la pregunta: los suyos o, si no los hubiera, la suma de sus criterios.
+  const suma = redondearPuntos(criterios.reduce((s, c) => s + (Number(c.peso) || 0), 0));
+  const puntajeMaximo = Number(q.puntajeMaximo) > 0 ? numAString(q.puntajeMaximo) : suma > 0 ? String(suma) : '';
+  return criterios.length > 0 ? { ...base, puntajeMaximo, criterios } : { ...base, puntajeMaximo };
 }
 
 /**
@@ -349,4 +559,44 @@ export function examenAFormulario(examen: Examen): ExamenFormDatos {
     niveles,
     preguntas: preguntasOrigen.length > 0 ? preguntasOrigen.map((q) => preguntaAFormulario(q, niveles)) : [preguntaVacia(niveles)],
   };
+}
+
+// ---------------------------------------------------------------- paso "Publicar": lista de alumnos y errores del servidor
+
+/** "Nombre, email" por línea (o solo el email); acepta lo pegado desde una planilla (tabs, comas o punto y coma). */
+export function parsearAlumnos(texto: string): { alumnos: { nombre: string; email: string }[]; errores: string[] } {
+  const alumnos: { nombre: string; email: string }[] = [];
+  const errores: string[] = [];
+  const vistos = new Set<string>();
+  texto.split(/\r?\n/).forEach((linea, i) => {
+    if (!linea.trim()) return;
+    const partes = linea.split(/[\t,;]+/).map((x) => x.trim()).filter(Boolean);
+    const email = (partes.find((x) => x.includes('@')) ?? '').toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errores.push(`Línea ${i + 1}: no encontré un email válido ("${linea.trim().slice(0, 40)}").`);
+      return;
+    }
+    if (vistos.has(email)) {
+      errores.push(`Línea ${i + 1}: el email ${email} está repetido.`);
+      return;
+    }
+    vistos.add(email);
+    const nombre = partes.filter((x) => !x.includes('@')).join(' ') || email.split('@')[0];
+    alumnos.push({ nombre, email });
+  });
+  return { alumnos, errores };
+}
+
+/** Mensajes de validación del servidor (class-validator devuelve una lista), si los hay. */
+export function mensajesDelServidor(err: unknown): string[] {
+  if (err instanceof ApiError) {
+    try {
+      const m = JSON.parse(err.body).message;
+      if (Array.isArray(m)) return m.map(String);
+      if (typeof m === 'string') return [m];
+    } catch {
+      /* cuerpo no JSON */
+    }
+  }
+  return [];
 }
