@@ -5,7 +5,7 @@
 // pregunta abierta esos puntos se reparten entre los criterios de la rúbrica según su `peso` relativo (`puntosPorCriterio`).
 
 import { ApiError, TIPOS_AUTOCORREGIBLES } from './api';
-import type { AntiCheatConfig, Examen, FeedbackModo, MatrizRubrica, ModalidadExamen, Pregunta, TipoPregunta } from './api';
+import type { AntiCheatConfig, CriterioSugerido, Examen, FeedbackModo, MatrizRubrica, ModalidadExamen, NivelDescripcion, Pregunta, TipoPregunta } from './api';
 
 export const esNumero = (v: string) => v.trim() !== '' && Number.isFinite(Number(v));
 
@@ -126,13 +126,14 @@ export function datosPorDefecto(): DatosForm {
 }
 
 // Un criterio es una fila como en los trabajos prácticos: qué se evalúa, qué se espera y cuánto pesa dentro de la pregunta.
-// Describir cada uno de los 5 niveles es opcional (se abre a pedido).
+// Describir cada uno de los niveles de la escala es opcional (el editor lo muestra plegado).
 export interface CriterioForm {
   matrizOrigenId?: string;
   nombre: string;
   descripcion: string;
   /** Peso relativo (> 0): los puntos de la pregunta se reparten entre sus criterios en proporción a este número. */
   peso: string;
+  /** true si TODOS los niveles del criterio tienen descripción (vengan de una matriz, de la IA o escritos a mano). */
   detallar: boolean;
   niveles: { orden: number; nombre: string; descripcion: string }[];
 }
@@ -228,7 +229,7 @@ export function puntajeEfectivoDe(p: PreguntaForm): number {
 }
 
 /** Peso válido de un criterio (> 0); vacío o inválido cuenta como 0: ni suma ni recibe puntos. */
-function pesoValidoDe(c: CriterioForm): number {
+export function pesoValidoDe(c: CriterioForm): number {
   const n = Number(c.peso);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
@@ -237,7 +238,9 @@ function pesoValidoDe(c: CriterioForm): number {
  * Reparte los puntos de una pregunta abierta entre sus criterios según su peso (`P * peso_i / Σpesos`), a 2 decimales. El
  * redondeo se corrige en el último criterio con peso válido para que la suma sea EXACTAMENTE P redondeado a 2 decimales
  * (P = 10 con tres pesos iguales → 3,33 + 3,33 + 3,34): el servidor exige que P coincida con la suma de sus criterios.
- * Devuelve un número por criterio, en el mismo orden; sin P válido o sin ningún peso válido, todo en 0.
+ * Devuelve un número por criterio, en el mismo orden; sin P válido o sin ningún peso válido, todo en 0. Ningún criterio es
+ * negativo: si P es tan chico que los demás ya se llevaron más de lo que hay (0,04 entre 7 criterios), el último queda en 0 y
+ * la suma deja de dar P; `validarPregunta` lo avisa ("los puntos son muy pocos") y la pregunta no se manda así.
  */
 export function puntosPorCriterio(p: PreguntaForm): number[] {
   const pesos = p.criterios.map(pesoValidoDe);
@@ -253,7 +256,7 @@ export function puntosPorCriterio(p: PreguntaForm): number[] {
     ultimo = i;
   });
   const resto = puntos.reduce((s, x, i) => (i === ultimo ? s : s + x), 0);
-  puntos[ultimo] = redondearPuntos(redondearPuntos(total) - resto);
+  puntos[ultimo] = Math.max(0, redondearPuntos(redondearPuntos(total) - resto));
   return puntos;
 }
 
@@ -344,9 +347,14 @@ export function validarPregunta(q: PreguntaForm, indice: number): string[] {
     if (!c.nombre.trim()) e.push(`${cn}: falta el nombre.`);
     if (!(Number(c.peso) > 0)) e.push(`${cn}: falta el peso.`);
     if (!c.descripcion.trim()) e.push(`${cn}: falta qué se espera para cumplirlo.`);
-    const llenos = c.niveles.filter((nv) => nv.descripcion.trim()).length;
-    if (c.detallar && llenos > 0 && llenos < c.niveles.length) e.push(`${cn}: describí los 5 niveles o dejá el detalle vacío.`);
+    // El detalle por nivel es todo o nada (aunque el editor lo tenga plegado): a medias no se manda.
+    if (estadoDetalle(c).incompleto) e.push(`${cn}: describí los ${c.niveles.length} niveles o dejá el detalle vacío.`);
   });
+  // Con puntos muy chicos para tantos criterios, alguno se redondea a 0 y no valdría nada (el reparto es a 2 decimales).
+  const enviados = q.criterios.filter((c) => c.nombre.trim() && pesoValidoDe(c) > 0);
+  if (puntajeEfectivoDe(q) > 0 && enviados.length > 0 && puntosPorCriterio({ ...q, criterios: enviados }).some((x) => x <= 0)) {
+    e.push(`${n}: los puntos son muy pocos para repartirlos entre ${enviados.length} criterios.`);
+  }
   return e;
 }
 
@@ -354,21 +362,145 @@ export function validarPregunta(q: PreguntaForm, indice: number): string[] {
  * Usa una matriz de rúbrica como criterios de la pregunta. Los puntos de cada criterio de la matriz pasan a leerse como
  * PESO relativo. Si la pregunta todavía no tiene puntos propios toma la suma de la matriz (como antes); si ya los tiene, los
  * respeta y los criterios se reescalan solos.
+ *
+ * El detalle por nivel de la matriz es opcional (puede traer `nivelesDescripcion: []`): `detallar` es true solo si trae la
+ * descripción de TODOS los niveles; si no, los niveles del criterio quedan vacíos y `detallar` en false. Con `nivelesExamen`
+ * (la escala del examen), además, la cantidad de descripciones tiene que ser igual a la de niveles del examen: si coincide se
+ * usan con los NOMBRES de nivel del examen; si no, se aplican los criterios sin detalle. Sin `nivelesExamen` se toman los
+ * niveles de la matriz tal cual.
  */
-export function aplicarMatriz(p: PreguntaForm, matriz: MatrizRubrica): PreguntaForm {
-  const criterios = matriz.criterios.map(
-    (c): CriterioForm => ({
+export function aplicarMatriz(p: PreguntaForm, matriz: MatrizRubrica, nivelesExamen?: NivelForm[]): PreguntaForm {
+  const criterios = matriz.criterios.map((c): CriterioForm => {
+    const detalle = [...(Array.isArray(c.nivelesDescripcion) ? c.nivelesDescripcion : [])].sort((a, b) => a.orden - b.orden);
+    const completo =
+      detalle.length > 0 &&
+      detalle.every((nv) => typeof nv.descripcion === 'string' && nv.descripcion.trim() !== '') &&
+      (nivelesExamen === undefined || detalle.length === nivelesExamen.length);
+    const niveles = completo
+      ? detalle.map((nv, i) => ({
+          orden: nivelesExamen ? nivelesExamen[i].orden : nv.orden,
+          nombre: nivelesExamen ? nivelesExamen[i].nombre : nv.nombre,
+          descripcion: nv.descripcion,
+        }))
+      : criterioVacio(nivelesExamen ?? nivelesPorDefecto()).niveles;
+    return {
       matrizOrigenId: matriz.id,
       nombre: c.nombre,
       descripcion: c.descripcion,
       peso: numAString(c.puntajeMaximo),
-      detallar: true, // la matriz ya trae descritos los 5 niveles
-      niveles: c.nivelesDescripcion.map((nv) => ({ orden: nv.orden, nombre: nv.nombre, descripcion: nv.descripcion })),
-    }),
-  );
+      detallar: completo,
+      niveles,
+    };
+  });
   const suma = criterios.reduce((s, c) => s + Number(c.peso), 0);
   const sinPuntos = !(Number(p.puntajeMaximo) > 0);
   return { ...p, criterios, puntajeMaximo: sinPuntos ? String(redondearPuntos(suma)) : p.puntajeMaximo };
+}
+
+// ---------------------------------------------------------------- rúbrica de una pregunta: detalle por nivel, matrices e IA
+
+/** Estado del detalle por nivel de un criterio: cuántos niveles tienen descripción y si está vacío, completo o a medias. */
+export function estadoDetalle(c: CriterioForm): { descritos: number; total: number; vacio: boolean; completo: boolean; incompleto: boolean } {
+  const total = c.niveles.length;
+  const descritos = c.niveles.filter((nv) => nv.descripcion.trim()).length;
+  return { descritos, total, vacio: descritos === 0, completo: total > 0 && descritos === total, incompleto: descritos > 0 && descritos < total };
+}
+
+/** Resumen del detalle para el acordeón: "sin detallar", "5 niveles descritos ✓" o "3 de 5 niveles descritos" (este, en rojo). */
+export function resumenDetalle(c: CriterioForm): { texto: string; incompleto: boolean } {
+  const d = estadoDetalle(c);
+  if (d.vacio) return { texto: 'sin detallar', incompleto: false };
+  if (d.completo) return { texto: `${d.total} ${d.total === 1 ? 'nivel descrito' : 'niveles descritos'} ✓`, incompleto: false };
+  return { texto: `${d.descritos} de ${d.total} niveles descritos`, incompleto: true };
+}
+
+/** true si la pregunta ya tiene algo cargado en sus criterios (para avisar antes de reemplazarlos con una sugerencia). */
+export function tieneCriteriosCargados(p: PreguntaForm): boolean {
+  return p.criterios.some((c) => c.nombre.trim() || c.descripcion.trim() || c.peso.trim() || c.niveles.some((nv) => nv.descripcion.trim()));
+}
+
+/** Cantidad de niveles que el servidor exige en una matriz cuando se manda el detalle por nivel. */
+export const NIVELES_POR_MATRIZ = 5;
+
+/** Menor peso que acepta el servidor en un criterio de matriz. */
+const PESO_MINIMO_MATRIZ = 0.01;
+
+/** Un criterio tal como lo recibe `createMatrizRubrica`; el peso del formulario viaja como `puntajeMaximo`. */
+export interface CriterioMatrizPayload {
+  nombre: string;
+  descripcion: string;
+  puntajeMaximo: number;
+  nivelesDescripcion?: NivelDescripcion[];
+}
+
+/**
+ * Criterios de la pregunta listos para guardarlos como matriz de rúbrica, o [] si todavía no se puede: no hay ninguno o alguno
+ * está a medias (nombre, qué se espera y un peso de al menos 0,01 son obligatorios; las filas totalmente en blanco se saltean).
+ * `nivelesDescripcion` solo va si TODOS los criterios tienen todos sus niveles descritos, son tantos como la escala del examen
+ * (`nivelesExamen`) y son los 5 que acepta el servidor; si no, se omite en todos (la matriz se guarda sin detalle).
+ */
+export function criteriosParaMatriz(p: PreguntaForm, nivelesExamen?: NivelForm[]): CriterioMatrizPayload[] {
+  const cargados = p.criterios.filter((c) => c.nombre.trim() || c.descripcion.trim() || c.peso.trim());
+  const listo = (c: CriterioForm) => c.nombre.trim() && c.descripcion.trim() && Number.isFinite(Number(c.peso)) && Number(c.peso) >= PESO_MINIMO_MATRIZ;
+  if (cargados.length === 0 || !cargados.every(listo)) return [];
+
+  const escala = nivelesExamen ? nivelesExamen.length : NIVELES_POR_MATRIZ;
+  const conDetalle = cargados.every((c) => c.niveles.length === escala && c.niveles.length === NIVELES_POR_MATRIZ && estadoDetalle(c).completo);
+  return cargados.map((c) => ({
+    nombre: c.nombre.trim(),
+    descripcion: c.descripcion.trim(),
+    puntajeMaximo: Number(c.peso),
+    ...(conDetalle ? { nivelesDescripcion: c.niveles.map((nv) => ({ orden: nv.orden, nombre: nv.nombre, descripcion: nv.descripcion.trim() })) } : {}),
+  }));
+}
+
+/**
+ * Sugerencia de la IA -> criterios del formulario. El peso (entero, suman 100) pasa a string; los puntos no se tocan: salen de
+ * los puntos de la pregunta y del peso, como siempre. El detalle por nivel se usa solo si la cantidad de descripciones coincide
+ * con la escala del examen (`niveles`): ahí `detallar` queda en true y los niveles llevan los nombres del examen; si no, los
+ * criterios quedan sin detalle.
+ */
+export function criteriosDeSugerencia(sugeridos: CriterioSugerido[], niveles: NivelForm[]): CriterioForm[] {
+  return sugeridos.map((c): CriterioForm => {
+    const detalle = Array.isArray(c.niveles) ? c.niveles : [];
+    const completo = detalle.length === niveles.length && detalle.length > 0 && detalle.every((d) => typeof d === 'string' && d.trim() !== '');
+    return {
+      nombre: c.nombre,
+      descripcion: c.descripcion,
+      peso: numAString(c.peso),
+      detallar: completo,
+      niveles: niveles.map((n, i) => ({ orden: n.orden, nombre: n.nombre, descripcion: completo ? detalle[i].trim() : '' })),
+    };
+  });
+}
+
+/** Pesos -> porcentaje de cada uno sobre el total (números o strings; los inválidos o <= 0 valen 0 %). Sin total válido, todo en 0. */
+export function pesosEnPorcentaje(pesos: (string | number)[]): number[] {
+  const validos = pesos.map((w) => (Number.isFinite(Number(w)) && Number(w) > 0 ? Number(w) : 0));
+  const total = validos.reduce((s, w) => s + w, 0);
+  return validos.map((w) => (total > 0 ? (w * 100) / total : 0));
+}
+
+/** Mensaje en castellano para un fallo de "Sugerir criterios con IA" (nunca el JSON crudo del servidor). */
+export function mensajeErrorSugerencia(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 429) return 'Pediste demasiadas sugerencias en poco tiempo (el límite es de 20 por minuto). Esperá un momento y probá de nuevo.';
+    if (err.status === 401) return 'Tu sesión venció. Volvé a iniciar sesión y probá de nuevo.';
+    if (err.status === 400) return 'No se pudo pedir la sugerencia: revisá que el enunciado no sea demasiado largo (máximo 5000 caracteres).';
+    return 'La IA no pudo armar una sugerencia en este momento. Probá de nuevo en unos minutos o cargá los criterios a mano.';
+  }
+  return 'No pudimos conectarnos con el servidor. Revisá tu conexión y probá de nuevo.';
+}
+
+/** Mensaje en castellano para un fallo al guardar una matriz; suma el detalle que informa el servidor (si lo hay). */
+export function mensajeErrorMatriz(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) return 'Tu sesión venció. Volvé a iniciar sesión y probá de nuevo.';
+    if (err.status >= 500) return 'No se pudo guardar la matriz por un problema del servidor. Probá de nuevo en un momento.';
+    const detalle = mensajesDelServidor(err).slice(0, 3).join('; ');
+    return `No se pudo guardar la matriz. Revisá los datos y probá de nuevo.${detalle ? ` Detalle: ${detalle}` : ''}`;
+  }
+  return 'No pudimos conectarnos con el servidor. Revisá tu conexión y probá de nuevo.';
 }
 
 // ---------------------------------------------------------------- niveles de desempeño: editar la escala, validación y ejemplo
