@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { LiberarNotasButton } from '@/app/components/LiberarNotasButton';
 import {
   Examen,
   RespuestaExamen,
@@ -260,6 +261,18 @@ export default function RespuestasExamenPage() {
         <button className="btn btn-secondary" onClick={() => exportarCsv(examen, respuestas)} disabled={respuestas.length === 0}>
           Exportar CSV
         </button>
+      </div>
+
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-title" style={{ marginBottom: 8 }}>
+          Notas para los alumnos
+        </div>
+        <LiberarNotasButton
+          examenId={examen.id}
+          feedbackModo={examen.feedbackModo}
+          liberadoEn={examen.feedbackLiberadoEn}
+          onChange={(actualizado) => setExamen((prev) => (prev ? { ...prev, feedbackLiberadoEn: actualizado.feedbackLiberadoEn } : prev))}
+        />
       </div>
 
       {errorAccion && (
