@@ -10,7 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "test": "node --require ts-node/register --test test/seguridad.test.ts test/vara.test.ts test/entrega-tp.test.ts test/resultado.test.ts test/correccion.test.ts test/mail.test.ts test/examen-puntaje.test.ts test/invitaciones.test.ts test/sugerir-criterios.test.ts test/examen-form.test.ts",
+    "test": "node --require ts-node/register --test test/seguridad.test.ts test/vara.test.ts test/entrega-tp.test.ts test/resultado.test.ts test/correccion.test.ts test/mail.test.ts test/examen-puntaje.test.ts test/invitaciones.test.ts test/sugerir-criterios.test.ts test/examen-form.test.ts test/niveles-variables.test.ts",
     "test:integracion": "node test/integracion.mjs"
   },
   "dependencies": {
