@@ -29,6 +29,14 @@ export class RespuestasExamenController {
     return this.service.bulkAceptar(examenId);
   }
 
+  // Reintenta en segundo plano las que quedaron en pendiente_correccion. Ruta fija: va antes de las
+  // que llevan `:id` para que nunca se la tome por un id.
+  @Post('corregir-pendientes')
+  async corregirPendientes(@DocenteId() docenteId: string, @Param('examenId') examenId: string) {
+    await this.acceso.examen(docenteId, examenId);
+    return this.service.corregirPendientes(examenId);
+  }
+
   @Get(':id')
   async findOne(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string) {
     await this.acceso.respuestaExamen(docenteId, examenId, id);
