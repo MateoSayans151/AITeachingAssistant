@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
@@ -15,7 +15,11 @@ import {
   PreguntaAbiertaInput,
   NivelEscalaInput,
   MaterialCursoInput,
+  SugerenciaCriteriosSchema,
+  SugerenciaCriterios,
+  TipoPreguntaAbierta,
 } from './ai.types';
+import { MENSAJE_FALLO_IA, armarPromptSugerencia, normalizarSugerencia } from './sugerencia-criterios.util';
 
 /**
  * Tope de caracteres para cualquier texto de origen no confiable (trabajo del alumno,
@@ -383,5 +387,50 @@ Reglas:
     const notaTotalSugerida = porPregunta.reduce((sum, p) => sum + p.notaSugerida, 0);
 
     return { porPregunta, notaTotalSugerida, feedbackGeneralSugerido: object.feedbackGeneralSugerido };
+  }
+
+  /**
+   * Borrador de criterios de rúbrica (con la descripción de sus 5 niveles) a partir del enunciado de
+   * una pregunta abierta, para que el docente no arranque de cero: la IA propone, el docente edita y
+   * decide. Sin herramientas para el modelo (solo generateObject con un schema) y con el enunciado
+   * delimitado como dato (ver armarPromptSugerencia). Lo que devuelve el modelo nunca se usa tal cual:
+   * `normalizarSugerencia` lo valida y acota en código (longitudes, 5 niveles, pesos que suman 100).
+   *
+   * Los errores del proveedor (cuota, clave inválida, timeout, salida que no cumple el schema) se
+   * loguean acá y se traducen a un 502 con un mensaje genérico: ni el mensaje original ni detalles
+   * del proveedor llegan al cliente.
+   */
+  async sugerirCriterios(params: {
+    enunciado: string;
+    tipo: TipoPreguntaAbierta;
+    cantidad: number;
+  }): Promise<SugerenciaCriterios> {
+    const { system, prompt } = armarPromptSugerencia(params);
+
+    let salida: unknown;
+    try {
+      const { object } = await generateObject({
+        model: this.getModel(),
+        schema: SugerenciaCriteriosSchema,
+        system,
+        prompt,
+        ...opcionesResilientes(),
+      });
+      salida = object;
+    } catch (error) {
+      const e = error as { name?: string; statusCode?: number } | undefined;
+      // Solo el tipo de error y el status HTTP: el detalle del proveedor no se propaga ni se loguea entero.
+      this.logger.error(
+        `Falló la sugerencia de criterios con ${this.modeloActivo}: ${e?.name ?? 'error desconocido'}${
+          e?.statusCode ? ` (HTTP ${e.statusCode})` : ''
+        }`,
+      );
+      throw new BadGatewayException(MENSAJE_FALLO_IA);
+    }
+
+    // Si no queda ningún criterio utilizable, normalizarSugerencia tira el 502 con su propio mensaje.
+    const criterios = normalizarSugerencia(salida, params.cantidad);
+    this.logger.debug(`Sugerencia de ${criterios.length} criterios generada con ${this.modeloActivo}`);
+    return { criterios };
   }
 }
