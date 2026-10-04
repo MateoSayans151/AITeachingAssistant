@@ -28,9 +28,9 @@ export function escaparHtml(texto: string): string {
   return texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const unaLinea = (texto: string) => texto.replace(/\s+/g, ' ').trim();
+export const unaLinea = (texto: string) => texto.replace(/\s+/g, ' ').trim();
 
-function acortar(texto: string, max: number): string {
+export function acortar(texto: string, max: number): string {
   const t = unaLinea(texto);
   return t.length > max ? `${t.slice(0, max).trimEnd()}…` : t;
 }

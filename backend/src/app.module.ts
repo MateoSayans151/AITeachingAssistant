@@ -18,6 +18,7 @@ import { MatricesRubricaModule } from './matrices-rubrica/matrices-rubrica.modul
 import { ExamenesModule } from './examenes/examenes.module';
 import { RespuestasExamenModule } from './respuestas-examen/respuestas-examen.module';
 import { NotificacionesModule } from './mail/notificaciones.module';
+import { InvitacionesModule } from './mail/invitaciones.module';
 
 @Module({
   imports: [
@@ -41,6 +42,8 @@ import { NotificacionesModule } from './mail/notificaciones.module';
     RespuestasExamenModule,
     // Mails con la nota (Resend): lo usan Examenes (publicar notas) y RespuestasExamen (revisar).
     NotificacionesModule,
+    // Invitaciones por mail: el docente le manda a cada alumno el link para rendir (examenes/:id/invitaciones).
+    InvitacionesModule,
   ],
   providers: [
     // Orden importa: primero el rate limit, después la autenticación (default-deny).
