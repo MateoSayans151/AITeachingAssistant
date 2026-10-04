@@ -432,6 +432,10 @@ model RespuestaExamen {
   estado                  EstadoEntrega  @default(pendiente_correccion)
   estadoRevision          EstadoRevision @default(pendiente) @map("estado_revision")
   revisadoEn              DateTime?      @map("revisado_en")
+  // Cuándo se le mandó por mail su nota y feedback (null = todavía no). Evita duplicar envíos al publicar o reenviar.
+  notificadoEn            DateTime?      @map("notificado_en")
+  // Último motivo de fallo del envío del mail (null = sin errores).
+  notificacionError       String?        @map("notificacion_error")
   createdAt               DateTime       @default(now()) @map("created_at")
 
   examen             Examen              @relation(fields: [examenId], references: [id], onDelete: Cascade)

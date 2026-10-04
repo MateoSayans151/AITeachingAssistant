@@ -408,6 +408,13 @@ create table if not exists intentos_entrega (
 create index if not exists idx_intentos_entrega_estado_expira on intentos_entrega(estado, expira_en);
 
 -- ---------------------------------------------------------------------------
+-- Notificación del resultado por mail al alumno.
+-- (Idéntico a supabase/migrations/20261004_notificacion_resultado.sql)
+-- ---------------------------------------------------------------------------
+alter table respuestas_examen add column if not exists notificado_en timestamptz;
+alter table respuestas_examen add column if not exists notificacion_error text;
+
+-- ---------------------------------------------------------------------------
 -- Seguridad: RLS en todas las tablas de public (va al final: tiene que correr después de crear todas).
 -- (Idéntico a supabase/migrations/20261004_rls_todas_las_tablas.sql)
 -- ---------------------------------------------------------------------------
