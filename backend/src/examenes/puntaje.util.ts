@@ -4,6 +4,7 @@
 // cada pregunta) nunca se pasa de la escala. Puntaje efectivo de una pregunta: las cerradas valen su `puntajeMaximo`;
 // las abiertas valen la SUMA del `puntajeMaximo` de sus criterios (es lo que reparte la rúbrica y lo que puede sacar el alumno).
 import { TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
+import { CANT_NIVELES_MAX, CANT_NIVELES_MIN, MENSAJE_RANGO_NIVELES, ordenesConsecutivos } from './niveles.util';
 
 export interface PreguntaPuntaje {
   tipo: string;
@@ -68,13 +69,20 @@ export interface NivelEscala {
 }
 
 /**
- * La escala de niveles tiene que poder dar el puntaje completo y crecer: el último nivel (el de mayor orden) vale 100 % y los
+ * La escala de niveles de un examen tiene entre 3 y 7 niveles, numerados del 1 al N sin saltos ni repetidos.
+ * Además tiene que poder dar el puntaje completo y crecer: el último nivel (el de mayor orden) vale 100 % y los
  * porcentajes aumentan de un nivel al siguiente. Si el último valiera menos, ningún alumno podría llegar a la escala máxima
  * (el total del examen no se alcanzaría nunca); si no crecieran, elegir un nivel "mejor" daría menos puntos.
  * Que el primer nivel valga 0 % es una convención del wizard, no una invariante: acá no se exige.
  */
 export function validarNivelesEscala(niveles: NivelEscala[]): string | null {
-  if (niveles.length === 0) return null;
+  const cantidad = Array.isArray(niveles) ? niveles.length : 0;
+  if (cantidad < CANT_NIVELES_MIN || cantidad > CANT_NIVELES_MAX) {
+    return `La escala de niveles tiene que tener ${MENSAJE_RANGO_NIVELES} (la que mandaste tiene ${cantidad}).`;
+  }
+  if (!ordenesConsecutivos(niveles)) {
+    return `Los niveles de la escala tienen que estar numerados del 1 al ${cantidad}, sin saltos ni repetidos.`;
+  }
   const ordenados = [...niveles].sort((a, b) => a.orden - b.orden);
   const etiqueta = (n: NivelEscala) => n.nombre?.trim() || `nivel ${n.orden}`;
   const ultimo = ordenados[ordenados.length - 1];

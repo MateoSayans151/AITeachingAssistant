@@ -4,6 +4,7 @@ import { AiService } from '../ai/ai.service';
 import { SugerirCriteriosDto } from '../ai/dto/sugerir-criterios.dto';
 import { CANTIDAD_CRITERIOS_DEFECTO, SugerenciaCriterios } from '../ai/ai.types';
 import { MENSAJE_FALLO_IA } from '../ai/sugerencia-criterios.util';
+import { CANT_NIVELES_DEFECTO } from './niveles.util';
 
 // Mismo prefijo que ExamenesController, pero en un controller aparte: la ruta es literal
 // (`sugerir-criterios`), no choca con `:id` porque ahí no hay ningún POST de un solo segmento.
@@ -25,6 +26,7 @@ export class SugerenciasController {
         enunciado: dto.enunciado,
         tipo: dto.tipo,
         cantidad: dto.cantidad ?? CANTIDAD_CRITERIOS_DEFECTO,
+        cantidadNiveles: dto.cantidadNiveles ?? CANT_NIVELES_DEFECTO,
       });
     } catch (error) {
       // Los errores nuestros (502 con mensaje propio) pasan tal cual; cualquier otra cosa viene del

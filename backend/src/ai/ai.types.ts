@@ -89,7 +89,7 @@ export const CorreccionExamenSchema = z.object({
             nombre: z.string(),
             nivelSugerido: z
               .number()
-              .describe('nivel de desempeño alcanzado: un entero entre 1 y 5, según las descripciones de cada nivel'),
+              .describe('nivel de desempeño alcanzado: un entero positivo (el orden del nivel de la escala del prompt), según las descripciones de cada nivel'),
             comentario: z.string().describe('comentario breve y específico sobre por qué se asignó ese nivel'),
           }),
         ),
@@ -137,7 +137,6 @@ export type TipoPreguntaAbierta = (typeof TIPOS_PREGUNTA_ABIERTA)[number];
 export const CANTIDAD_CRITERIOS_MIN = 2;
 export const CANTIDAD_CRITERIOS_MAX = 5;
 export const CANTIDAD_CRITERIOS_DEFECTO = 3;
-export const CANT_NIVELES_CRITERIO = 5;
 
 // Lo que le pedimos al modelo. Es a propósito laxo (sin min/max de longitudes ni sumas): la forma la
 // fuerza generateObject, pero los límites reales los impone `normalizarSugerencia` en código, así un
@@ -154,7 +153,7 @@ export const SugerenciaCriteriosSchema = z.object({
         niveles: z
           .array(z.string())
           .describe(
-            'EXACTAMENTE 5 descripciones de desempeño para este criterio, ordenadas del nivel 1 (el más bajo) al nivel 5 (el mejor)',
+            'descripciones de desempeño para este criterio, ordenadas del nivel 1 (el más bajo) al último (el mejor); la cantidad exacta la indica el prompt',
           ),
       }),
     )
@@ -169,7 +168,7 @@ export interface CriterioSugerido {
   descripcion: string;
   /** Entero 1..100; los pesos de todos los criterios de la sugerencia suman exactamente 100. */
   peso: number;
-  /** Exactamente 5 descripciones: niveles[0] = nivel 1 (el más bajo) … niveles[4] = nivel 5 (el mejor). */
+  /** Exactamente `cantidadNiveles` descripciones (3 a 7, 5 por defecto): niveles[0] = nivel 1 (el más bajo) … la última = el mejor. */
   niveles: string[];
 }
 

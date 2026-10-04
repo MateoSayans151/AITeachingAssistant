@@ -1,14 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
+import { validarNivelesDescripcionMatriz } from '../examenes/niveles.util';
 import { CreateMatrizRubricaDto } from './dto/create-matriz-rubrica.dto';
 
 @Injectable()
 export class MatricesRubricaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(docenteId: string, dto: CreateMatrizRubricaDto) {
+  async create(docenteId: string, dto: CreateMatrizRubricaDto) {
+    // Los niveles detallados son opcionales; si vienen, entre 3 y 7 numerados 1..K sin saltos ni repetidos (lo que no se puede
+    // con decorators). Su cantidad no depende de ninguna escala: la matriz se reutiliza entre exámenes.
+    for (const c of dto.criterios) {
+      const error = validarNivelesDescripcionMatriz(c.nombre, c.nivelesDescripcion);
+      if (error) throw new BadRequestException(error);
+    }
+
     return this.prisma.matrizRubrica.create({
       data: {
         docenteId,

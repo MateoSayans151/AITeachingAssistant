@@ -1,10 +1,6 @@
 import { BadGatewayException } from '@nestjs/common';
-import {
-  CANT_NIVELES_CRITERIO,
-  CANTIDAD_CRITERIOS_DEFECTO,
-  CriterioSugerido,
-  TipoPreguntaAbierta,
-} from './ai.types';
+import { CANTIDAD_CRITERIOS_DEFECTO, CriterioSugerido, TipoPreguntaAbierta } from './ai.types';
+import { CANT_NIVELES_DEFECTO, acotarCantidadNiveles } from '../examenes/niveles.util';
 
 /**
  * Lógica pura (sin red ni base) de la función "Sugerir criterios con IA": armado del prompt y
@@ -48,14 +44,22 @@ export function neutralizarDelimitador(texto: string): string {
  * system lo marca como dato. El modelo no tiene herramientas, así que lo peor que puede pasar es
  * un borrador raro, que el docente edita (y que `normalizarSugerencia` acota igual).
  */
-export function armarPromptSugerencia(params: { enunciado: string; tipo: TipoPreguntaAbierta; cantidad: number }): {
+export function armarPromptSugerencia(params: {
+  enunciado: string;
+  tipo: TipoPreguntaAbierta;
+  cantidad: number;
+  /** Niveles de desempeño por criterio (3 a 7); sin valor, 5. */
+  cantidadNiveles?: number;
+}): {
   system: string;
   prompt: string;
 } {
   const { enunciado, tipo, cantidad } = params;
+  const cantidadNiveles = acotarCantidadNiveles(params.cantidadNiveles);
 
   const system = `Sos un asistente que ayuda a un docente a armar una rúbrica analítica para corregir una pregunta
-abierta de un examen. Recibís el ENUNCIADO de la pregunta, su TIPO y la CANTIDAD de criterios a proponer.
+abierta de un examen. Recibís el ENUNCIADO de la pregunta, su TIPO, la CANTIDAD de criterios a proponer y la
+CANTIDAD DE NIVELES de desempeño que tiene cada criterio.
 Tu respuesta es un borrador: el docente lo va a revisar y editar antes de usarlo.
 
 Reglas:
@@ -67,7 +71,7 @@ Reglas:
   intención ni una actitud. Los criterios no se solapan entre sí y juntos cubren lo que la pregunta pide.
 - El nombre de cada criterio es corto (60 caracteres como máximo) y la descripción dice en una o dos oraciones
   qué se evalúa.
-- Cada criterio trae EXACTAMENTE 5 niveles de desempeño, del nivel 1 (el más bajo) al nivel 5 (el mejor). Cada
+- Cada criterio trae EXACTAMENTE ${cantidadNiveles} niveles de desempeño, del nivel 1 (el más bajo) al nivel ${cantidadNiveles} (el mejor). Cada
   nivel describe un desempeño concreto y progresivo PARA ESE criterio: qué hace, qué le falta o qué hace bien
   el alumno. Nada de frases genéricas que valgan para cualquier criterio ("muy bueno", "regular", "insuficiente").
 - El peso de cada criterio es un entero de 1 a 100 que refleja su importancia, y entre todos suman 100.
@@ -76,6 +80,7 @@ Reglas:
 
   const prompt = `TIPO DE PREGUNTA: ${DESCRIPCION_TIPO[tipo] ?? tipo}
 CANTIDAD DE CRITERIOS: ${cantidad}
+CANTIDAD DE NIVELES POR CRITERIO: ${cantidadNiveles}
 
 <enunciado>
 ${neutralizarDelimitador(enunciado)}
@@ -155,13 +160,18 @@ export function normalizarPesos(pesos: unknown[]): number[] {
 /**
  * No confiamos en que el modelo respetó el pedido: en código, y sobre lo que devolvió,
  * - recortamos espacios y acotamos longitudes (nombre 80, descripción 300, cada nivel 300),
- * - descartamos criterios sin nombre o que no traigan exactamente 5 niveles no vacíos,
+ * - descartamos criterios sin nombre o que no traigan exactamente `cantidadNiveles` niveles (3 a 7, 5 por defecto) no vacíos,
  * - eliminamos criterios repetidos por nombre (sin distinguir mayúsculas ni tildes),
  * - nos quedamos con los primeros `cantidad`,
  * - y normalizamos los pesos a enteros 1..100 que suman exactamente 100.
  * Si no queda ningún criterio utilizable, 502: el docente reintenta.
  */
-export function normalizarSugerencia(salidaModelo: unknown, cantidad: number = CANTIDAD_CRITERIOS_DEFECTO): CriterioSugerido[] {
+export function normalizarSugerencia(
+  salidaModelo: unknown,
+  cantidad: number = CANTIDAD_CRITERIOS_DEFECTO,
+  cantidadNiveles: number = CANT_NIVELES_DEFECTO,
+): CriterioSugerido[] {
+  const nivelesPedidos = acotarCantidadNiveles(cantidadNiveles);
   const tope = Number.isFinite(cantidad)
     ? Math.min(Math.max(Math.floor(cantidad), 1), MAX_CRITERIOS_ABSOLUTO)
     : CANTIDAD_CRITERIOS_DEFECTO;
@@ -179,7 +189,7 @@ export function normalizarSugerencia(salidaModelo: unknown, cantidad: number = C
     if (!nombre) continue;
 
     const crudosNiveles = Array.isArray(crudo.niveles) ? crudo.niveles : [];
-    if (crudosNiveles.length !== CANT_NIVELES_CRITERIO) continue;
+    if (crudosNiveles.length !== nivelesPedidos) continue;
     const niveles = crudosNiveles.map((nv) => (typeof nv === 'string' ? nv.trim() : ''));
     if (niveles.some((nv) => !nv)) continue;
 

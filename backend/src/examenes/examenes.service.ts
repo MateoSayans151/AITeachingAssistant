@@ -5,6 +5,7 @@ import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
+import { validarNivelesDescripcionCriterio } from './niveles.util';
 import { validarNivelesEscala, validarPuntajes } from './puntaje.util';
 import { MENSAJE_SIN_MAIL_PARA_PUBLICAR, NotificacionesService } from '../mail/notificaciones.service';
 
@@ -40,9 +41,19 @@ export class ExamenesService {
       throw new BadRequestException('La nota de aprobación tiene que estar dentro de la escala');
     }
 
-    // La escala de niveles tiene que poder dar el puntaje completo y crecer (si no, el total del examen no se alcanzaría nunca).
+    // La escala tiene entre 3 y 7 niveles numerados 1..N, y tiene que poder dar el puntaje completo y crecer (si no, el total
+    // del examen no se alcanzaría nunca).
     const errorNiveles = validarNivelesEscala(dto.niveles);
     if (errorNiveles) throw new BadRequestException(errorNiveles);
+
+    // Un criterio describe todos los niveles de la escala de ESTE examen o ninguno (no se puede con decorators: depende de dos campos).
+    const cantidadNiveles = dto.niveles.length;
+    for (const p of dto.preguntas) {
+      for (const c of p.criterios ?? []) {
+        const errorCriterio = validarNivelesDescripcionCriterio(c.nombre, c.nivelesDescripcion, cantidadNiveles);
+        if (errorCriterio) throw new BadRequestException(errorCriterio);
+      }
+    }
 
     // El puntaje total tiene que ser igual a la escala máxima (si no, la nota de un alumno se pasaría de la escala) y
     // cada pregunta abierta vale la suma de sus criterios.
