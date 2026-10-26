@@ -532,7 +532,11 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
 
 // ---------------------------------------------------------------- enviar el link por mail a los alumnos
 
-function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: { examenId: string; examenComisionId: string; cantidadAlumnos: number | null }) {
+/**
+ * Envío del link por mail a los alumnos de una comisión, con el avance. Lo usa el paso "Publicar" y también la pantalla del examen,
+ * para poder mandar o reenviar las invitaciones después (si no, solo se podía en el momento de publicar).
+ */
+export function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: { examenId: string; examenComisionId: string; cantidadAlumnos: number | null }) {
   const confirmar = useConfirmar();
   const [estado, setEstado] = useState<EstadoInvitaciones | null>(null);
   const [enviando, setEnviando] = useState(false);

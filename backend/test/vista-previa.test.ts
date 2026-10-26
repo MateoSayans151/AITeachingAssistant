@@ -267,8 +267,10 @@ test('textos: TEXTOS_INGRESO_ALUMNO es copia de lo que dice app/rendir/[slug]/pa
   for (const [clave, texto] of Object.entries(TEXTOS_INGRESO_ALUMNO)) {
     assert.ok(fuente.includes(sinEspaciosRaros(texto)), `"${clave}" ya no coincide con la pantalla real: ${texto}`);
   }
-  assert.ok(fuente.includes(avisoDuracionTitulo(0).replace('0', '{examen.duracionMinutos}')), 'el título del aviso de duración ya no coincide con la pantalla real');
+  // La pantalla real y la vista previa arman el título con la MISMA función: no pueden diferir.
+  assert.ok(fuente.includes('avisoDuracionTitulo(examen.duracionMinutos)'), 'la pantalla real ya no usa avisoDuracionTitulo');
   assert.equal(avisoDuracionTitulo(90), 'Tenés 90 minutos.');
+  assert.equal(avisoDuracionTitulo(1), 'Tenés 1 minuto.', 'en singular no dice "1 minutos"');
 });
 
 test('componente: el examen en curso y la vista previa usan el MISMO TarjetaPreguntaAlumno, y ExamenEnCurso ya no tiene su propio renderizado', () => {

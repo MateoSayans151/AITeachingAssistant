@@ -227,8 +227,8 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   return (
     <div>
       <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
-        Rúbrica: un criterio por fila, con su peso. La IA evalúa la respuesta contra estos criterios y los puntos de la pregunta se
-        reparten entre ellos según el peso de cada uno.
+        <strong>Criterios de corrección:</strong> lo que la IA mira para ponerle nota a la respuesta. Cada criterio tiene un peso: los
+        puntos de la pregunta se reparten en proporción. Lo más rápido es pedirle a la IA que los arme y después ajustarlos.
       </div>
 
       <div className={styles.barra}>
@@ -249,7 +249,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         )}
         <button
           type="button"
-          className={`btn btn-secondary ${styles.botonIA}`}
+          className={`btn ${hayEnunciado && !pensando && !tieneCriteriosCargados(p) ? 'btn-primary' : 'btn-secondary'} ${styles.botonIA}`}
           onClick={sugerirConIA}
           disabled={!hayEnunciado || pensando}
           title={hayEnunciado ? 'La IA propone criterios a partir del enunciado; después los revisás y ajustás' : SIN_ENUNCIADO}

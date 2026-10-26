@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ApiError, EstadoIntentoRendir, InfoRendir, getInfoRendir, getIntento, iniciarIntento } from '@/lib/api';
 import { entrarPantallaCompleta, pantallaCompletaSoportada, salirDePantallaCompleta } from '@/lib/pantalla-completa';
+import { avisoDuracionTitulo } from '@/lib/vista-previa';
 import ExamenEnCurso from './ExamenEnCurso';
 
 const claveToken = (slug: string) => `ata_intento_${slug}`;
@@ -183,7 +184,7 @@ export default function RendirExamenPage() {
         <>
           {examen.duracionMinutos && (
             <div className="card" style={{ marginBottom: 16 }}>
-              <strong>Tenés {examen.duracionMinutos} minutos.</strong>
+              <strong>{avisoDuracionTitulo(examen.duracionMinutos)}</strong>
               <p className="muted" style={{ marginTop: 6 }}>
                 El tiempo empieza a correr cuando tocás “Comenzar” y no se detiene aunque cierres la pestaña. Lo que escribas se guarda
                 solo; si se termina el tiempo, se entrega lo último guardado.

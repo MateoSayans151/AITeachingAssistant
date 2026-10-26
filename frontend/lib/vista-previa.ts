@@ -33,7 +33,7 @@ export const TEXTOS_INGRESO_ALUMNO = {
 } as const;
 
 /** "Tenés N minutos." (el título del aviso de duración). */
-export const avisoDuracionTitulo = (minutos: number): string => `Tenés ${minutos} minutos.`;
+export const avisoDuracionTitulo = (minutos: number): string => `Tenés ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}.`;
 
 /** Minutos que verá el alumno en el aviso de duración, o null si el examen no es de sesión con tiempo (o la duración no es válida). */
 export function duracionParaAlumno(datos: Pick<DatosForm, 'modalidad' | 'duracionMinutos'>): number | null {

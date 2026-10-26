@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { CopiarLinkButton } from '@/app/components/CopiarLinkButton';
+import { InvitarPorMail } from '@/app/examenes/nuevo/PasoPublicar';
 import {
   ApiError,
   Comision,
@@ -231,6 +232,7 @@ export default function ExamenDetallePage() {
               {' · '}
               {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
             </div>
+            <InvitarPorMail examenId={examen.id} examenComisionId={ec.id} cantidadAlumnos={ec.comision?._count?.alumnos ?? null} />
           </div>
         ))}
 
