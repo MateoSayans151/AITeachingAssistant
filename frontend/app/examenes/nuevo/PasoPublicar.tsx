@@ -49,6 +49,8 @@ interface Publicacion {
   /** Id de la publicación del examen en la comisión (lo necesita el envío de invitaciones). */
   examenComisionId: string;
   cantidadAlumnos: number | null;
+  /** true: cualquier alumno con el link puede entrar; false: solo los de la lista. */
+  accesoAbierto: boolean;
 }
 
 // Mientras hay un envío de mails corriendo se consulta el avance cada tanto; con tope, por si el servidor se reinicia a mitad de camino.
@@ -62,6 +64,10 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
   const [loading, setLoading] = useState(false);
   const [comisiones, setComisiones] = useState<Comision[] | null>(null);
   const [modoPublicar, setModoPublicar] = useState<'nueva' | 'existente'>('nueva');
+  // Por defecto entra cualquiera con el link (el docente no tiene que cargar mails); "lista" restringe a los que él cargue.
+  const [acceso, setAcceso] = useState<'abierto' | 'lista'>('abierto');
+  // Con acceso abierto la lista es opcional: se muestra solo si el docente quiere cargarla igual.
+  const [cargarLista, setCargarLista] = useState(false);
   const [comisionSeleccionada, setComisionSeleccionada] = useState('');
   // null = el docente todavía no tocó el nombre: se muestra el sugerido, que depende de las comisiones que ya existen.
   const [nombreEscrito, setNombreEscrito] = useState<string | null>(null);
@@ -108,14 +114,17 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
 
   const errorFechas = validarFechasPublicacion(fechaInicio, fechaFin);
   const cantidadAlumnos = modoPublicar === 'nueva' ? filas.length : cantidadDe((comisiones ?? []).find((c) => c.id === comisionSeleccionada));
-  const resumen = resumenPublicacion({ alumnos: cantidadAlumnos, inicio: fechaInicio, fin: fechaFin, duracionMinutos });
+  const resumen = resumenPublicacion({ alumnos: cantidadAlumnos, inicio: fechaInicio, fin: fechaFin, duracionMinutos, accesoAbierto: acceso === 'abierto' });
+  const mostrarLista = acceso === 'lista' || cargarLista || textoAlumnos.trim() !== '';
 
   useEffect(() => {
     if (!cursoId) return;
     listComisionesPorCurso(cursoId)
       .then((cs) => {
         setComisiones(cs);
-        setModoPublicar(cs.length > 0 ? 'existente' : 'nueva');
+        // Con acceso abierto (lo predeterminado) no hace falta elegir nada: se crea un grupo nuevo con nombre sugerido ("Comisión B").
+        // Reusar una comisión que ya tiene alumnos cargados es una opción, no el camino por defecto.
+        setModoPublicar('nueva');
       })
       .catch(() => setComisiones([]));
   }, [cursoId]);
@@ -158,7 +167,8 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
     let comisionId = comisionSeleccionada;
     if (modoPublicar === 'nueva') {
       if (!nombreComision.trim()) return setErrores(['Poné un nombre para el grupo de alumnos (por ejemplo, "Comisión A").']);
-      if (filas.length === 0) {
+      // Con acceso abierto la lista es opcional: se publica aunque no haya ningún alumno cargado.
+      if (acceso === 'lista' && filas.length === 0) {
         if (quitados > 0) return setErrores(['No queda ningún alumno: quitaste a todos. Volvé a incluirlos o pegá otra lista.']);
         if (problemas.length > 0) return setErrores(['No quedó ningún alumno válido en la lista: revisá las líneas con problemas.']);
         return setErrores(['Pegá la lista de alumnos: uno por línea, con su email.']);
@@ -176,7 +186,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
         cantidad = filas.length;
         const creada = await createComision(cursoId, {
           nombre: nombreComision.trim(),
-          alumnos: filas.map(({ nombre, email }) => ({ nombre, email })),
+          alumnos: filas.length > 0 ? filas.map(({ nombre, email }) => ({ nombre, email })) : undefined,
         });
         comisionId = creada.id;
         // Si publicar falla, un reintento usa esta misma comisión en vez de crear otra.
@@ -188,9 +198,10 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
         comisionId,
         fechaInicio: fechaLocalAIso(fechaInicio),
         fechaFin: fechaLocalAIso(fechaFin),
+        accesoAbierto: acceso === 'abierto',
       });
       if (cantidad === null) cantidad = cantidadDe((comisiones ?? []).find((c) => c.id === comisionId));
-      setPublicado({ link: resultado.urlAcceso ?? null, examenComisionId: resultado.id, cantidadAlumnos: cantidad });
+      setPublicado({ link: resultado.urlAcceso ?? null, examenComisionId: resultado.id, cantidadAlumnos: cantidad, accesoAbierto: acceso === 'abierto' });
       onPublicado?.({ link: resultado.urlAcceso ?? null, cantidadAlumnos: cantidad });
     } catch (err) {
       const detalle = mensajesDelServidor(err);
@@ -233,9 +244,27 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
           <div className="card-title" style={{ marginBottom: 6 }}>
             ¿Quiénes lo rinden?
           </div>
+          <fieldset className={styles.accesos}>
+            <legend className={styles.srOnly}>Quién puede entrar al link</legend>
+            <label className={styles.acceso} data-elegido={acceso === 'abierto'}>
+              <input type="radio" name="acceso" checked={acceso === 'abierto'} onChange={() => setAcceso('abierto')} />
+              <span>
+                <strong>Cualquiera que tenga el link</strong> <em>(recomendado)</em>
+                <small>Cada alumno escribe su nombre y su mail al entrar. No hace falta que cargues una lista.</small>
+              </span>
+            </label>
+            <label className={styles.acceso} data-elegido={acceso === 'lista'}>
+              <input type="radio" name="acceso" checked={acceso === 'lista'} onChange={() => setAcceso('lista')} />
+              <span>
+                <strong>Solo los alumnos de mi lista</strong>
+                <small>Entran únicamente los mails que cargues. Útil si querés que no entre nadie más.</small>
+              </span>
+            </label>
+          </fieldset>
           <p className="muted" style={{ marginBottom: 14 }}>
-            Cada alumno entra al link con el email con el que figura en la lista, y su nota le llega por mail a esa misma dirección: un
-            email mal cargado pierde la nota de ese alumno. Cargalos tal cual los usan (no distingue mayúsculas).
+            {acceso === 'abierto'
+              ? 'Su nota les llega por mail al email que escriban al entrar. Se identifican solo con ese mail: un mismo mail rinde una sola vez.'
+              : 'Cada alumno entra al link con el email con el que figura en la lista, y su nota le llega por mail a esa misma dirección: un email mal cargado pierde la nota de ese alumno. Cargalos tal cual los usan (no distingue mayúsculas).'}
           </p>
 
           {comisiones && comisiones.length > 0 && (
@@ -243,11 +272,11 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
               <legend className={styles.srOnly}>Cómo cargás a los alumnos</legend>
               <label>
                 <input type="radio" name="modoPublicar" checked={modoPublicar === 'nueva'} onChange={() => setModoPublicar('nueva')} />
-                Pegar una lista de alumnos
+                {acceso === 'abierto' ? 'Un grupo nuevo' : 'Pegar una lista de alumnos'}
               </label>
               <label>
                 <input type="radio" name="modoPublicar" checked={modoPublicar === 'existente'} onChange={() => setModoPublicar('existente')} />
-                Usar una comisión que ya tengo
+                {acceso === 'abierto' ? 'Sumarlo a una comisión que ya tengo' : 'Usar una comisión que ya tengo'}
               </label>
             </fieldset>
           )}
@@ -271,8 +300,16 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
                 <label htmlFor="nombreComision">Nombre del grupo (la comisión)</label>
                 <input id="nombreComision" value={nombreComision} onChange={(e) => setNombreEscrito(e.target.value)} placeholder="Ej: Comisión A" />
               </div>
+              {!mostrarLista && (
+                <p style={{ marginBottom: 14 }}>
+                  <button type="button" className="btn btn-ghost" onClick={() => setCargarLista(true)}>
+                    Tengo una lista y quiero cargarla igual (opcional)
+                  </button>
+                </p>
+              )}
+              {mostrarLista && (
               <div className="field" style={{ marginBottom: 0 }}>
-                <label htmlFor="alumnos">Alumnos</label>
+                <label htmlFor="alumnos">{acceso === 'abierto' ? 'Alumnos que ya tengas (opcional)' : 'Alumnos'}</label>
                 <textarea
                   id="alumnos"
                   value={textoAlumnos}
@@ -299,6 +336,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
                   )}
                 </div>
               </div>
+              )}
 
               {problemas.length > 0 && (
                 <div className={styles.nota}>
@@ -470,12 +508,14 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
         Listo: el examen está publicado
       </div>
       <p className="muted">
-        {cantidadAlumnos === 1
-          ? 'El alumno de la lista entra'
-          : cantidadAlumnos !== null
-            ? `Los ${cantidadAlumnos} alumnos de la lista entran`
-            : 'Los alumnos de la lista entran'}{' '}
-        al link con su email.
+        {publicado.accesoAbierto
+          ? 'Cualquier alumno con el link puede entrar: escribe su nombre y su mail y rinde.' +
+            (cantidadAlumnos ? ` (${plural(cantidadAlumnos, 'alumno ya cargado entra', 'alumnos ya cargados entran')} con su mail de la lista.)` : '')
+          : (cantidadAlumnos === 1
+              ? 'El alumno de la lista entra'
+              : cantidadAlumnos !== null
+                ? `Los ${cantidadAlumnos} alumnos de la lista entran`
+                : 'Los alumnos de la lista entran') + ' al link con su email.'}
       </p>
 
       <div className={styles.seccion}>
@@ -505,7 +545,13 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
           </p>
         )}
 
-        <InvitarPorMail examenId={examenId} examenComisionId={publicado.examenComisionId} cantidadAlumnos={cantidadAlumnos} />
+        {cantidadAlumnos ? (
+          <InvitarPorMail examenId={examenId} examenComisionId={publicado.examenComisionId} cantidadAlumnos={cantidadAlumnos} />
+        ) : (
+          <p className="muted" style={{ marginTop: 12 }}>
+            Mandalo por WhatsApp, por mail o por el campus: como no cargaste una lista, no hay a quién mandarle el mail desde acá.
+          </p>
+        )}
       </div>
 
       <div className={styles.seccion}>

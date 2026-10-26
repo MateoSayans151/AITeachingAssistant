@@ -171,6 +171,8 @@ export class ExamenesService {
           slugAcceso: randomUUID(),
           fechaInicio: dto.fechaInicio ? new Date(dto.fechaInicio) : undefined,
           fechaFin: dto.fechaFin ? new Date(dto.fechaFin) : undefined,
+          // Por defecto cualquier alumno con el link puede entrar: el docente no tiene que cargar mails antes.
+          accesoAbierto: dto.accesoAbierto ?? true,
         },
       }),
       this.prisma.examen.update({ where: { id: examenId }, data: { estado: 'publicado' } }),

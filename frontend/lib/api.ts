@@ -324,6 +324,8 @@ export interface ExamenComision {
   slugAcceso: string;
   fechaInicio: string | null;
   fechaFin: string | null;
+  /** true: cualquier alumno con el link puede entrar; false: solo los de la lista de la comisión. */
+  accesoAbierto?: boolean;
   createdAt: string;
   comision?: Comision;
   urlAcceso?: string;
@@ -534,7 +536,7 @@ export const deleteExamen = (id: string) => request<void>(`/examenes/${id}`, { m
 
 export const publicarExamenAComision = (
   examenId: string,
-  data: { comisionId: string; fechaInicio?: string; fechaFin?: string },
+  data: { comisionId: string; fechaInicio?: string; fechaFin?: string; accesoAbierto?: boolean },
 ) => request<ExamenComision>(`/examenes/${examenId}/comisiones`, { method: 'POST', body: JSON.stringify(data) });
 
 // ---- Sugerir criterios con IA (borrador para el docente; la IA propone, el docente edita y decide) ----
@@ -665,6 +667,8 @@ export const reenviarNotificaciones = (examenId: string) =>
 export interface InfoRendir {
   examen: { titulo: string; consigna: string; modalidad: ModalidadExamen; duracionMinutos: number | null; antiCheat: AntiCheatConfig | null };
   comision: { nombre: string };
+  /** true: cualquier alumno con el link puede entrar (se le pide nombre y email); false: solo los que figuran en la lista. */
+  accesoAbierto: boolean;
   ventana: { estado: 'abierta' | 'no_abierta' | 'cerrada'; fechaInicio: string | null; fechaFin: string | null };
 }
 
@@ -689,7 +693,7 @@ const conToken = (token: string) => ({ headers: { Authorization: `Bearer ${token
 
 export const getInfoRendir = (slug: string) => request<InfoRendir>(`/rendir/${slug}`);
 
-export const iniciarIntento = (slug: string, data: { alumnoEmail: string; consentimiento?: boolean }) =>
+export const iniciarIntento = (slug: string, data: { alumnoEmail: string; alumnoNombre?: string; consentimiento?: boolean }) =>
   request<EstadoIntentoRendir & { token: string }>(`/rendir/${slug}/iniciar`, { method: 'POST', body: JSON.stringify(data) });
 
 export const getIntento = (slug: string, token: string) =>

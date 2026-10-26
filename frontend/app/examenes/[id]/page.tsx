@@ -49,6 +49,8 @@ export default function ExamenDetallePage() {
   const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [comisionSeleccionada, setComisionSeleccionada] = useState('');
   const [linkGenerado, setLinkGenerado] = useState<string | null>(null);
+  // Por defecto el link lo puede abrir cualquier alumno; marcado, entran solo los de la lista de la comisión.
+  const [soloLista, setSoloLista] = useState(false);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -99,6 +101,7 @@ export default function ExamenDetallePage() {
         comisionId: comisionSeleccionada,
         fechaInicio: fechaLocalAIso(fechaInicio),
         fechaFin: fechaLocalAIso(fechaFin),
+        accesoAbierto: !soloLista,
       });
       setLinkGenerado(resultado.urlAcceso ?? null);
       setComisionSeleccionada('');
@@ -231,6 +234,8 @@ export default function ExamenDetallePage() {
               {ec.fechaInicio ? `Se habilita ${new Date(ec.fechaInicio).toLocaleString('es-AR')}` : 'Habilitado desde ya'}
               {' · '}
               {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
+              {' · '}
+              {ec.accesoAbierto ? 'entra cualquiera con el link' : 'entran solo los de la lista'}
             </div>
             <InvitarPorMail examenId={examen.id} examenComisionId={ec.id} cantidadAlumnos={ec.comision?._count?.alumnos ?? null} />
           </div>
@@ -254,6 +259,10 @@ export default function ExamenDetallePage() {
             </select>
             <input type="datetime-local" aria-label="Se habilita (opcional)" title="Se habilita (opcional)" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
             <input type="datetime-local" aria-label="Cierra (opcional)" title="Cierra (opcional)" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
+              <input type="checkbox" checked={soloLista} onChange={(e) => setSoloLista(e.target.checked)} />
+              Solo los alumnos de la lista
+            </label>
             <button className="btn btn-primary" onClick={handlePublicar} disabled={loading || !comisionSeleccionada}>
               {loading ? 'Publicando…' : 'Publicar / generar link'}
             </button>

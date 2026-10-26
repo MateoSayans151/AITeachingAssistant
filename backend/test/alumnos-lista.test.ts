@@ -213,3 +213,23 @@ test('resumenPublicacion: una apertura que ya pasó se dice "ahora"; 0 alumnos s
   assert.equal(resumenPublicacion({ alumnos: 3, inicio: '2026-10-09T09:00', fin: '', ahora: AHORA }), '3 alumnos · se habilita ahora · sin fecha de cierre');
   assert.equal(resumenPublicacion({ alumnos: 0, inicio: '', fin: '', ahora: AHORA }), '0 alumnos · se habilita ahora · sin fecha de cierre');
 });
+
+test('resumenPublicacion: con acceso abierto dice que entra cualquiera con el link (y cuántos ya cargados, si hay)', () => {
+  assert.equal(
+    resumenPublicacion({ alumnos: 0, inicio: '', fin: '', accesoAbierto: true, ahora: AHORA }),
+    'cualquier alumno con el link · se habilita ahora · sin fecha de cierre',
+  );
+  assert.equal(
+    resumenPublicacion({ alumnos: null, inicio: '', fin: '2026-10-12T18:00', duracionMinutos: 60, accesoAbierto: true, ahora: AHORA }),
+    'cualquier alumno con el link · se habilita ahora · cierra el 12/10 18:00 · 60 min por alumno',
+  );
+  assert.equal(
+    resumenPublicacion({ alumnos: 1, inicio: '', fin: '', accesoAbierto: true, ahora: AHORA }),
+    'cualquier alumno con el link (y 1 ya cargado) · se habilita ahora · sin fecha de cierre',
+  );
+  assert.equal(
+    resumenPublicacion({ alumnos: 32, inicio: '', fin: '', accesoAbierto: true, ahora: AHORA }),
+    'cualquier alumno con el link (y 32 ya cargados) · se habilita ahora · sin fecha de cierre',
+  );
+  assert.equal(resumenPublicacion({ alumnos: 32, inicio: '', fin: '', accesoAbierto: false, ahora: AHORA }), '32 alumnos · se habilita ahora · sin fecha de cierre');
+});

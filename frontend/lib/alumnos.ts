@@ -144,11 +144,17 @@ export function resumenPublicacion(datos: {
   inicio: string;
   fin: string;
   duracionMinutos?: number | null;
+  /** true: cualquier alumno con el link puede entrar; los que el docente haya cargado antes son un extra. */
+  accesoAbierto?: boolean;
   ahora?: Date;
 }): string {
   const ahora = datos.ahora ?? new Date();
   const partes: string[] = [];
-  if (datos.alumnos !== null) partes.push(`${datos.alumnos} alumno${datos.alumnos === 1 ? '' : 's'}`);
+  if (datos.accesoAbierto) {
+    partes.push(datos.alumnos ? `cualquier alumno con el link (y ${datos.alumnos} ya cargado${datos.alumnos === 1 ? '' : 's'})` : 'cualquier alumno con el link');
+  } else if (datos.alumnos !== null) {
+    partes.push(`${datos.alumnos} alumno${datos.alumnos === 1 ? '' : 's'}`);
+  }
 
   const apertura = aFecha(datos.inicio);
   partes.push(apertura && apertura.getTime() > ahora.getTime() ? `se habilita el ${formatearFechaHora(datos.inicio, ahora)}` : 'se habilita ahora');

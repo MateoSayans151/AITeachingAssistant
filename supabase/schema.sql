@@ -211,6 +211,8 @@ create table if not exists examen_comisiones (
   slug_acceso text not null unique,
   fecha_inicio timestamptz,
   fecha_fin timestamptz,
+  -- true: el alumno que entra con un email fuera de la lista se agrega solo; false: solo entran los de la lista.
+  acceso_abierto boolean not null default false,
   created_at timestamptz not null default now(),
   unique (examen_id, comision_id)
 );

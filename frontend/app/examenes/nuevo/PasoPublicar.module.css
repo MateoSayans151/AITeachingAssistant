@@ -320,3 +320,50 @@
   font-size: 13px;
   color: var(--color-success);
 }
+
+/* Quién puede entrar al link: dos opciones grandes, la elegida resaltada. */
+.accesos {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.acceso {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  cursor: pointer;
+}
+
+.acceso[data-elegido='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.acceso input {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.acceso small {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.acceso em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--color-accent-800);
+}
+
