@@ -25,6 +25,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import AutoTextarea from '@/app/components/AutoTextarea';
+import { useConfirmar } from '@/app/components/Confirmar';
 import type { MatrizRubrica } from '@/lib/api';
 import { createMatrizRubrica, sugerirCriterios } from '@/lib/api';
 import {
@@ -67,6 +68,7 @@ const SIN_ENUNCIADO = 'Escribí primero el enunciado de la pregunta: la IA sugie
 const SIN_CRITERIOS_LISTOS = 'Completá el nombre, qué se espera y el peso de cada criterio para poder guardarlos como matriz.';
 
 export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatrizCreada, onAplicarATodas, errores }: RubricaEditorProps) {
+  const confirmar = useConfirmar();
   const uid = useId();
   const puntos = puntosPorCriterio(p);
   const hayPuntos = puntajeEfectivoDe(p) > 0;
@@ -168,7 +170,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   async function sugerirConIA() {
     const actual = preguntaRef.current;
     if (!actual.enunciado.trim() || pensando) return;
-    if (tieneCriteriosCargados(actual) && !window.confirm('Esto reemplaza los criterios actuales. ¿Seguir?')) return;
+    if (tieneCriteriosCargados(actual) && !(await confirmar({ mensaje: 'Esto reemplaza los criterios actuales.', textoConfirmar: 'Reemplazar' }))) return;
     setIa({ estado: 'pensando' });
     try {
       // La IA describe tantos niveles como tiene la escala del examen (3 a 7), así el detalle por nivel queda utilizable.

@@ -740,7 +740,22 @@ textarea[aria-invalid='true']:hover {
 }
 
 
-/* ---- diálogo modal (opcional, por si se agrega alguno) ---- */
+/* Acción destructiva o irreversible (eliminar, publicar notas): mismo botón, en el rojo de error de la paleta. */
+.btn-danger {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--color-error) 85%, #000);
+}
+
+.btn-danger:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+}
+
+/* ---- diálogo modal (lo usa la confirmación de app/components/Confirmar.tsx) ---- */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -769,9 +784,29 @@ textarea[aria-invalid='true']:hover {
   font-size: 18px;
 }
 
+.dialog-message {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text);
+  white-space: pre-line;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+/* En el celular los botones del diálogo ocupan todo el ancho y se apilan: más fáciles de tocar. */
+@media (max-width: 520px) {
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dialog-actions .btn {
+    justify-content: center;
+    min-height: 44px;
+  }
 }

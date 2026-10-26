@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiberarNotasButton } from '@/app/components/LiberarNotasButton';
+import { useConfirmar } from '@/app/components/Confirmar';
 import {
   Examen,
   RespuestaExamen,
@@ -78,6 +79,7 @@ function exportarCsv(examen: Examen, respuestas: RespuestaExamen[]) {
 
 export default function RespuestasExamenPage() {
   const params = useParams<{ id: string }>();
+  const confirmar = useConfirmar();
   const [examen, setExamen] = useState<Examen | null>(null);
   const [respuestas, setRespuestas] = useState<RespuestaExamen[] | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -161,9 +163,14 @@ export default function RespuestasExamenPage() {
     let mensaje = `Vas a aceptar ${sugerencias} de la IA tal cual: la nota sugerida pasa a ser la nota final, sin que las revises una por una.`;
     mensaje +=
       conSenales > 0
-        ? `\n\n${conSenales === 1 ? '1 de esas respuestas tiene' : `${conSenales} de esas respuestas tienen`} señales de integridad (salida de pantalla completa, cambio de pestaña o pegado de texto). Si cancelás, podés revisarlas una por una desde cada detalle.\n\n¿Las aceptás igual?`
-        : '\n\nNinguna tiene señales de integridad.\n\n¿Querés aceptarlas?';
-    if (!window.confirm(mensaje)) return;
+        ? `\n\n${conSenales === 1 ? '1 de esas respuestas tiene' : `${conSenales} de esas respuestas tienen`} señales de integridad (salida de pantalla completa, cambio de pestaña o pegado de texto). Si cancelás, podés revisarlas una por una desde cada detalle.`
+        : '\n\nNinguna tiene señales de integridad.';
+    const confirmado = await confirmar({
+      titulo: `¿Aceptar ${sugerencias} de la IA?`,
+      mensaje,
+      textoConfirmar: aceptables.length === 1 ? 'Aceptar' : 'Aceptar todas',
+    });
+    if (!confirmado) return;
 
     setAceptando(true);
     setErrorAccion(null);

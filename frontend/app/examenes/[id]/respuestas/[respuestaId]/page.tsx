@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useConfirmar } from '@/app/components/Confirmar';
 import {
   ApiError,
   ExplicacionVara,
@@ -88,6 +89,7 @@ function puntajeMaximoDe(pregunta?: Pregunta): number | null {
 export default function DetalleRespuestaExamenPage() {
   const params = useParams<{ id: string; respuestaId: string }>();
   const router = useRouter();
+  const confirmar = useConfirmar();
 
   const [respuesta, setRespuesta] = useState<RespuestaExamen | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -213,9 +215,12 @@ export default function DetalleRespuestaExamenPage() {
   async function handleRecorregir() {
     // Si el docente ya la revisó, correr la IA de nuevo pisa su revisión: hay que avisarle antes.
     if (actual.estadoRevision !== 'pendiente') {
-      const confirmado = window.confirm(
-        `Esta respuesta ya está ${actual.estadoRevision === 'aceptada' ? 'aceptada' : 'editada'}. Si volvés a correr la IA se pierde tu revisión: la nota final y el feedback que tenías se reemplazan por una nueva sugerencia de la IA y la respuesta vuelve a quedar para revisar.\n\n¿Querés volver a correrla igual?`,
-      );
+      const confirmado = await confirmar({
+        titulo: '¿Volver a correr la IA?',
+        mensaje: `Esta respuesta ya está ${actual.estadoRevision === 'aceptada' ? 'aceptada' : 'editada'}. Si volvés a correr la IA se pierde tu revisión: la nota final y el feedback que tenías se reemplazan por una nueva sugerencia de la IA y la respuesta vuelve a quedar para revisar.`,
+        textoConfirmar: 'Volver a correrla',
+        peligrosa: true,
+      });
       if (!confirmado) return;
     }
     setRecorrigiendo(true);

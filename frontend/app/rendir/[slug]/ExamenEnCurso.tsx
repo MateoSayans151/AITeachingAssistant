@@ -11,6 +11,7 @@ import {
   registrarEvento,
 } from '@/lib/api';
 import { TarjetaPreguntaAlumno } from '@/app/components/PreguntaAlumno';
+import { useConfirmar } from '@/app/components/Confirmar';
 import { alCambiarPantallaCompleta, enPantallaCompleta, entrarPantallaCompleta, pantallaCompletaSoportada } from '@/lib/pantalla-completa';
 
 type Respuestas = Record<string, unknown>;
@@ -56,6 +57,7 @@ export default function ExamenEnCurso({
   alTerminar: (como: 'entregado' | 'vencido') => void;
 }) {
   const { preguntas, antiCheat, expiraEn } = inicial;
+  const confirmar = useConfirmar();
 
   // Lo del servidor es la base; si en este dispositivo hay algo escrito después del último
   // guardado (se cortó la conexión), gana lo local.
@@ -370,10 +372,16 @@ export default function ExamenEnCurso({
           className="btn btn-primary"
           type="button"
           disabled={entregando || seAcabo}
-          onClick={() => {
+          onClick={async () => {
             const faltan = preguntas.length - respondidas;
-            const aviso = faltan > 0 ? `Te faltan ${faltan} pregunta(s) sin responder. ` : '';
-            if (window.confirm(`${aviso}¿Entregar el examen? Después no vas a poder cambiar tus respuestas.`)) entregar(false);
+            const aviso = faltan > 0 ? `${faltan === 1 ? 'Te falta 1 pregunta sin responder' : `Te faltan ${faltan} preguntas sin responder`}.\n\n` : '';
+            const confirmado = await confirmar({
+              titulo: '¿Entregar el examen?',
+              mensaje: `${aviso}Después no vas a poder cambiar tus respuestas.`,
+              textoConfirmar: 'Entregar',
+              textoCancelar: faltan > 0 ? 'Volver a revisar' : 'Cancelar',
+            });
+            if (confirmado) entregar(false);
           }}
         >
           {entregando ? 'Entregando…' : 'Entregar examen'}

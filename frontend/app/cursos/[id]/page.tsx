@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useConfirmar } from '@/app/components/Confirmar';
 import { Comision, Curso, MaterialCurso, ApiError, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso, subirArchivoMaterialCurso } from '@/lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
@@ -169,6 +170,7 @@ function mensajeDeError(err: unknown): string | null {
 }
 
 function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }) {
+  const confirmar = useConfirmar();
   const [mostrarForm, setMostrarForm] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [unidad, setUnidad] = useState('');
@@ -201,7 +203,13 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
   }
 
   async function handleQuitar(m: MaterialCurso) {
-    if (!window.confirm(`¿Quitar "${m.titulo}"? La IA deja de usarlo como referencia.`)) return;
+    const confirmado = await confirmar({
+      titulo: `¿Quitar "${m.titulo}"?`,
+      mensaje: 'La IA deja de usarlo como referencia al corregir.',
+      textoConfirmar: 'Quitar',
+      peligrosa: true,
+    });
+    if (!confirmado) return;
     await eliminarMaterialCurso(m.id);
     onChange();
   }

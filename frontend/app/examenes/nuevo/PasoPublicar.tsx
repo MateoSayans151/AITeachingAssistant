@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useConfirmar } from '@/app/components/Confirmar';
 import { createComision, getEstadoInvitaciones, invitarAlumnos, listComisionesPorCurso, publicarExamenAComision } from '@/lib/api';
 import type { Comision, EstadoInvitaciones } from '@/lib/api';
 import { resumenPublicacion, siguienteNombreComision, sugerirCorreccionDominio, validarFechasPublicacion } from '@/lib/alumnos';
@@ -533,6 +534,7 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
 // ---------------------------------------------------------------- enviar el link por mail a los alumnos
 
 function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: { examenId: string; examenComisionId: string; cantidadAlumnos: number | null }) {
+  const confirmar = useConfirmar();
   const [estado, setEstado] = useState<EstadoInvitaciones | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -598,10 +600,13 @@ function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: { exame
     const modoPrueba = estado?.modoPrueba
       ? `El servidor está en modo prueba: todos los mails van a ${estado.modoPrueba} y no llegan a los alumnos.`
       : 'Si el servidor está en modo prueba, todos los mails van a una sola casilla y no llegan a los alumnos.';
-    const confirmado = window.confirm(
-      `Se van a mandar ${cuantos} (uno a cada alumno de la lista) con el link para rendir.\n\n` +
-        `El plan gratuito de Resend permite 100 mails por día: si te pasás, el resto no sale.\n\n${modoPrueba}\n\n¿Los mando?`,
-    );
+    const confirmado = await confirmar({
+      titulo: '¿Mandar el link por mail a los alumnos?',
+      mensaje:
+        `Se van a mandar ${cuantos} (uno a cada alumno de la lista) con el link para rendir.\n\n` +
+        `El plan gratuito de Resend permite 100 mails por día: si te pasás, el resto no sale.\n\n${modoPrueba}`,
+      textoConfirmar: 'Mandar mails',
+    });
     if (!confirmado) return;
 
     setError(null);

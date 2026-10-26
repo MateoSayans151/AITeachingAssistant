@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useConfirmar } from '@/app/components/Confirmar';
 import {
   ApiError,
   Comision,
@@ -41,6 +42,7 @@ const fmtPts = (n: number) => (Math.round((n + Number.EPSILON) * 100) / 100).toL
 export default function ExamenDetallePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const confirmar = useConfirmar();
   const [examen, setExamen] = useState<Examen | null>(null);
   const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [comisionSeleccionada, setComisionSeleccionada] = useState('');
@@ -109,13 +111,13 @@ export default function ExamenDetallePage() {
   }
 
   async function handleEliminar() {
-    if (
-      !window.confirm(
-        `¿Eliminar el examen "${examen!.titulo}"?\n\nSe borra con todas sus preguntas, y los links que ya publicaste a las comisiones dejan de funcionar. No se puede deshacer.`,
-      )
-    ) {
-      return;
-    }
+    const confirmado = await confirmar({
+      titulo: `¿Eliminar el examen "${examen!.titulo}"?`,
+      mensaje: 'Se borra con todas sus preguntas, y los links que ya publicaste a las comisiones dejan de funcionar. No se puede deshacer.',
+      textoConfirmar: 'Eliminar examen',
+      peligrosa: true,
+    });
+    if (!confirmado) return;
     setEliminando(true);
     setErrorEliminar(null);
     try {
