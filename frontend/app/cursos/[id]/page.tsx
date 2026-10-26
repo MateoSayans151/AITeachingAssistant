@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { plural } from '@/lib/texto';
+import { caracteresLegibles, problemaDelArchivo, tamanoLegible } from '@/lib/material';
 import { Comision, Curso, MaterialCurso, ApiError, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso, subirArchivoMaterialCurso } from '@/lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
@@ -177,6 +178,7 @@ function ComisionCard({ comision }: { comision: Comision }) {
  */
 /** El backend responde 400 con un mensaje apto para el docente (formato, tamaño, PDF sin texto...). */
 function mensajeDeError(err: unknown): string | null {
+  if (err instanceof ApiError && err.status === 413) return 'El archivo es demasiado grande: el máximo es 4 MB. Probá exportarlo más liviano o dividirlo en partes.';
   if (!(err instanceof ApiError) || err.status !== 400) return null;
   try {
     const m = JSON.parse(err.body).message;
@@ -193,19 +195,35 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
   const [unidad, setUnidad] = useState('');
   const [contenido, setContenido] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [arrastrando, setArrastrando] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Confirmación de lo último que se cargó: sin esto, tras guardar el formulario simplemente desaparecía.
+  const [exito, setExito] = useState<string | null>(null);
+
+  /** Elige (o descarta) el archivo; si no se puede leer lo dice enseguida, sin esperar a que termine una subida de varios MB. */
+  function elegirArchivo(f: File | null | undefined) {
+    setExito(null);
+    if (!f) return setArchivo(null);
+    const problema = problemaDelArchivo(f);
+    if (problema) {
+      setArchivo(null);
+      return setError(problema);
+    }
+    setError(null);
+    setArchivo(f);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setExito(null);
     try {
-      if (archivo) {
-        await subirArchivoMaterialCurso(curso.id, archivo, { titulo: titulo || undefined, unidad: unidad || undefined });
-      } else {
-        await createMaterialCurso(curso.id, { titulo, unidad: unidad || undefined, contenido });
-      }
+      const creado = archivo
+        ? await subirArchivoMaterialCurso(curso.id, archivo, { titulo: titulo || undefined, unidad: unidad || undefined })
+        : await createMaterialCurso(curso.id, { titulo, unidad: unidad || undefined, contenido });
+      setExito(`Listo: «${creado.titulo}» se cargó (${caracteresLegibles(creado.contenido)} de texto) y la IA ya puede usarlo al corregir.`);
       setTitulo('');
       setUnidad('');
       setContenido('');
@@ -239,22 +257,103 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
       </p>
 
       <div style={{ marginBottom: 20 }}>
-        <button className="btn btn-primary" onClick={() => setMostrarForm((v) => !v)}>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            setMostrarForm((v) => !v);
+            setError(null);
+            setExito(null);
+          }}
+        >
           {mostrarForm ? 'Cancelar' : '+ Subir material'}
         </button>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
+      {error && (
+        <div className="error-box" role="alert">
+          {error}
+        </div>
+      )}
+      {exito && (
+        <div className="error-box" role="status" style={{ background: 'var(--color-success-soft)', border: 'none', color: 'var(--color-success)' }}>
+          {exito}
+        </div>
+      )}
 
       {mostrarForm && (
-        <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 20 }}>
+        <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 20 }} aria-busy={loading}>
           <div className="field">
-            <label htmlFor="mTitulo">Título</label>
+            <span className="etiqueta-campo" id="mArchivoEtiqueta">
+              Archivo (PDF, Word, PowerPoint, Markdown o texto)
+            </span>
+            <div
+              className={`zona-archivo${arrastrando ? ' arrastrando' : ''}${archivo ? ' con-archivo' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setArrastrando(true);
+              }}
+              onDragLeave={() => setArrastrando(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setArrastrando(false);
+                if (!loading) elegirArchivo(e.dataTransfer.files?.[0]);
+              }}
+            >
+              {archivo ? (
+                <>
+                  <span>
+                    <strong>{archivo.name}</strong> · {tamanoLegible(archivo.size)}
+                  </span>
+                  <button type="button" className="btn btn-ghost" onClick={() => elegirArchivo(null)} disabled={loading}>
+                    Quitar archivo
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>Arrastrá un archivo hasta acá o</span>
+                  <label htmlFor="mArchivo" className="btn btn-secondary">
+                    Elegí un archivo
+                  </label>
+                </>
+              )}
+              <input
+                id="mArchivo"
+                className="archivo-oculto"
+                type="file"
+                accept=".pdf,.docx,.pptx,.md,.txt"
+                aria-labelledby="mArchivoEtiqueta"
+                aria-describedby="mArchivoAyuda"
+                disabled={loading}
+                onChange={(e) => {
+                  elegirArchivo(e.target.files?.[0]);
+                  e.target.value = ''; // permite volver a elegir el mismo archivo después de quitarlo
+                }}
+              />
+            </div>
+            <p className="muted" id="mArchivoAyuda" style={{ marginTop: 6, fontSize: 13 }}>
+              Hasta 4 MB. Se lee el texto del archivo; los PDF escaneados (imágenes) todavía no se pueden leer.
+            </p>
+          </div>
+          {!archivo && (
+            <div className="field">
+              <label htmlFor="mContenido">…o pegá el texto</label>
+              <textarea
+                id="mContenido"
+                value={contenido}
+                onChange={(e) => setContenido(e.target.value)}
+                placeholder="Pegá acá el texto del apunte o la bibliografía."
+                style={{ minHeight: 160 }}
+                required
+              />
+            </div>
+          )}
+          <div className="field">
+            <label htmlFor="mTitulo">Título{archivo ? ' (opcional)' : ''}</label>
             <input
               id="mTitulo"
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              placeholder={archivo ? 'Si lo dejás vacío se usa el nombre del archivo' : undefined}
+              placeholder={archivo ? 'Si lo dejás vacío se usa el nombre del archivo' : 'Ej: Apunte de la unidad 3'}
               required={!archivo}
             />
           </div>
@@ -267,34 +366,14 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
               placeholder="Ej: U3 Espacios vectoriales"
             />
           </div>
-          <div className="field">
-            <label htmlFor="mArchivo">Archivo (PDF, Word, PowerPoint, Markdown o texto)</label>
-            <input
-              id="mArchivo"
-              type="file"
-              accept=".pdf,.docx,.pptx,.md,.txt"
-              onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
-            />
-            <p className="muted" style={{ marginTop: 6 }}>
-              Hasta 4 MB. Se lee el texto del archivo; los PDF escaneados (imágenes) todavía no se pueden leer.
-            </p>
-          </div>
-          {!archivo && (
-            <div className="field">
-              <label htmlFor="mContenido">…o pegá el texto</label>
-              <textarea
-                id="mContenido"
-                value={contenido}
-                onChange={(e) => setContenido(e.target.value)}
-                placeholder="Pegá acá el texto del apunte o la bibliografía."
-                style={{ minHeight: 220 }}
-                required
-              />
-            </div>
-          )}
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? (archivo ? 'Leyendo e indexando…' : 'Guardando…') : 'Guardar material'}
+            {loading ? (archivo ? 'Leyendo el archivo…' : 'Guardando…') : 'Guardar material'}
           </button>
+          {loading && archivo && (
+            <p className="muted" style={{ marginTop: 8, fontSize: 13 }} role="status">
+              Se está leyendo e indexando el texto para que la IA pueda consultarlo. Puede tardar unos segundos: no cierres la página.
+            </p>
+          )}
         </form>
       )}
 
@@ -309,6 +388,7 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
               <tr>
                 <th>Título</th>
                 <th>Unidad</th>
+                <th title="Cuánto texto se leyó del material: si es muy poco, el archivo no se leyó bien">Texto leído</th>
                 <th>Cargado</th>
                 <th></th>
               </tr>
@@ -318,6 +398,7 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
                 <tr key={m.id}>
                   <td>{m.titulo}</td>
                   <td>{m.unidad ?? <span className="muted">—</span>}</td>
+                  <td className="muted">{caracteresLegibles(m.contenido)}</td>
                   <td className="muted">{new Date(m.createdAt).toLocaleDateString('es-AR')}</td>
                   <td style={{ textAlign: 'right' }}>
                     <button className="btn btn-ghost" onClick={() => handleQuitar(m)}>
