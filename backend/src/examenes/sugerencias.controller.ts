@@ -2,7 +2,7 @@ import { BadGatewayException, Body, Controller, HttpCode, HttpException, HttpSta
 import { Throttle } from '@nestjs/throttler';
 import { AiService } from '../ai/ai.service';
 import { SugerirCriteriosDto } from '../ai/dto/sugerir-criterios.dto';
-import { CANTIDAD_CRITERIOS_DEFECTO, SugerenciaCriterios } from '../ai/ai.types';
+import { SugerenciaCriterios, cantidadCriteriosPorDefecto } from '../ai/ai.types';
 import { MENSAJE_FALLO_IA } from '../ai/sugerencia-criterios.util';
 import { CANT_NIVELES_DEFECTO } from './niveles.util';
 
@@ -25,7 +25,7 @@ export class SugerenciasController {
       return await this.ai.sugerirCriterios({
         enunciado: dto.enunciado,
         tipo: dto.tipo,
-        cantidad: dto.cantidad ?? CANTIDAD_CRITERIOS_DEFECTO,
+        cantidad: dto.cantidad ?? cantidadCriteriosPorDefecto(dto.tipo),
         cantidadNiveles: dto.cantidadNiveles ?? CANT_NIVELES_DEFECTO,
       });
     } catch (error) {

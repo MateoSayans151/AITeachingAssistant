@@ -153,6 +153,8 @@ export class RespuestasExamenService {
         return this.ai.corregirRespuestaExamen({
           preguntas: abiertas.map((p) => ({
             id: p.id,
+            // Número que ve el alumno en su examen (las cerradas también cuentan).
+            numero: respuesta.examen.preguntas.findIndex((q) => q.id === p.id) + 1,
             enunciado: p.enunciado,
             criterios: p.criterios.map((c) => ({
               id: c.id,

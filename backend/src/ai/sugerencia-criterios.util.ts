@@ -75,6 +75,8 @@ Reglas:
   nivel describe un desempeño concreto y progresivo PARA ESE criterio: qué hace, qué le falta o qué hace bien
   el alumno. Nada de frases genéricas que valgan para cualquier criterio ("muy bueno", "regular", "insuficiente").
 - El peso de cada criterio es un entero de 1 a 100 que refleja su importancia, y entre todos suman 100.
+- No propongas criterios de formato, extensión o estilo (como "restricción de formato" o "uso de oraciones") salvo que el
+  enunciado pida expresamente un formato: lo que se evalúa es el contenido que la pregunta pide.
 - No menciones nombres de personas (ni del docente ni de alumnos) en ningún criterio ni nivel.
 - Escribí en castellano rioplatense, con un tono claro y profesional.`;
 

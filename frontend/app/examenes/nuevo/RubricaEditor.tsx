@@ -264,6 +264,12 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         </button>
       </div>
 
+      {pensando && (
+        <div className={styles.avisoIA} role="status">
+          La IA está leyendo el enunciado y armando los criterios. Puede tardar hasta 30 segundos: no cierres esta pregunta mientras tanto. Si se demora,
+          también podés cargarlos a mano.
+        </div>
+      )}
       {ia.estado === 'borrador' && (
         <div className={styles.avisoIA} role="status">
           Borrador sugerido por la IA: revisalo y ajustalo antes de usarlo.
@@ -284,9 +290,15 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         const sinPuntos = conPeso && puntos[ci] <= 0; // con tan pocos puntos, este criterio se redondea a 0
         return (
           <div key={ci} style={{ marginBottom: 12 }}>
-            <div className="criterio-row" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr) 90px 100px auto', alignItems: 'center', marginBottom: 0 }}>
+            <div className="criterio-row" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr) 90px 100px auto', alignItems: 'start', marginBottom: 0 }}>
               <input placeholder="Criterio (ej: Claridad del argumento)" value={c.nombre} onChange={(e) => actualizarCriterio(ci, 'nombre', e.target.value)} />
-              <input placeholder="Qué se espera para cumplirlo" value={c.descripcion} onChange={(e) => actualizarCriterio(ci, 'descripcion', e.target.value)} />
+              <AutoTextarea
+                rows={1}
+                placeholder="Qué se espera para cumplirlo"
+                aria-label={`Qué se espera en el criterio ${ci + 1}`}
+                value={c.descripcion}
+                onChange={(e) => actualizarCriterio(ci, 'descripcion', e.target.value)}
+              />
               <input
                 type="number"
                 min="0"

@@ -23,8 +23,8 @@ import { APICallError } from 'ai';
 // clásico de TS no ve): los tipos se importan por la ruta física y el valor con require, que sí respeta `exports`.
 import type { MockLanguageModelV1 as MockLanguageModelV1Tipo } from 'ai/test/dist/index';
 import { SignJWT } from 'jose';
-import { AiService } from '../src/ai/ai.service';
-import { CriterioSugerido, TIPOS_PREGUNTA_ABIERTA } from '../src/ai/ai.types';
+import { AiService, LLM_TIMEOUT_INTERACTIVO_MS, opcionesInteractivas, opcionesResilientes } from '../src/ai/ai.service';
+import { CriterioSugerido, TIPOS_PREGUNTA_ABIERTA, cantidadCriteriosPorDefecto } from '../src/ai/ai.types';
 import {
   MAX_LARGO_DESCRIPCION,
   MAX_LARGO_NIVEL,
@@ -499,13 +499,16 @@ test('controller: devuelve la forma del contrato { criterios } con un servicio d
   assert.deepEqual(llamadas, [{ enunciado: 'Explicá la Revolución de Mayo', tipo: 'analisis_caso', cantidad: 2, cantidadNiveles: 5 }]);
 });
 
-test('controller: sin `cantidad` pide 3 criterios y sin `cantidadNiveles`, 5 niveles', async () => {
+test('controller: sin `cantidad` pide 3 criterios (2 en una respuesta corta) y sin `cantidadNiveles`, 5 niveles', async () => {
   const { ai, llamadas } = iaFalsa();
   const controller = new SugerenciasController(ai);
-  const dto = (await validar({ enunciado: 'x', tipo: 'respuesta_corta' })) as SugerirCriteriosDto;
-  await controller.sugerirCriterios(dto);
+  await controller.sugerirCriterios((await validar({ enunciado: 'x', tipo: 'desarrollo' })) as SugerirCriteriosDto);
   assert.equal(llamadas[0].cantidad, 3);
   assert.equal(llamadas[0].cantidadNiveles, 5);
+  await controller.sugerirCriterios((await validar({ enunciado: 'x', tipo: 'respuesta_corta' })) as SugerirCriteriosDto);
+  assert.equal(llamadas[1].cantidad, 2, 'una respuesta corta no da para tres criterios');
+  await controller.sugerirCriterios((await validar({ enunciado: 'x', tipo: 'respuesta_corta', cantidad: 4 })) as SugerirCriteriosDto);
+  assert.equal(llamadas[2].cantidad, 4, 'si el cliente pide una cantidad, se respeta');
 });
 
 test('controller: un fallo del proveedor da 502 genérico y no filtra el mensaje original', async () => {
@@ -842,4 +845,26 @@ test('matriz service: findAll y findOne devuelven matrices con criterios de nive
   assert.deepEqual(todas[0].criterios[0].nivelesDescripcion, []);
   const una = await service.findOne('doc-1', fila.id);
   assert.deepEqual(una.criterios[0].nivelesDescripcion, []);
+});
+
+// ---------------------------------------------------------------------------
+// Menos fricción: una respuesta corta pide 2 criterios, nunca de formato; el docente espera como mucho 30 s
+// ---------------------------------------------------------------------------
+test('cantidadCriteriosPorDefecto: respuesta corta pide 2 criterios y el resto de los tipos 3', () => {
+  assert.equal(cantidadCriteriosPorDefecto('respuesta_corta'), 2);
+  for (const tipo of TIPOS_PREGUNTA_ABIERTA.filter((t) => t !== 'respuesta_corta')) assert.equal(cantidadCriteriosPorDefecto(tipo), 3, tipo);
+});
+
+test('armarPromptSugerencia: le indica a la IA que no invente criterios de formato que el enunciado no pide', () => {
+  const { system } = armarPromptSugerencia({ enunciado: 'Explicá qué es una clave primaria.', tipo: 'respuesta_corta', cantidad: 2 });
+  assert.match(system, /No propongas criterios de formato, extensión o estilo/);
+});
+
+test('opcionesInteractivas: 30 s y un solo reintento (la corrección en segundo plano sigue con 90 s y 4)', () => {
+  const interactivas = opcionesInteractivas();
+  const resilientes = opcionesResilientes();
+  assert.equal(interactivas.maxRetries, 1);
+  assert.equal(LLM_TIMEOUT_INTERACTIVO_MS, 30_000);
+  assert.ok(interactivas.abortSignal instanceof AbortSignal);
+  assert.equal(resilientes.maxRetries, 4, 'la corrección de exámenes no cambia');
 });

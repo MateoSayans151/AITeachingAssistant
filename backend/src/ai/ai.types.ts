@@ -63,6 +63,8 @@ export interface CriterioPreguntaInput {
 
 export interface PreguntaAbiertaInput {
   id: string;
+  /** Posición de la pregunta en el examen (base 1), la misma que ve el alumno: así el feedback dice "pregunta 5" y no "la segunda abierta". */
+  numero?: number;
   enunciado: string;
   criterios: CriterioPreguntaInput[];
 }
@@ -137,6 +139,13 @@ export type TipoPreguntaAbierta = (typeof TIPOS_PREGUNTA_ABIERTA)[number];
 export const CANTIDAD_CRITERIOS_MIN = 2;
 export const CANTIDAD_CRITERIOS_MAX = 5;
 export const CANTIDAD_CRITERIOS_DEFECTO = 3;
+
+/** Una respuesta corta (una o dos oraciones) no da para tres criterios: se piden dos. */
+export const CANTIDAD_CRITERIOS_RESPUESTA_CORTA = 2;
+
+/** Cantidad de criterios que se piden si el cliente no la indica, según el tipo de pregunta. */
+export const cantidadCriteriosPorDefecto = (tipo: string): number =>
+  tipo === 'respuesta_corta' ? CANTIDAD_CRITERIOS_RESPUESTA_CORTA : CANTIDAD_CRITERIOS_DEFECTO;
 
 // Lo que le pedimos al modelo. Es a propósito laxo (sin min/max de longitudes ni sumas): la forma la
 // fuerza generateObject, pero los límites reales los impone `normalizarSugerencia` en código, así un

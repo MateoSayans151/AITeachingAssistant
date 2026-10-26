@@ -49,6 +49,16 @@ export function opcionesResilientes() {
 }
 
 /**
+ * Para lo que un docente espera mirando la pantalla (sugerir criterios al armar el examen): 30 s y un solo reintento. Esperar
+ * hasta 90 s con 4 reintentos, como la corrección que corre en segundo plano, deja al docente frente a un "Pensando…" sin salida.
+ */
+export const LLM_TIMEOUT_INTERACTIVO_MS = 30_000;
+
+export function opcionesInteractivas() {
+  return { maxRetries: 1, abortSignal: AbortSignal.timeout(LLM_TIMEOUT_INTERACTIVO_MS) };
+}
+
+/**
  * Capa de acceso al LLM. Todo el "cerebro" del producto vive acá adentro:
  * el resto de la app nunca llama a un provider de IA directamente.
  *
@@ -273,7 +283,7 @@ ${acotar(correccionesTexto)}
             return `  - [${c.id}] ${c.nombre} (máx ${c.puntajeMaximo} pts): ${c.descripcion}${nivelesCriterio ? `\n${nivelesCriterio}` : ''}`;
           })
           .join('\n');
-        return `PREGUNTA [${p.id}]: ${p.enunciado}\nCriterios:\n${criteriosTexto}`;
+        return `PREGUNTA${p.numero ? ` N.º ${p.numero}` : ''} [${p.id}]: ${p.enunciado}\nCriterios:\n${criteriosTexto}`;
       })
       .join('\n\n');
 
@@ -318,6 +328,8 @@ Reglas:
 - No inventes preguntas ni criterios que no estén en la lista. Usá los id tal cual.
 - nivelSugerido siempre es un entero entre 1 y ${cantNiveles}.
 - El feedback general va dirigido al alumno: concreto, constructivo, sin exponer al docente ni a otros alumnos.
+- Si en el feedback te referís a una pregunta, nombrala con el número que figura en "PREGUNTA N.º X" (por ejemplo "la pregunta 5"): ese es el
+  número que ve el alumno en su examen. Nunca cuentes vos las preguntas ("la segunda") y, si no tenés el número, citá el tema del enunciado.
 - Si una respuesta está vacía o no responde a la pregunta, asignale el nivel más bajo y decilo en el comentario.`;
 
     const prompt = `PREGUNTAS Y CRITERIOS:\n${preguntasTexto}\n\nRESPUESTAS DEL ALUMNO:\n${respuestasTexto}${
@@ -422,7 +434,7 @@ Reglas:
         schema: SugerenciaCriteriosSchema,
         system,
         prompt,
-        ...opcionesResilientes(),
+        ...opcionesInteractivas(),
       });
       salida = object;
     } catch (error) {

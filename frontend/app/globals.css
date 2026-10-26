@@ -302,6 +302,7 @@ h4 {
 .field textarea,
 .field select,
 .criterio-row input,
+.criterio-row textarea,
 .nivel-row input,
 .nivel-row textarea {
   width: 100%;
@@ -319,6 +320,7 @@ h4 {
 .field textarea:hover,
 .field select:hover,
 .criterio-row input:hover,
+.criterio-row textarea:hover,
 .nivel-row input:hover,
 .nivel-row textarea:hover {
   border-color: var(--color-neutral-800);
@@ -328,6 +330,7 @@ h4 {
 .field textarea:focus,
 .field select:focus,
 .criterio-row input:focus,
+.criterio-row textarea:focus,
 .nivel-row input:focus,
 .nivel-row textarea:focus {
   outline: 2px solid var(--color-accent);
