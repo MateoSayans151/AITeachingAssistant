@@ -22,7 +22,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      // Con FormData el navegador pone solo el Content-Type (multipart con su boundary).
+      ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
@@ -439,6 +440,15 @@ export const createMaterialCurso = (
   cursoId: string,
   data: { titulo: string; unidad?: string; contenido: string },
 ) => request<MaterialCurso>(`/cursos/${cursoId}/materiales`, { method: 'POST', body: JSON.stringify(data) });
+
+/** Sube un archivo (pdf, docx, pptx, md, txt): el servidor extrae el texto y lo guarda como material. */
+export const subirArchivoMaterialCurso = (cursoId: string, archivo: File, data: { titulo?: string; unidad?: string }) => {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  if (data.titulo) form.append('titulo', data.titulo);
+  if (data.unidad) form.append('unidad', data.unidad);
+  return request<MaterialCurso>(`/cursos/${cursoId}/materiales/archivo`, { method: 'POST', body: form });
+};
 
 export const eliminarMaterialCurso = (id: string) => request<void>(`/materiales/${id}`, { method: 'DELETE' });
 

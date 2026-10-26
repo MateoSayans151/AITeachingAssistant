@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMaterialCursoDto } from './dto/create-material-curso.dto';
 import { RagService } from '../rag/rag.service';
+import { extensionDe, extraerTexto } from './extractor-texto.util';
 
 @Injectable()
 export class MaterialesCursoService {
@@ -29,6 +30,16 @@ export class MaterialesCursoService {
       this.logger.error(`No se pudo indexar el material ${material.id} en RAG`, error as Error);
     }
     return material;
+  }
+
+  async createDesdeArchivo(cursoId: string, archivo: Buffer, nombreArchivo: string, titulo?: string, unidad?: string) {
+    const contenido = await extraerTexto(archivo, nombreArchivo);
+    const porDefecto = nombreArchivo.slice(0, nombreArchivo.length - extensionDe(nombreArchivo).length - 1) || nombreArchivo;
+    return this.create(cursoId, {
+      titulo: titulo?.trim().slice(0, 200) || porDefecto,
+      unidad: unidad?.trim() || undefined,
+      contenido,
+    });
   }
 
   findAllByCurso(cursoId: string) {

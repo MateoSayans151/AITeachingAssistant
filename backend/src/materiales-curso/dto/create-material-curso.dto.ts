@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { MAX_CONTENIDO_MATERIAL } from '../extractor-texto.util';
 
 export class CreateMaterialCursoDto {
   @IsString()
@@ -11,10 +12,10 @@ export class CreateMaterialCursoDto {
   @IsString()
   unidad?: string;
 
-  // Mismo tope que MAX_TEXTO_NO_CONFIABLE en AiService: evita que un apunte gigante
-  // dispare el costo por token de cada corrección que lo use como contexto.
+  // Tope del texto de un material. A la IA solo llegan los fragmentos recuperados por el RAG
+  // (cada uno acotado en AiService), así que un material largo no encarece cada corrección.
   @IsString()
   @IsNotEmpty()
-  @MaxLength(50_000)
+  @MaxLength(MAX_CONTENIDO_MATERIAL)
   contenido: string;
 }

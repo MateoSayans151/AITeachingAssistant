@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Comision, Curso, MaterialCurso, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso } from '@/lib/api';
+import { Comision, Curso, MaterialCurso, ApiError, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso, subirArchivoMaterialCurso } from '@/lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
   borrador: 'Borrador',
@@ -153,15 +153,27 @@ function ComisionCard({ comision }: { comision: Comision }) {
 }
 
 /**
- * Material de cátedra: apuntes/bibliografía en texto plano que la IA usa como referencia
+ * Material de cátedra: apuntes/bibliografía (archivo pdf/docx/pptx/md/txt o texto pegado) que la IA usa como referencia
  * extra al corregir preguntas abiertas de los exámenes de este curso (ver AiService,
- * bloque <material_curso>). Texto plano a propósito, mismo criterio que el resto del MVP.
+ * bloque <material_curso>). El servidor extrae el texto del archivo; no hay OCR de PDF escaneado.
  */
+/** El backend responde 400 con un mensaje apto para el docente (formato, tamaño, PDF sin texto...). */
+function mensajeDeError(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status !== 400) return null;
+  try {
+    const m = JSON.parse(err.body).message;
+    return Array.isArray(m) ? m.join(' ') : typeof m === 'string' ? m : null;
+  } catch {
+    return null;
+  }
+}
+
 function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [unidad, setUnidad] = useState('');
   const [contenido, setContenido] = useState('');
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -170,14 +182,19 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
     setLoading(true);
     setError(null);
     try {
-      await createMaterialCurso(curso.id, { titulo, unidad: unidad || undefined, contenido });
+      if (archivo) {
+        await subirArchivoMaterialCurso(curso.id, archivo, { titulo: titulo || undefined, unidad: unidad || undefined });
+      } else {
+        await createMaterialCurso(curso.id, { titulo, unidad: unidad || undefined, contenido });
+      }
       setTitulo('');
       setUnidad('');
       setContenido('');
+      setArchivo(null);
       setMostrarForm(false);
       onChange();
-    } catch {
-      setError('No se pudo guardar el material. Intentá de nuevo.');
+    } catch (err) {
+      setError(mensajeDeError(err) ?? 'No se pudo guardar el material. Intentá de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -208,7 +225,13 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
         <form onSubmit={handleSubmit} className="card" style={{ marginBottom: 20 }}>
           <div className="field">
             <label htmlFor="mTitulo">Título</label>
-            <input id="mTitulo" value={titulo} onChange={(e) => setTitulo(e.target.value)} required />
+            <input
+              id="mTitulo"
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              placeholder={archivo ? 'Si lo dejás vacío se usa el nombre del archivo' : undefined}
+              required={!archivo}
+            />
           </div>
           <div className="field">
             <label htmlFor="mUnidad">Unidad (opcional)</label>
@@ -220,18 +243,32 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
             />
           </div>
           <div className="field">
-            <label htmlFor="mContenido">Contenido</label>
-            <textarea
-              id="mContenido"
-              value={contenido}
-              onChange={(e) => setContenido(e.target.value)}
-              placeholder="Pegá acá el texto del apunte o la bibliografía (sin imágenes ni PDF escaneado en esta versión)."
-              style={{ minHeight: 220 }}
-              required
+            <label htmlFor="mArchivo">Archivo (PDF, Word, PowerPoint, Markdown o texto)</label>
+            <input
+              id="mArchivo"
+              type="file"
+              accept=".pdf,.docx,.pptx,.md,.txt"
+              onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
             />
+            <p className="muted" style={{ marginTop: 6 }}>
+              Hasta 4 MB. Se lee el texto del archivo; los PDF escaneados (imágenes) todavía no se pueden leer.
+            </p>
           </div>
+          {!archivo && (
+            <div className="field">
+              <label htmlFor="mContenido">…o pegá el texto</label>
+              <textarea
+                id="mContenido"
+                value={contenido}
+                onChange={(e) => setContenido(e.target.value)}
+                placeholder="Pegá acá el texto del apunte o la bibliografía."
+                style={{ minHeight: 220 }}
+                required
+              />
+            </div>
+          )}
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Guardando…' : 'Guardar material'}
+            {loading ? (archivo ? 'Leyendo e indexando…' : 'Guardando…') : 'Guardar material'}
           </button>
         </form>
       )}

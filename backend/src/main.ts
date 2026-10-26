@@ -12,6 +12,8 @@ async function bootstrap() {
   app.use('/api/rendir/:slug/entregar', json({ limit: LIMITE_CUERPO_RENDIR }));
   app.use('/api/entregar/:slug/borrador', json({ limit: LIMITE_CUERPO_RENDIR }));
   app.use('/api/entregar/:slug/enviar', json({ limit: LIMITE_CUERPO_RENDIR }));
+  // Material de cátedra pegado como texto: hasta 200.000 caracteres (el resto de la API conserva 100 KB).
+  app.use('/api/cursos/:cursoId/materiales', json({ limit: '1mb' }));
   app.use(json({ limit: LIMITE_CUERPO_GENERAL }));
   app.use(urlencoded({ extended: true, limit: LIMITE_CUERPO_GENERAL }));
 
