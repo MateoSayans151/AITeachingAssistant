@@ -236,7 +236,7 @@ export function LiberarNotasButton({
           <strong>Notas publicadas el {formatearFecha(fecha)}</strong>
           <p className="muted" style={{ marginTop: 6 }}>
             Cada alumno recibe su nota por mail apenas revisás su examen
-            {faltanRevisar ? `: todavía te quedan ${faltanRevisar} respuesta(s) sin revisar` : ''}.
+            {faltanRevisar ? `: todavía te ${faltanRevisar === 1 ? 'queda 1 respuesta' : `quedan ${faltanRevisar} respuestas`} sin revisar` : ''}.
           </p>
         </div>
         {envios}

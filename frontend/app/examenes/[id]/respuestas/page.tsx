@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiberarNotasButton } from '@/app/components/LiberarNotasButton';
 import { useConfirmar } from '@/app/components/Confirmar';
+import { formatearNota } from '@/lib/texto';
 import {
   Examen,
   RespuestaExamen,
@@ -235,6 +236,9 @@ export default function RespuestasExamenPage() {
   const paraRevisar = respuestas.filter((r) => categoriaDe(r) === 'para_revisar').length;
   const revisadas = respuestas.length - sinCorregir - paraRevisar;
   const aceptables = respuestas.filter(esAceptableEnBloque).length;
+  // Las columnas de vara y de integridad solo aparecen si el examen las usa: para el docente que no las configuró son ruido.
+  const hayVara = respuestas.some((r) => r.notaConVara !== null);
+  const hayIntegridad = Boolean(examen?.antiCheat) || respuestas.some((r) => (r.intento?.eventos ?? 0) > 0 || r.intento?.estado === 'vencido');
   const ocupado = aceptando || corrigiendo;
 
   return (
@@ -310,10 +314,10 @@ export default function RespuestasExamenPage() {
               <tr>
                 <th>Alumno</th>
                 <th>Nota sugerida</th>
-                <th>Con vara</th>
+                {hayVara && <th title="La nota sugerida después de aplicar una regla de vara">Con vara</th>}
                 <th>Nota final</th>
                 <th>Estado</th>
-                <th>Integridad</th>
+                {hayIntegridad && <th>Integridad</th>}
                 <th></th>
               </tr>
             </thead>
@@ -325,22 +329,24 @@ export default function RespuestasExamenPage() {
                   <tr key={r.id}>
                     <td>{r.alumno?.nombre}</td>
                     <td title={categoria === 'sin_corregir' ? 'La IA todavía no corrigió esta respuesta, así que no hay nota sugerida.' : undefined}>
-                      {categoria === 'sin_corregir' ? '—' : (r.notaTotalSugerida ?? '—')}
+                      {categoria === 'sin_corregir' ? '—' : formatearNota(r.notaTotalSugerida)}
                     </td>
-                    <td>{r.notaConVara ?? '—'}</td>
-                    <td>{r.notaTotalFinal ?? '—'}</td>
+                    {hayVara && <td>{formatearNota(r.notaConVara)}</td>}
+                    <td>{formatearNota(r.notaTotalFinal)}</td>
                     <td>
                       <span className={estado.className} style={estado.style} title={estado.title}>
                         {estado.label}
                       </span>
                     </td>
+                    {hayIntegridad && (
+                      <td>
+                        {r.intento?.estado === 'vencido' && <span className="badge badge-pendiente" title="Se terminó el tiempo: se entregó lo último autoguardado">Por vencimiento</span>}{' '}
+                        {r.intento && r.intento.eventos > 0 ? `${r.intento.eventos} señal${r.intento.eventos === 1 ? '' : 'es'}` : r.intento ? 'Sin señales' : '—'}
+                      </td>
+                    )}
                     <td>
-                      {r.intento?.estado === 'vencido' && <span className="badge badge-pendiente" title="Se terminó el tiempo: se entregó lo último autoguardado">Por vencimiento</span>}{' '}
-                      {r.intento && r.intento.eventos > 0 ? `${r.intento.eventos} señal${r.intento.eventos === 1 ? '' : 'es'}` : r.intento ? 'Sin señales' : '—'}
-                    </td>
-                    <td>
-                      <Link href={`/examenes/${examen.id}/respuestas/${r.id}`} className="btn btn-secondary">
-                        Ver detalle
+                      <Link href={`/examenes/${examen.id}/respuestas/${r.id}`} className={`btn ${categoria === 'para_revisar' ? 'btn-primary' : 'btn-secondary'}`}>
+                        {categoria === 'para_revisar' ? 'Revisar' : 'Ver'}
                       </Link>
                     </td>
                   </tr>

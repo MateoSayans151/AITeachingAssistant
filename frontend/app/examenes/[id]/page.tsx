@@ -153,7 +153,11 @@ export default function ExamenDetallePage() {
           <Link href={`/examenes/${examen.id}/respuestas`} className="btn btn-primary">
             Ver respuestas
           </Link>
-          <Link href={`/examenes/${examen.id}/vara`} className="btn btn-secondary">
+          <Link
+            href={`/examenes/${examen.id}/vara`}
+            className="btn btn-secondary"
+            title="Subir o bajar las notas sugeridas por la IA con una regla, por ejemplo que apruebe el 60 % de los alumnos"
+          >
             Ajustar vara
           </Link>
           <Link href={`/examenes/nuevo?desde=${examen.id}`} className="btn btn-secondary">
@@ -170,6 +174,10 @@ export default function ExamenDetallePage() {
             {eliminando ? 'Eliminando…' : 'Eliminar examen'}
           </button>
         </div>
+        <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>
+          <strong>Ajustar vara:</strong> si la IA corrigió más estricto o más flojo de lo que esperabas, subí o bajá las notas sugeridas de todos con una
+          regla (por ejemplo, que aprueben el 60 %). Las respuestas que ya revisaste no cambian.
+        </p>
         {conAlumnos && (
           <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>
             No se puede borrar: ya hay alumnos que empezaron o entregaron.

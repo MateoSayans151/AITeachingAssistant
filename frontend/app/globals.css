@@ -813,3 +813,40 @@ textarea[aria-invalid='true']:hover {
     min-height: 44px;
   }
 }
+
+/* ---- revisar una respuesta: moverse entre alumnos y acciones siempre a la vista ---- */
+.nav-respuestas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.nav-respuestas-pasos {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Aceptar, guardar y volver a correr quedan pegados al borde de abajo: no hay que bajar por todas las preguntas para decidir. */
+.barra-acciones {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  margin-top: var(--space-4);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 520px) {
+  .barra-acciones .btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+}
