@@ -136,8 +136,8 @@ export function formatearFechaHora(valor: string, ahora: Date = new Date()): str
 
 /**
  * Resumen de una línea de lo que se va a publicar: "32 alumnos · se habilita ahora · cierra el 12/10 18:00 · 60 min por alumno".
- * Lo que no aplica se omite: sin cantidad conocida de alumnos, sin cierre o sin duración no se dice nada de eso. Sin apertura (o
- * con una apertura que ya pasó) se habilita ahora.
+ * Lo que no aplica se omite: sin cantidad conocida de alumnos o sin duración no se dice nada de eso. Sin apertura (o con una
+ * apertura que ya pasó) se habilita ahora, y sin cierre se aclara "sin fecha de cierre" (el link no vence).
  */
 export function resumenPublicacion(datos: {
   alumnos: number | null;
@@ -153,8 +153,9 @@ export function resumenPublicacion(datos: {
   const apertura = aFecha(datos.inicio);
   partes.push(apertura && apertura.getTime() > ahora.getTime() ? `se habilita el ${formatearFechaHora(datos.inicio, ahora)}` : 'se habilita ahora');
 
+  // Sin fecha de cierre se dice "no vence": que el docente sepa que el link va a seguir abierto.
   const cierre = formatearFechaHora(datos.fin, ahora);
-  if (cierre) partes.push(`cierra el ${cierre}`);
+  partes.push(cierre ? `cierra el ${cierre}` : 'sin fecha de cierre');
 
   if (datos.duracionMinutos && datos.duracionMinutos > 0) partes.push(`${datos.duracionMinutos} min por alumno`);
   return partes.join(' · ');

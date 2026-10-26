@@ -199,17 +199,17 @@ test('resumenPublicacion: el ejemplo completo en una línea', () => {
   );
 });
 
-test('resumenPublicacion: lo que no aplica se omite', () => {
-  assert.equal(resumenPublicacion({ alumnos: 1, inicio: '', fin: '', ahora: AHORA }), '1 alumno · se habilita ahora');
-  assert.equal(resumenPublicacion({ alumnos: 28, inicio: '', fin: '', duracionMinutos: null, ahora: AHORA }), '28 alumnos · se habilita ahora');
-  assert.equal(resumenPublicacion({ alumnos: null, inicio: '', fin: '', duracionMinutos: 0, ahora: AHORA }), 'se habilita ahora');
+test('resumenPublicacion: lo que no aplica se omite; sin cierre se aclara que el link no vence', () => {
+  assert.equal(resumenPublicacion({ alumnos: 1, inicio: '', fin: '', ahora: AHORA }), '1 alumno · se habilita ahora · sin fecha de cierre');
+  assert.equal(resumenPublicacion({ alumnos: 28, inicio: '', fin: '', duracionMinutos: null, ahora: AHORA }), '28 alumnos · se habilita ahora · sin fecha de cierre');
+  assert.equal(resumenPublicacion({ alumnos: null, inicio: '', fin: '', duracionMinutos: 0, ahora: AHORA }), 'se habilita ahora · sin fecha de cierre');
   assert.equal(
     resumenPublicacion({ alumnos: null, inicio: '2026-10-11T08:00', fin: '', duracionMinutos: 45, ahora: AHORA }),
-    'se habilita el 11/10 08:00 · 45 min por alumno',
+    'se habilita el 11/10 08:00 · sin fecha de cierre · 45 min por alumno',
   );
 });
 
 test('resumenPublicacion: una apertura que ya pasó se dice "ahora"; 0 alumnos se muestra', () => {
-  assert.equal(resumenPublicacion({ alumnos: 3, inicio: '2026-10-09T09:00', fin: '', ahora: AHORA }), '3 alumnos · se habilita ahora');
-  assert.equal(resumenPublicacion({ alumnos: 0, inicio: '', fin: '', ahora: AHORA }), '0 alumnos · se habilita ahora');
+  assert.equal(resumenPublicacion({ alumnos: 3, inicio: '2026-10-09T09:00', fin: '', ahora: AHORA }), '3 alumnos · se habilita ahora · sin fecha de cierre');
+  assert.equal(resumenPublicacion({ alumnos: 0, inicio: '', fin: '', ahora: AHORA }), '0 alumnos · se habilita ahora · sin fecha de cierre');
 });

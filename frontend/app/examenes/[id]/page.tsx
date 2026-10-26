@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
+import { CopiarLinkButton } from '@/app/components/CopiarLinkButton';
 import {
   ApiError,
   Comision,
@@ -219,8 +220,11 @@ export default function ExamenDetallePage() {
         {examen.comisiones?.map((ec) => (
           <div key={ec.id} style={{ marginBottom: 12 }}>
             <strong>{ec.comision?.nombre}</strong>
-            <div className="muted" style={{ fontSize: 13, wordBreak: 'break-all' }}>
-              {typeof window !== 'undefined' ? `${window.location.origin}/rendir/${ec.slugAcceso}` : ec.slugAcceso}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0' }}>
+              <span className="muted" style={{ fontSize: 13, wordBreak: 'break-all' }}>
+                {typeof window !== 'undefined' ? `${window.location.origin}/rendir/${ec.slugAcceso}` : ec.slugAcceso}
+              </span>
+              {typeof window !== 'undefined' && <CopiarLinkButton url={`${window.location.origin}/rendir/${ec.slugAcceso}`} />}
             </div>
             <div className="muted" style={{ fontSize: 13 }}>
               {ec.fechaInicio ? `Se habilita ${new Date(ec.fechaInicio).toLocaleString('es-AR')}` : 'Habilitado desde ya'}
