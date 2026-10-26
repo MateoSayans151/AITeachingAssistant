@@ -48,12 +48,15 @@ export default function ExamenEnCurso({
   token,
   inicial,
   titulo,
+  consigna,
   alTerminar,
 }: {
   slug: string;
   token: string;
   inicial: EstadoIntentoRendir;
   titulo: string;
+  /** Instrucciones generales del examen: antes de empezar se ven en la pantalla de ingreso; durante el examen quedan a mano acá. */
+  consigna?: string;
   alTerminar: (como: 'entregado' | 'vencido') => void;
 }) {
   const { preguntas, antiCheat, expiraEn } = inicial;
@@ -355,6 +358,13 @@ export default function ExamenEnCurso({
       )}
 
       {errorEntrega && <div className="error-box">{errorEntrega}</div>}
+
+      {consigna?.trim() && (
+        <details className="instrucciones-examen">
+          <summary>Instrucciones del examen</summary>
+          <p>{consigna}</p>
+        </details>
+      )}
 
       {preguntas.map((p, i) => (
         <TarjetaPreguntaAlumno

@@ -159,7 +159,7 @@ export default function RendirExamenPage() {
   }
 
   if (sesion) {
-    return <ExamenEnCurso slug={slug} token={sesion.token} inicial={sesion.estado} titulo={info.examen.titulo} alTerminar={alTerminar} />;
+    return <ExamenEnCurso slug={slug} token={sesion.token} inicial={sesion.estado} titulo={info.examen.titulo} consigna={info.examen.consigna} alTerminar={alTerminar} />;
   }
 
   const { examen, comision, ventana } = info;

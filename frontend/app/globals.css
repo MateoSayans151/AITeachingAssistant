@@ -850,3 +850,94 @@ textarea[aria-invalid='true']:hover {
     min-height: 44px;
   }
 }
+
+/* ---- opciones que marca el alumno (opción múltiple, casillas, verdadero/falso) ----
+   Cada opción es un renglón entero tocable de al menos 44 px (lo recomendado para el dedo), no solo el círculo de 13 px. */
+.opciones-alumno {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.opciones-alumno-fila {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.opcion-alumno {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.opcion-alumno:hover {
+  border-color: var(--color-neutral-800);
+}
+
+.opcion-alumno input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* La elegida se distingue por el borde y el fondo, no solo por el círculo. */
+.opcion-alumno:has(input:checked) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.opcion-alumno:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.opciones-alumno-fila .opcion-alumno {
+  min-width: 140px;
+}
+
+/* En iOS Safari, un campo con letra de menos de 16 px hace zoom al tocarlo y la página queda corrida. */
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select,
+  .field input,
+  .field textarea,
+  .field select {
+    font-size: 16px;
+  }
+
+  .opciones-alumno-fila .opcion-alumno {
+    flex: 1 1 100%;
+  }
+}
+
+/* Instrucciones generales del examen, siempre a mano mientras el alumno rinde (plegadas para no robar lugar). */
+.instrucciones-examen {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.instrucciones-examen summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.instrucciones-examen p {
+  margin-top: var(--space-2);
+  white-space: pre-line;
+  color: var(--color-text-secondary);
+}

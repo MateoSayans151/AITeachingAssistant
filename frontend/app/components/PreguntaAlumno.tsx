@@ -68,12 +68,12 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
 
   if (p.tipo === 'verdadero_falso') {
     return (
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div className="opciones-alumno opciones-alumno-fila" role="radiogroup" aria-label={`Respuesta a: ${p.enunciado}`}>
         {[
           { label: 'Verdadero', v: true },
           { label: 'Falso', v: false },
         ].map((o) => (
-          <label key={o.label} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <label key={o.label} className="opcion-alumno">
             <input type="radio" name={`vf-${p.id}`} checked={valor === o.v} onChange={() => onChange(o.v)} disabled={deshabilitado} />
             {o.label}
           </label>
@@ -84,23 +84,23 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
 
   if (p.tipo === 'opcion_multiple') {
     return (
-      <>
+      <div className="opciones-alumno" role="radiogroup" aria-label={`Respuesta a: ${p.enunciado}`}>
         {(p.opciones as Array<{ id: string; texto: string }>).map((o) => (
-          <label key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <label key={o.id} className="opcion-alumno">
             <input type="radio" name={`om-${p.id}`} checked={valor === o.id} onChange={() => onChange(o.id)} disabled={deshabilitado} />
             {o.texto}
           </label>
         ))}
-      </>
+      </div>
     );
   }
 
   if (p.tipo === 'casillas') {
     const actuales = Array.isArray(valor) ? (valor as string[]) : [];
     return (
-      <>
+      <div className="opciones-alumno" role="group" aria-label={`Respuesta a: ${p.enunciado}`}>
         {(p.opciones as Array<{ id: string; texto: string }>).map((o) => (
-          <label key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <label key={o.id} className="opcion-alumno">
             <input
               type="checkbox"
               checked={actuales.includes(o.id)}
@@ -110,7 +110,7 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
             {o.texto}
           </label>
         ))}
-      </>
+      </div>
     );
   }
 
