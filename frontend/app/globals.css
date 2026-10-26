@@ -941,3 +941,18 @@ textarea[aria-invalid='true']:hover {
   white-space: pre-line;
   color: var(--color-text-secondary);
 }
+
+/* Primera pantalla (sin sesión): qué es la app y cómo se usa, en tres pasos. */
+.pasos-inicio {
+  margin: 0 0 var(--space-6);
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.pasos-inicio strong {
+  color: var(--color-text);
+}
