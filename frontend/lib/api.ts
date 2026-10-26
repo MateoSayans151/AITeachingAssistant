@@ -335,6 +335,24 @@ export interface DistribucionEsperada {
   aprobadosEsperadosPct: number;
 }
 
+/** Cuántas respuestas tiene un examen y en qué punto está cada una (lo calcula el servidor). */
+export interface ResumenRespuestas {
+  entregadas: number;
+  /** La IA todavía no las corrigió. */
+  sinCorregir: number;
+  /** La IA ya sugirió una nota y el docente todavía no la revisó. */
+  porRevisar: number;
+  revisadas: number;
+}
+
+/** Un examen que espera algo del docente: lo que muestra la home en "Para revisar". */
+export interface ExamenPorRevisar extends ResumenRespuestas {
+  id: string;
+  titulo: string;
+  cursoId: string;
+  cursoNombre: string;
+}
+
 export interface Examen {
   id: string;
   cursoId: string;
@@ -359,6 +377,8 @@ export interface Examen {
    * cuántos empezaron (con cualquiera de los dos mayor a 0 el examen ya no se puede borrar).
    */
   _count?: { preguntas?: number; respuestas: number; intentos?: number };
+  /** En la lista de un curso: cuántas respuestas tiene y cuántas esperan al docente. */
+  resumenRespuestas?: ResumenRespuestas;
 }
 
 export interface NotaPorCriterioPregunta {
@@ -504,6 +524,8 @@ export const createExamen = (data: {
 }) => request<Examen>('/examenes', { method: 'POST', body: JSON.stringify(data) });
 
 export const listExamenesPorCurso = (cursoId: string) => request<Examen[]>(`/examenes?cursoId=${cursoId}`);
+
+export const listExamenesPorRevisar = () => request<ExamenPorRevisar[]>('/examenes/pendientes');
 
 export const getExamen = (id: string) => request<Examen>(`/examenes/${id}`);
 

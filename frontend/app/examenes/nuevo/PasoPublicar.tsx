@@ -23,6 +23,7 @@ import type { Comision, EstadoInvitaciones } from '@/lib/api';
 import { resumenPublicacion, siguienteNombreComision, sugerirCorreccionDominio, validarFechasPublicacion } from '@/lib/alumnos';
 import { fechaLocalAIso } from '@/lib/fechas';
 import { mensajesDelServidor, parsearAlumnos } from '@/lib/examen-form';
+import { plural } from '@/lib/texto';
 import styles from './PasoPublicar.module.css';
 
 export interface PasoPublicarProps {
@@ -53,8 +54,6 @@ interface Publicacion {
 // Mientras hay un envío de mails corriendo se consulta el avance cada tanto; con tope, por si el servidor se reinicia a mitad de camino.
 const INTERVALO_ESTADO_MS = 4000;
 const TOPE_ESTADO_MS = 3 * 60 * 1000;
-
-const plural = (n: number, singular: string, pluralForma: string) => `${n} ${n === 1 ? singular : pluralForma}`;
 
 const cantidadDe = (c: Comision | undefined): number | null => c?._count?.alumnos ?? c?.alumnos?.length ?? null;
 

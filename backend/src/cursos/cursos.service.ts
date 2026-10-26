@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCursoDto } from './dto/create-curso.dto';
+import { RESUMEN_VACIO, resumenesDeExamenes } from '../examenes/resumen-respuestas.util';
 
 @Injectable()
 export class CursosService {
@@ -35,6 +36,8 @@ export class CursosService {
       },
     });
     if (!curso) throw new NotFoundException(`Curso ${id} no encontrado`);
-    return curso;
+    // Cada examen con cuántas respuestas tiene y cuántas esperan al docente: la lista del curso lo muestra sin entrar a cada uno.
+    const resumenes = await resumenesDeExamenes(this.prisma, curso.examenes.map((e) => e.id));
+    return { ...curso, examenes: curso.examenes.map((e) => ({ ...e, resumenRespuestas: resumenes.get(e.id) ?? RESUMEN_VACIO })) };
   }
 }

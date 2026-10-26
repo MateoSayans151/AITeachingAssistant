@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Curso, listCursos } from '@/lib/api';
+import { Curso, ExamenPorRevisar, listCursos, listExamenesPorRevisar } from '@/lib/api';
+import { plural } from '@/lib/texto';
 import { useSesion } from '@/lib/auth';
 import { supabase, supabaseConfigurado } from '@/lib/supabase';
 
@@ -16,6 +17,7 @@ export default function HomePage() {
     if (recuperando) router.replace('/restablecer');
   }, [recuperando, router]);
   const [cursos, setCursos] = useState<Curso[] | null>(null);
+  const [porRevisar, setPorRevisar] = useState<ExamenPorRevisar[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,6 +25,10 @@ export default function HomePage() {
     listCursos()
       .then(setCursos)
       .catch((e) => setError(e.message));
+    // Si esto falla no se rompe la home: simplemente no se muestra el bloque "Para revisar".
+    listExamenesPorRevisar()
+      .then(setPorRevisar)
+      .catch(() => setPorRevisar([]));
   }, [docente]);
 
   if (cargando) {
@@ -42,7 +48,7 @@ export default function HomePage() {
       <header className="page-header">
         <div className="eyebrow">AI Teaching Assistant</div>
         <h1>Hola, {docente.nombre.split(' ')[0]}</h1>
-        <p>Armá un examen, compartí el link con tus comisiones y revisá las respuestas desde acá.</p>
+        <p>Armá un examen, mandales el link a tus alumnos y revisá las respuestas desde acá.</p>
       </header>
 
       <div style={{ marginBottom: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -53,6 +59,24 @@ export default function HomePage() {
           + Nuevo curso
         </Link>
       </div>
+
+      {porRevisar.length > 0 && (
+        <section style={{ marginBottom: 32 }} aria-labelledby="para-revisar">
+          <h2 id="para-revisar" style={{ fontSize: 22, marginBottom: 14 }}>
+            Para revisar
+          </h2>
+          {porRevisar.map((examen) => (
+            <Link key={examen.id} href={`/examenes/${examen.id}/respuestas`} className="card card-link">
+              <div className="card-title">{examen.titulo}</div>
+              <div className="card-meta">
+                {examen.cursoNombre} ·{' '}
+                {examen.porRevisar > 0 ? <strong>{plural(examen.porRevisar, 'respuesta para revisar', 'respuestas para revisar')}</strong> : 'la IA está corrigiendo'}
+                {examen.porRevisar > 0 && examen.sinCorregir > 0 && ` · ${plural(examen.sinCorregir, 'se está corrigiendo', 'se están corrigiendo')}`}
+              </div>
+            </Link>
+          ))}
+        </section>
+      )}
 
       <section>
         <h2 style={{ fontSize: 22, marginBottom: 14 }}>Tus cursos</h2>
@@ -72,7 +96,7 @@ export default function HomePage() {
             <div className="card-title">{curso.nombre}</div>
             <div className="card-meta">
               {curso.materia ? `${curso.materia} · ` : ''}
-              {curso._count?.comisiones ?? 0} comisiones · {curso._count?.examenes ?? 0} exámenes
+              {plural(curso._count?.comisiones ?? 0, 'comisión', 'comisiones')} · {plural(curso._count?.examenes ?? 0, 'examen', 'exámenes')}
             </div>
           </Link>
         ))}

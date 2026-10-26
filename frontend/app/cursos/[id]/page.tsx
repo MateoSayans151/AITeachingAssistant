@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
+import { plural } from '@/lib/texto';
 import { Comision, Curso, MaterialCurso, ApiError, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso, subirArchivoMaterialCurso } from '@/lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
@@ -76,7 +77,23 @@ export default function CursoDetallePage() {
           {curso.examenes?.map((examen) => (
             <Link key={examen.id} href={`/examenes/${examen.id}`} className="card card-link">
               <div className="card-title">{examen.titulo}</div>
-              <div className="card-meta">{ESTADO_LABELS[examen.estado] ?? examen.estado}</div>
+              <div className="card-meta">
+                {ESTADO_LABELS[examen.estado] ?? examen.estado}
+                {examen.resumenRespuestas && examen.resumenRespuestas.entregadas > 0 ? (
+                  <>
+                    {' · '}
+                    {plural(examen.resumenRespuestas.entregadas, 'entrega', 'entregas')}
+                    {examen.resumenRespuestas.porRevisar > 0 && (
+                      <>
+                        {' · '}
+                        <strong>{plural(examen.resumenRespuestas.porRevisar, 'para revisar', 'para revisar')}</strong>
+                      </>
+                    )}
+                  </>
+                ) : examen.estado === 'publicado' ? (
+                  ' · todavía sin entregas'
+                ) : null}
+              </div>
             </Link>
           ))}
         </>
