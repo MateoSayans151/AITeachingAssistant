@@ -48,7 +48,7 @@ const abierta = (puntaje: string, pesos: string[]): PreguntaForm => ({
   puntajeMaximo: puntaje,
   criterios: pesos.map((w, i) => criterio(w, `Criterio ${i + 1}`)),
 });
-const cerrada = (puntaje: string): PreguntaForm => ({ ...preguntaVacia(NIVELES), tipo: 'verdadero_falso', enunciado: 'V o F', puntajeMaximo: puntaje });
+const cerrada = (puntaje: string): PreguntaForm => ({ ...preguntaVacia(NIVELES), tipo: 'verdadero_falso', enunciado: 'V o F', puntajeMaximo: puntaje, vfCorrecta: 'true' });
 const suma = (xs: number[]) => redondearPuntos(xs.reduce((s, x) => s + x, 0));
 
 // ---------------------------------------------------------------------------
@@ -221,6 +221,9 @@ test('validarPregunta: las cerradas siguen pidiendo puntaje máximo y lo propio 
   assert.deepEqual(validarPregunta(cerrada(''), 0), ['Pregunta 1: falta el puntaje máximo.']);
   const mc: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'opcion_multiple', enunciado: 'x', puntajeMaximo: '1' };
   assert.deepEqual(validarPregunta(mc, 0), ['Pregunta 1: cargá al menos 2 opciones con texto.']);
+  const vf: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'verdadero_falso', enunciado: 'x', puntajeMaximo: '1' };
+  assert.deepEqual(validarPregunta(vf, 0), ['Pregunta 1: elegí si la respuesta correcta es Verdadero o Falso.'], 'la respuesta correcta nunca viene pre-elegida');
+  assert.deepEqual(validarPregunta({ ...vf, vfCorrecta: 'false' }, 0), []);
   const num: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'numerica', enunciado: 'x', puntajeMaximo: '1' };
   assert.deepEqual(validarPregunta(num, 0), ['Pregunta 1: falta la respuesta correcta (un número).']);
   const pares: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'relacionar_pares', enunciado: 'x', puntajeMaximo: '1' };
@@ -449,9 +452,9 @@ test('datosPorDefecto y preguntaVacia son datos planos: sobreviven a un JSON.str
   assert.notEqual(datosPorDefecto().niveles, datos.niveles);
 });
 
-test('validarDatos: pide título, consigna y curso; la escala; y la duración en sesiones con tiempo', () => {
+test('validarDatos: pide título y curso (la consigna es opcional); la escala; y la duración en sesiones con tiempo', () => {
   const vacios = validarDatos(datosPorDefecto());
-  assert.deepEqual(vacios, ['Falta el título del examen.', 'Falta la consigna o las instrucciones generales.', 'Elegí un curso.']);
+  assert.deepEqual(vacios, ['Falta el título del examen.', 'Elegí un curso.']);
 
   const completo = { ...datosPorDefecto(), titulo: 'Parcial', consigna: 'Instrucciones', cursoElegido: 'c1' };
   assert.deepEqual(validarDatos(completo), []);

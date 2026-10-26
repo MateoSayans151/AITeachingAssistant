@@ -50,6 +50,7 @@ const cerrada = (enunciado: string, puntaje: string): PreguntaForm => ({
   tipo: 'verdadero_falso',
   enunciado,
   puntajeMaximo: puntaje,
+  vfCorrecta: 'true',
 });
 /** Pregunta incompleta (sin enunciado ni puntos). */
 const incompleta = (): PreguntaForm => preguntaVacia(NIVELES);

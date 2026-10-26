@@ -27,6 +27,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Curso, FeedbackModo, ModalidadExamen } from '@/lib/api';
 import {
+  CONSIGNA_POR_DEFECTO,
   MAX_NIVELES,
   MIN_NIVELES,
   agregarNivel,
@@ -137,8 +138,16 @@ export function PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAju
         <input id="titulo" value={datos.titulo} onChange={(e) => onChange({ titulo: e.target.value })} required />
       </div>
       <div className="field">
-        <label htmlFor="consigna">Consigna / instrucciones generales</label>
-        <textarea id="consigna" value={datos.consigna} onChange={(e) => onChange({ consigna: e.target.value })} required />
+        <label htmlFor="consigna">Instrucciones para los alumnos (opcional)</label>
+        <textarea
+          id="consigna"
+          value={datos.consigna}
+          placeholder="Ej: Podés usar calculadora. Tenés 90 minutos."
+          onChange={(e) => onChange({ consigna: e.target.value })}
+        />
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+          Si lo dejás vacío, los alumnos ven «{CONSIGNA_POR_DEFECTO}».
+        </p>
       </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="accordion-bar" style={{ marginTop: 0 }}>

@@ -30,7 +30,7 @@
 import { useEffect, useRef } from 'react';
 import type { MatrizRubrica, TipoPregunta } from '@/lib/api';
 import { TIPOS_AUTOCORREGIBLES } from '@/lib/api';
-import { preguntaVacia, validarPregunta } from '@/lib/examen-form';
+import { idDeOpcion, preguntaVacia, validarPregunta } from '@/lib/examen-form';
 import type { NivelForm, PreguntaForm } from '@/lib/examen-form';
 import { etiquetaPuntos, resumenEnunciado } from '@/lib/examen-preguntas';
 import { RubricaEditor } from './RubricaEditor';
@@ -80,6 +80,9 @@ export const TIPOS_GRUPOS: TipoGrupo[] = [
     ],
   },
 ];
+
+/** Descripción de una línea del tipo de pregunta (la misma del menú "+ Agregar pregunta"). */
+const descripcionDelTipo = (tipo: TipoPregunta): string => TIPOS_GRUPOS.flatMap((g) => g.tipos).find((t) => t.tipo === tipo)?.descripcion ?? '';
 
 export interface PreguntaCardProps {
   indice: number;
@@ -179,7 +182,12 @@ export function PreguntaCard({
   }
 
   function agregarChoice() {
-    onChange({ ...p, opcionesChoice: [...p.opcionesChoice, { id: String.fromCharCode(97 + p.opcionesChoice.length), texto: '', correcta: false }] });
+    onChange({ ...p, opcionesChoice: [...p.opcionesChoice, { id: idDeOpcion(p.opcionesChoice.length), texto: '', correcta: false }] });
+  }
+
+  function quitarChoice(oi: number) {
+    // Se vuelve a letrar (a, b, c…) para que "Agregar opción" no repita una letra que ya existe.
+    onChange({ ...p, opcionesChoice: p.opcionesChoice.filter((_, i) => i !== oi).map((o, i) => ({ ...o, id: idDeOpcion(i) })) });
   }
 
   function actualizarPar(lado: 'paresIzquierda' | 'paresDerecha', i: number, valor: string) {
@@ -277,6 +285,10 @@ export function PreguntaCard({
         </div>
       </div>
 
+      <p className={s.ayudaTipo}>
+        <strong>{cerrada ? 'Se corrige sola' : 'La corrige la IA'}.</strong> {descripcionDelTipo(p.tipo)}
+      </p>
+
       {errores && errores.length > 0 && (
         <div className="error-box" role="alert">
           <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -310,16 +322,41 @@ export function PreguntaCard({
       )}
 
       {(p.tipo === 'opcion_multiple' || p.tipo === 'casillas') && (
-        <div>
+        <div className={s.opciones} role="group" aria-label={`Opciones de la pregunta ${numero}`}>
+          <p className={s.ayudaOpciones}>
+            Escribí las opciones y marcá {p.tipo === 'opcion_multiple' ? 'la correcta' : 'las correctas'}. Las que dejes vacías no se muestran.
+          </p>
           {p.opcionesChoice.map((o, oi) => (
-            <div key={oi} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+            <div key={oi} className={s.opcionFila} data-correcta={o.correcta}>
+              <span className={s.opcionLetra} aria-hidden="true">
+                {o.id.toUpperCase()}
+              </span>
               <input
                 type={p.tipo === 'opcion_multiple' ? 'radio' : 'checkbox'}
+                className={s.opcionMarca}
                 name={`correcta-${indice}`}
                 checked={o.correcta}
+                aria-label={`La opción ${o.id.toUpperCase()} es correcta`}
                 onChange={(e) => actualizarChoice(oi, 'correcta', e.target.checked)}
               />
-              <input placeholder={`Opción ${o.id}`} value={o.texto} onChange={(e) => actualizarChoice(oi, 'texto', e.target.value)} />
+              <input
+                className={s.opcionTexto}
+                aria-label={`Texto de la opción ${o.id.toUpperCase()}`}
+                placeholder={`Opción ${o.id.toUpperCase()}`}
+                value={o.texto}
+                onChange={(e) => actualizarChoice(oi, 'texto', e.target.value)}
+              />
+              <span className={s.opcionEstado}>{o.correcta ? '✓ Correcta' : ''}</span>
+              <button
+                type="button"
+                className={`btn btn-secondary ${s.opcionQuitar}`}
+                onClick={() => quitarChoice(oi)}
+                disabled={p.opcionesChoice.length <= 2}
+                aria-label={`Quitar la opción ${o.id.toUpperCase()}`}
+                title={p.opcionesChoice.length <= 2 ? 'Hacen falta al menos 2 opciones' : 'Quitar esta opción'}
+              >
+                Quitar
+              </button>
             </div>
           ))}
           <button type="button" className="btn btn-secondary" onClick={agregarChoice}>
@@ -330,8 +367,11 @@ export function PreguntaCard({
 
       {p.tipo === 'verdadero_falso' && (
         <div className="field" style={{ maxWidth: 200 }}>
-          <label>Respuesta correcta</label>
-          <select value={p.vfCorrecta} onChange={(e) => actualizar('vfCorrecta', e.target.value as 'true' | 'false')}>
+          <label htmlFor={`pregunta-${indice}-vf`}>Respuesta correcta</label>
+          <select id={`pregunta-${indice}-vf`} value={p.vfCorrecta} onChange={(e) => actualizar('vfCorrecta', e.target.value as 'true' | 'false' | '')}>
+            <option value="" disabled>
+              Elegí la respuesta correcta…
+            </option>
             <option value="true">Verdadero</option>
             <option value="false">Falso</option>
           </select>

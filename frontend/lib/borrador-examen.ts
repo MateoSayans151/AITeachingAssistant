@@ -103,7 +103,7 @@ function preguntaValida(v: unknown, niveles: NivelForm[]): PreguntaForm | null {
     puntajeMaximo: texto(v.puntajeMaximo, ''),
     criterios: criterios.length > 0 || TIPOS_AUTOCORREGIBLES.includes(v.tipo as TipoPregunta) ? criterios : base.criterios,
     opcionesChoice: opciones.length > 0 ? opciones : base.opcionesChoice,
-    vfCorrecta: v.vfCorrecta === 'false' ? 'false' : 'true',
+    vfCorrecta: v.vfCorrecta === 'false' ? 'false' : v.vfCorrecta === 'true' ? 'true' : '',
     numRespuestaCorrecta: texto(v.numRespuestaCorrecta, ''),
     numTolerancia: texto(v.numTolerancia, '0'),
     paresIzquierda: Array.from({ length: largo }, (_, i) => izq[i] ?? ''),

@@ -138,7 +138,8 @@
   justify-content: flex-start;
 }
 
-@media (min-width: 720px) {
+/* Con los cinco botones al lado el selector de tipo queda cortado en pantallas medianas: hasta 1000 px bajan a una segunda fila. */
+@media (min-width: 1000px) {
   .cabecera {
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas: 'numero tipo acciones';
@@ -266,6 +267,98 @@
 
 .aviso:empty {
   margin: 0;
+}
+
+/* Una línea bajo el selector de tipo: si se corrige sola o la IA, y qué es. */
+.ayudaTipo {
+  margin: 0 0 var(--space-3);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ---- opciones de opción múltiple y casillas ---- */
+.opciones {
+  margin-bottom: var(--space-3);
+}
+
+.ayudaOpciones {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.opcionFila {
+  display: grid;
+  grid-template-columns: 24px 22px minmax(0, 1fr) 72px auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* La opción marcada como correcta se distingue también sin depender del color: viene con el tilde y el rótulo "Correcta". */
+.opcionFila[data-correcta='true'] .opcionTexto {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.opcionLetra {
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.opcionMarca {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--color-success);
+  cursor: pointer;
+}
+
+.opcionTexto {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 15px;
+  font-family: var(--font-body);
+  color: var(--color-text);
+  background: #fff;
+}
+
+.opcionTexto:hover {
+  border-color: var(--color-neutral-800);
+}
+
+.opcionTexto:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.opcionEstado {
+  min-width: 64px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.opcionQuitar {
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+@media (max-width: 520px) {
+  /* En el celular no entra el rótulo "Correcta": queda el tilde y el fondo verde de la opción. */
+  .opcionFila {
+    grid-template-columns: 20px 22px minmax(0, 1fr) auto;
+  }
+
+  .opcionEstado {
+    display: none;
+  }
 }
 
 /* Texto solo para lectores de pantalla (avisos de "pregunta movida", "pregunta agregada"…). */

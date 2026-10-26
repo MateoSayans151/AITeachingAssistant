@@ -13,6 +13,7 @@ import { ApiError, createCurso, createExamen, getExamen, listCursos, listMatrice
 import type { Curso, MatrizRubrica } from '@/lib/api';
 import { useSesion } from '@/lib/auth';
 import {
+  CONSIGNA_POR_DEFECTO,
   construirPregunta,
   datosPorDefecto,
   esNumero,
@@ -305,7 +306,7 @@ function NuevoExamenForm() {
       const examen = await createExamen({
         cursoId,
         titulo: datos.titulo.trim(),
-        consigna: datos.consigna.trim(),
+        consigna: datos.consigna.trim() || CONSIGNA_POR_DEFECTO,
         modalidad: datos.modalidad,
         duracionMinutos: datos.modalidad === 'sesion_tiempo' ? Number(datos.duracionMinutos) : undefined,
         escalaMin: Number(datos.escalaMin),
