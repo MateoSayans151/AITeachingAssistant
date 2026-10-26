@@ -896,26 +896,49 @@ export function examenAFormulario(examen: Examen): ExamenFormDatos {
 
 // ---------------------------------------------------------------- paso "Publicar": lista de alumnos y errores del servidor
 
-/** "Nombre, email" por línea (o solo el email); acepta lo pegado desde una planilla (tabs, comas o punto y coma). */
+// Un email dentro de una línea: sin espacios ni separadores (`,` `;`) ni los signos con que Gmail/Outlook lo rodean (`<>`, comillas).
+const REGEX_EMAIL_EN_LINEA = /[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[^\s@,;<>()"']+/g;
+
+/** Texto suelto de la línea (lo que no es un email) en un nombre: sin `<>`, comillas ni separadores, con espacios simples. */
+function limpiarNombre(texto: string): string {
+  return texto.replace(/[<>()"']/g, ' ').replace(/[\t,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** "ana.perez@mail.com" -> "Ana Perez": nombre legible cuando el docente pegó solo el email. */
+function nombreDesdeEmail(email: string): string {
+  const local = email.split('@')[0].replace(/[._-]+/g, ' ').trim() || email;
+  return local.replace(/(^|\s)(\S)/g, (_, espacio: string, letra: string) => espacio + letra.toUpperCase());
+}
+
+/**
+ * "Nombre, email" por línea (o solo el email); acepta lo pegado desde una planilla (tabs, comas o punto y coma) y desde un
+ * cliente de correo (`Ana Pérez <ana@mail.com>`). Si una línea trae varios emails (`ana@mail.com; luis@mail.com`) los toma a
+ * todos: nunca descarta uno sin avisar.
+ */
 export function parsearAlumnos(texto: string): { alumnos: { nombre: string; email: string }[]; errores: string[] } {
   const alumnos: { nombre: string; email: string }[] = [];
   const errores: string[] = [];
   const vistos = new Set<string>();
   texto.split(/\r?\n/).forEach((linea, i) => {
     if (!linea.trim()) return;
-    const partes = linea.split(/[\t,;]+/).map((x) => x.trim()).filter(Boolean);
-    const email = (partes.find((x) => x.includes('@')) ?? '').toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const encontrados = linea.match(REGEX_EMAIL_EN_LINEA) ?? [];
+    if (encontrados.length === 0) {
       errores.push(`Línea ${i + 1}: no encontré un email válido ("${linea.trim().slice(0, 40)}").`);
       return;
     }
-    if (vistos.has(email)) {
-      errores.push(`Línea ${i + 1}: el email ${email} está repetido.`);
-      return;
-    }
-    vistos.add(email);
-    const nombre = partes.filter((x) => !x.includes('@')).join(' ') || email.split('@')[0];
-    alumnos.push({ nombre, email });
+    // Un solo email: el resto de la línea es el nombre (antes o después). Varios: el nombre es lo que queda pegado antes de cada uno.
+    const tramos = linea.split(REGEX_EMAIL_EN_LINEA);
+    const nombres =
+      encontrados.length === 1 ? [limpiarNombre(tramos.join(' '))] : encontrados.map((_, k) => limpiarNombre(tramos[k]));
+    encontrados.forEach((crudo, k) => {
+      const email = crudo.toLowerCase();
+      if (vistos.has(email)) {
+        errores.push(`Línea ${i + 1}: el email ${email} está repetido.`);
+        return;
+      }
+      vistos.add(email);
+      alumnos.push({ nombre: nombres[k] || nombreDesdeEmail(email), email });
+    });
   });
   return { alumnos, errores };
 }
