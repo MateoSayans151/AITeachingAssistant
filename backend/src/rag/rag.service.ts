@@ -8,6 +8,7 @@ import { MaterialCursoInput } from '../ai/ai.types';
 const CHUNK_SIZE = 2_200;
 const CHUNK_OVERLAP = 300;
 const DEFAULT_MATCH_COUNT = 6;
+const EMBEDDINGS_EN_PARALELO = 10;
 // Tope de la consulta que se embebe: el modelo de embeddings tiene un límite de entrada
 // (~2048 tokens) y una respuesta de alumno puede llegar a 50k caracteres. ~6000 alcanza de sobra
 // para ubicar el tema, que es lo único que necesita la búsqueda semántica.
@@ -102,7 +103,12 @@ export class RagService {
     const material = await this.prisma.materialCurso.findUnique({ where: { id: materialId } });
     if (!material) return 0;
     const fragmentos = fragmentarTexto(material.contenido);
-    const embeddings = await Promise.all(fragmentos.map((x) => this.embedding(x, 'RETRIEVAL_DOCUMENT')));
+    // Un material largo son cientos de fragmentos: se embeben de a tandas para no saturar la cuota del proveedor.
+    const embeddings: number[][] = [];
+    for (let i = 0; i < fragmentos.length; i += EMBEDDINGS_EN_PARALELO) {
+      const tanda = fragmentos.slice(i, i + EMBEDDINGS_EN_PARALELO);
+      embeddings.push(...(await Promise.all(tanda.map((x) => this.embedding(x, 'RETRIEVAL_DOCUMENT')))));
+    }
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`DELETE FROM rag_fragmentos_material WHERE material_id = ${material.id}::uuid`;
       for (let indice = 0; indice < fragmentos.length; indice += 1) {

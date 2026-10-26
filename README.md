@@ -76,12 +76,15 @@ desde que empieza, sea cuando sea). Migración: `supabase/migrations/20261003_tp
 ### Material de cátedra (Cátedra: cursos/exámenes)
 
 Además de la consigna y la rúbrica, el docente puede cargar **material de cátedra** por curso (pestaña
-"Material" en `/cursos/[id]`): apuntes o bibliografía en texto plano, opcionales, que quedan asociados
-al curso y no a un examen puntual. La IA lo usa como referencia extra al corregir las preguntas abiertas
-de cualquier examen de ese curso (`AiService.corregirRespuestaExamen`): lo cita para fundamentar el
-criterio, pero la rúbrica sigue mandando sobre la nota — no se evalúa como incorrecto un desarrollo
-válido solo porque no aparece en el material. Mismo criterio "texto plano, a propósito" del resto del
-MVP: no hay carga de PDF/imagen todavía.
+"Material" en `/cursos/[id]`): apuntes o bibliografía, opcionales, que quedan asociados al curso y no a un
+examen puntual. Se sube un **archivo** (`.pdf`, `.docx`, `.pptx`, `.md`, `.txt`, hasta 4 MB: el tope de cuerpo de
+una función en Vercel) o se **pega el texto**. El servidor extrae el texto (`POST /api/cursos/:id/materiales/archivo`,
+`materiales-curso/extractor-texto.util.ts`), valida que el contenido coincida con la extensión y lo guarda y
+indexa como cualquier otro material, con un tope de 200.000 caracteres de texto por material. **No hay OCR:** un PDF
+escaneado (solo imágenes) se rechaza con un mensaje claro. La IA lo usa como referencia extra al corregir las
+preguntas abiertas de cualquier examen de ese curso (`AiService.corregirRespuestaExamen`): recibe solo los
+fragmentos más cercanos a la respuesta, los cita para fundamentar el criterio, y la rúbrica sigue mandando sobre
+la nota — no se evalúa como incorrecto un desarrollo válido solo porque no aparece en el material.
 
 ### Armar y publicar un examen (Cátedra)
 
