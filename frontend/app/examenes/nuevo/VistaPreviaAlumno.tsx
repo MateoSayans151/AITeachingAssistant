@@ -26,6 +26,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TarjetaPreguntaAlumno } from '@/app/components/PreguntaAlumno';
+import { CONSIGNA_POR_DEFECTO } from '@/lib/examen-form';
 import type { DatosForm, PreguntaForm } from '@/lib/examen-form';
 import { TEXTOS_INGRESO_ALUMNO, antiCheatParaAlumno, avisoDuracionTitulo, cantidadRespondidas, duracionParaAlumno, preguntasParaAlumno } from '@/lib/vista-previa';
 import estilos from './VistaPreviaAlumno.module.css';
@@ -143,7 +144,7 @@ function DialogoVistaPrevia({ datos, preguntas, onCerrar }: VistaPreviaButtonPro
           <div className={estilos.contenido}>
             <header className="page-header">
               <h1>{datos.titulo.trim() || 'Sin título'}</h1>
-              {datos.consigna.trim() && <p>{datos.consigna}</p>}
+              <p>{datos.consigna.trim() || CONSIGNA_POR_DEFECTO}</p>
             </header>
 
             {minutos !== null && (

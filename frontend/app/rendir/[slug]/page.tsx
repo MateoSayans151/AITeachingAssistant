@@ -13,6 +13,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ApiError, EstadoIntentoRendir, InfoRendir, getInfoRendir, getIntento, iniciarIntento } from '@/lib/api';
 import { entrarPantallaCompleta, pantallaCompletaSoportada, salirDePantallaCompleta } from '@/lib/pantalla-completa';
+import { avisoDuracionTitulo } from '@/lib/vista-previa';
+import { sugerirCorreccionDominio } from '@/lib/alumnos';
 import ExamenEnCurso from './ExamenEnCurso';
 
 const claveToken = (slug: string) => `ata_intento_${slug}`;
@@ -51,6 +53,8 @@ export default function RendirExamenPage() {
   // Formulario de identificación. Los errores de envío NO reemplazan la página: el alumno
   // tiene que poder corregir el email sin perder nada.
   const [alumnoEmail, setAlumnoEmail] = useState('');
+  // Solo en los exámenes con acceso abierto: el docente no cargó a nadie, así que el alumno dice cómo se llama.
+  const [alumnoNombre, setAlumnoNombre] = useState('');
   const [consentimiento, setConsentimiento] = useState(false);
   const [iniciando, setIniciando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +105,7 @@ export default function RendirExamenPage() {
     try {
       const r = await iniciarIntento(slug, {
         alumnoEmail: alumnoEmail.trim(),
+        alumnoNombre: info.accesoAbierto ? alumnoNombre.trim() : undefined,
         consentimiento: info.examen.antiCheat ? consentimiento : undefined,
       });
       window.sessionStorage.setItem(claveToken(slug), r.token);
@@ -159,7 +164,7 @@ export default function RendirExamenPage() {
   }
 
   if (sesion) {
-    return <ExamenEnCurso slug={slug} token={sesion.token} inicial={sesion.estado} titulo={info.examen.titulo} alTerminar={alTerminar} />;
+    return <ExamenEnCurso slug={slug} token={sesion.token} inicial={sesion.estado} titulo={info.examen.titulo} consigna={info.examen.consigna} alTerminar={alTerminar} />;
   }
 
   const { examen, comision, ventana } = info;
@@ -167,6 +172,8 @@ export default function RendirExamenPage() {
   const cerrada = ventana.estado === 'cerrada';
   const noAbierta = ventana.estado === 'no_abierta';
   const cuandoAbre = ventana.fechaInicio ? new Date(ventana.fechaInicio).toLocaleString('es-AR') : null;
+  // Con acceso abierto la nota va al email que escribe el alumno: si el dominio parece mal escrito (gmial.com) se lo avisa antes de entrar.
+  const sugerenciaEmail = info.accesoAbierto && alumnoEmail.includes('@') ? sugerirCorreccionDominio(alumnoEmail) : null;
 
   return (
     <div className="page" style={{ maxWidth: 640 }}>
@@ -183,7 +190,7 @@ export default function RendirExamenPage() {
         <>
           {examen.duracionMinutos && (
             <div className="card" style={{ marginBottom: 16 }}>
-              <strong>Tenés {examen.duracionMinutos} minutos.</strong>
+              <strong>{avisoDuracionTitulo(examen.duracionMinutos)}</strong>
               <p className="muted" style={{ marginTop: 6 }}>
                 El tiempo empieza a correr cuando tocás “Comenzar” y no se detiene aunque cierres la pestaña. Lo que escribas se guarda
                 solo; si se termina el tiempo, se entrega lo último guardado.
@@ -223,9 +230,36 @@ export default function RendirExamenPage() {
           {error && <div className="error-box">{error}</div>}
 
           <form onSubmit={handleComenzar}>
+            {info.accesoAbierto && (
+              <div className="field">
+                <label htmlFor="nombre">Tu nombre y apellido</label>
+                <input
+                  id="nombre"
+                  value={alumnoNombre}
+                  autoComplete="name"
+                  maxLength={120}
+                  placeholder="Ej: Ana Pérez"
+                  onChange={(e) => setAlumnoNombre(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="field">
-              <label htmlFor="email">Tu email (el mismo con el que estás en el listado de la comisión)</label>
-              <input id="email" type="email" value={alumnoEmail} onChange={(e) => setAlumnoEmail(e.target.value)} required />
+              <label htmlFor="email">{info.accesoAbierto ? 'Tu email' : 'Tu email (el mismo con el que estás en el listado de la comisión)'}</label>
+              <input id="email" type="email" value={alumnoEmail} autoComplete="email" inputMode="email" onChange={(e) => setAlumnoEmail(e.target.value)} required />
+              {info.accesoAbierto && (
+                <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                  Tu nota te llega a este mail: revisá que esté bien escrito. Si ya rendiste con este mismo email, vas a retomar donde quedaste.
+                </p>
+              )}
+              {sugerenciaEmail && (
+                <p style={{ fontSize: 13, marginTop: 6 }}>
+                  ¿Quisiste decir <strong>{sugerenciaEmail}</strong>?{' '}
+                  <button type="button" className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={() => setAlumnoEmail(sugerenciaEmail)}>
+                    Corregir
+                  </button>
+                </p>
+              )}
             </div>
             <button className="btn btn-primary" type="submit" disabled={iniciando || (!!cfg && !consentimiento)}>
               {iniciando ? 'Ingresando…' : examen.duracionMinutos ? 'Comenzar examen' : 'Ingresar'}

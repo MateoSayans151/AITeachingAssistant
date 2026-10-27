@@ -324,6 +324,8 @@ export interface ExamenComision {
   slugAcceso: string;
   fechaInicio: string | null;
   fechaFin: string | null;
+  /** true: cualquier alumno con el link puede entrar; false: solo los de la lista de la comisión. */
+  accesoAbierto?: boolean;
   createdAt: string;
   comision?: Comision;
   urlAcceso?: string;
@@ -333,6 +335,24 @@ export interface DistribucionEsperada {
   umbralAprobacion: number;
   /** % de alumnos que se espera que aprueben. */
   aprobadosEsperadosPct: number;
+}
+
+/** Cuántas respuestas tiene un examen y en qué punto está cada una (lo calcula el servidor). */
+export interface ResumenRespuestas {
+  entregadas: number;
+  /** La IA todavía no las corrigió. */
+  sinCorregir: number;
+  /** La IA ya sugirió una nota y el docente todavía no la revisó. */
+  porRevisar: number;
+  revisadas: number;
+}
+
+/** Un examen que espera algo del docente: lo que muestra la home en "Para revisar". */
+export interface ExamenPorRevisar extends ResumenRespuestas {
+  id: string;
+  titulo: string;
+  cursoId: string;
+  cursoNombre: string;
 }
 
 export interface Examen {
@@ -359,6 +379,8 @@ export interface Examen {
    * cuántos empezaron (con cualquiera de los dos mayor a 0 el examen ya no se puede borrar).
    */
   _count?: { preguntas?: number; respuestas: number; intentos?: number };
+  /** En la lista de un curso: cuántas respuestas tiene y cuántas esperan al docente. */
+  resumenRespuestas?: ResumenRespuestas;
 }
 
 export interface NotaPorCriterioPregunta {
@@ -505,6 +527,8 @@ export const createExamen = (data: {
 
 export const listExamenesPorCurso = (cursoId: string) => request<Examen[]>(`/examenes?cursoId=${cursoId}`);
 
+export const listExamenesPorRevisar = () => request<ExamenPorRevisar[]>('/examenes/pendientes');
+
 export const getExamen = (id: string) => request<Examen>(`/examenes/${id}`);
 
 /** Borra un examen que nadie empezó ni entregó (si no, 409 con el motivo). Se van con él sus preguntas y los links publicados. */
@@ -512,7 +536,7 @@ export const deleteExamen = (id: string) => request<void>(`/examenes/${id}`, { m
 
 export const publicarExamenAComision = (
   examenId: string,
-  data: { comisionId: string; fechaInicio?: string; fechaFin?: string },
+  data: { comisionId: string; fechaInicio?: string; fechaFin?: string; accesoAbierto?: boolean },
 ) => request<ExamenComision>(`/examenes/${examenId}/comisiones`, { method: 'POST', body: JSON.stringify(data) });
 
 // ---- Sugerir criterios con IA (borrador para el docente; la IA propone, el docente edita y decide) ----
@@ -643,6 +667,8 @@ export const reenviarNotificaciones = (examenId: string) =>
 export interface InfoRendir {
   examen: { titulo: string; consigna: string; modalidad: ModalidadExamen; duracionMinutos: number | null; antiCheat: AntiCheatConfig | null };
   comision: { nombre: string };
+  /** true: cualquier alumno con el link puede entrar (se le pide nombre y email); false: solo los que figuran en la lista. */
+  accesoAbierto: boolean;
   ventana: { estado: 'abierta' | 'no_abierta' | 'cerrada'; fechaInicio: string | null; fechaFin: string | null };
 }
 
@@ -667,7 +693,7 @@ const conToken = (token: string) => ({ headers: { Authorization: `Bearer ${token
 
 export const getInfoRendir = (slug: string) => request<InfoRendir>(`/rendir/${slug}`);
 
-export const iniciarIntento = (slug: string, data: { alumnoEmail: string; consentimiento?: boolean }) =>
+export const iniciarIntento = (slug: string, data: { alumnoEmail: string; alumnoNombre?: string; consentimiento?: boolean }) =>
   request<EstadoIntentoRendir & { token: string }>(`/rendir/${slug}/iniciar`, { method: 'POST', body: JSON.stringify(data) });
 
 export const getIntento = (slug: string, token: string) =>

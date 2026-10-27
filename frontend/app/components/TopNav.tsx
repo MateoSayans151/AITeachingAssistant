@@ -34,13 +34,16 @@ export function TopNav() {
         <Link href="/" className="topnav-brand">
           AI Teaching Assistant
         </Link>
-        <nav className="topnav-links">
-          {LINKS.map((link) => (
-            <Link key={link.href} href={link.href} data-active={link.activo(pathname)}>
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        {/* Sin sesión no hay nada que navegar: los vínculos llevarían a pantallas que piden iniciar sesión. */}
+        {docente && (
+          <nav className="topnav-links">
+            {LINKS.map((link) => (
+              <Link key={link.href} href={link.href} data-active={link.activo(pathname)}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        )}
       </div>
       {docente && (
         <div className="topnav-user">

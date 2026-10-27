@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useConfirmar } from '@/app/components/Confirmar';
 import {
   ApiError,
   ExplicacionVara,
@@ -10,10 +11,13 @@ import {
   RespuestaExamen,
   explicarVaraRespuesta,
   getRespuestaExamen,
+  listRespuestasPorExamen,
   recorregirRespuestaExamen,
   revisarRespuestaExamen,
 } from '@/lib/api';
 import { RespuestaDelAlumno } from '@/app/components/RespuestaDelAlumno';
+import { navegacion } from '@/lib/navegacion-respuestas';
+import { formatearNota, plural } from '@/lib/texto';
 
 const TIPO_EVENTO_LABEL: Record<string, string> = {
   salida_pantalla_completa: 'Salió de pantalla completa',
@@ -51,7 +55,7 @@ function IntegridadCard({ integridad }: { integridad: NonNullable<RespuestaExame
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="card-title" style={{ marginBottom: 8 }}>
-        Integridad del intento
+        Señales durante el examen
       </div>
       <p className="muted" style={{ marginBottom: 8 }}>
         Empezó {hora(integridad.inicioEn)}
@@ -88,8 +92,11 @@ function puntajeMaximoDe(pregunta?: Pregunta): number | null {
 export default function DetalleRespuestaExamenPage() {
   const params = useParams<{ id: string; respuestaId: string }>();
   const router = useRouter();
+  const confirmar = useConfirmar();
 
   const [respuesta, setRespuesta] = useState<RespuestaExamen | null>(null);
+  // Las demás respuestas del examen: para "Anterior / Siguiente" y para pasar a la próxima por revisar.
+  const [lista, setLista] = useState<RespuestaExamen[]>([]);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [explicacionVara, setExplicacionVara] = useState<ExplicacionVara | null>(null);
   const [notasFinales, setNotasFinales] = useState<Record<string, string>>({});
@@ -122,6 +129,10 @@ export default function DetalleRespuestaExamenPage() {
         );
       });
     explicarVaraRespuesta(params.id, params.respuestaId).then(setExplicacionVara).catch(() => setExplicacionVara(null));
+    // Si la lista no carga, la pantalla anda igual: solo faltan los atajos para pasar a la siguiente.
+    listRespuestasPorExamen(params.id)
+      .then((l) => !cancelado && setLista(l))
+      .catch(() => !cancelado && setLista([]));
     return () => {
       cancelado = true;
     };
@@ -152,13 +163,26 @@ export default function DetalleRespuestaExamenPage() {
   const cantidadNiveles = Array.isArray(respuesta.examen?.niveles) ? respuesta.examen.niveles.length : 0;
   // La IA todavía no corrigió: no hay nota ni feedback sugeridos para aceptar.
   const sinCorregir = respuesta.estado === 'pendiente_correccion';
+  const nav = navegacion(lista, params.respuestaId);
+  const urlLista = `/examenes/${params.id}/respuestas`;
+  const urlDe = (id: string) => `${urlLista}/${id}`;
+  /** Al terminar una revisión se sigue con la próxima que espera; si no queda ninguna, se vuelve al listado. */
+  const seguir = () => router.push(nav.siguienteParaRevisarId ? urlDe(nav.siguienteParaRevisarId) : urlLista);
+  const escalaMax = respuesta.examen?.escalaMax;
+  const estadoTexto = sinCorregir
+    ? 'La IA todavía no la corrigió'
+    : respuesta.estadoRevision === 'aceptada'
+      ? 'Aceptada'
+      : respuesta.estadoRevision === 'editada'
+        ? 'Editada por vos'
+        : 'Para revisar';
 
   async function handleAceptar() {
     setLoading(true);
     setError(null);
     try {
       await revisarRespuestaExamen(params.id, params.respuestaId, { estadoRevision: 'aceptada' });
-      router.push(`/examenes/${params.id}/respuestas`);
+      seguir();
     } catch (err) {
       setError('No se pudo confirmar la corrección.');
     } finally {
@@ -202,7 +226,7 @@ export default function DetalleRespuestaExamenPage() {
         feedbackGeneralFinal: feedbackFinal,
         overridesPorPregunta,
       });
-      router.push(`/examenes/${params.id}/respuestas`);
+      seguir();
     } catch (err) {
       setError('No se pudo guardar la edición.');
     } finally {
@@ -213,9 +237,12 @@ export default function DetalleRespuestaExamenPage() {
   async function handleRecorregir() {
     // Si el docente ya la revisó, correr la IA de nuevo pisa su revisión: hay que avisarle antes.
     if (actual.estadoRevision !== 'pendiente') {
-      const confirmado = window.confirm(
-        `Esta respuesta ya está ${actual.estadoRevision === 'aceptada' ? 'aceptada' : 'editada'}. Si volvés a correr la IA se pierde tu revisión: la nota final y el feedback que tenías se reemplazan por una nueva sugerencia de la IA y la respuesta vuelve a quedar para revisar.\n\n¿Querés volver a correrla igual?`,
-      );
+      const confirmado = await confirmar({
+        titulo: '¿Volver a correr la IA?',
+        mensaje: `Esta respuesta ya está ${actual.estadoRevision === 'aceptada' ? 'aceptada' : 'editada'}. Si volvés a correr la IA se pierde tu revisión: la nota final y el feedback que tenías se reemplazan por una nueva sugerencia de la IA y la respuesta vuelve a quedar para revisar.`,
+        textoConfirmar: 'Volver a correrla',
+        peligrosa: true,
+      });
       if (!confirmado) return;
     }
     setRecorrigiendo(true);
@@ -238,10 +265,46 @@ export default function DetalleRespuestaExamenPage() {
 
   return (
     <div className="page">
+      <nav className="nav-respuestas" aria-label="Moverte entre las respuestas del examen">
+        <Link href={urlLista} className="btn btn-ghost">
+          ← Todas las respuestas
+        </Link>
+        <span className="nav-respuestas-pasos">
+          {nav.anteriorId ? (
+            <Link href={urlDe(nav.anteriorId)} className="btn btn-secondary">
+              ← Anterior
+            </Link>
+          ) : (
+            <span className="btn btn-secondary" aria-disabled="true" style={{ opacity: 0.45 }}>
+              ← Anterior
+            </span>
+          )}
+          {nav.siguienteId ? (
+            <Link href={urlDe(nav.siguienteId)} className="btn btn-secondary">
+              Siguiente →
+            </Link>
+          ) : (
+            <span className="btn btn-secondary" aria-disabled="true" style={{ opacity: 0.45 }}>
+              Siguiente →
+            </span>
+          )}
+        </span>
+      </nav>
+
       <header className="page-header">
-        <div className="eyebrow">{respuesta.alumno?.nombre}</div>
-        <h1>Detalle de la respuesta</h1>
-        {respuesta.modeloIa && <p className="muted">Corregido con {respuesta.modeloIa}</p>}
+        <div className="eyebrow">{nav.posicion ? `Respuesta ${nav.posicion} de ${nav.total}` : 'Respuesta del alumno'}</div>
+        <h1>{respuesta.alumno?.nombre ?? 'Alumno'}</h1>
+        <p className="muted">
+          {estadoTexto}
+          {!sinCorregir && respuesta.notaTotalSugerida !== null && (
+            <>
+              {' · '}
+              La IA sugiere <strong>{formatearNota(respuesta.notaTotalSugerida)}</strong>
+              {escalaMax ? ` de ${formatearNota(escalaMax)}` : ''}
+            </>
+          )}
+          {nav.restantesParaRevisar > 0 && ` · ${plural(nav.restantesParaRevisar, 'más por revisar', 'más por revisar')}`}
+        </p>
       </header>
 
       {sinCorregir && (
@@ -251,9 +314,12 @@ export default function DetalleRespuestaExamenPage() {
         </div>
       )}
 
-      {explicacionVara && (explicacionVara.historial.length > 0 || respuesta.notaTotalSugerida !== null) && <VaraCard explicacion={explicacionVara} />}
+      {explicacionVara && explicacionVara.historial.length > 0 && <VaraCard explicacion={explicacionVara} />}
 
-      {respuesta.integridad && <IntegridadCard integridad={respuesta.integridad} />}
+      {/* Sin monitoreo y sin señales no hay nada que contarle al docente: se muestra solo si el examen las registraba. */}
+      {respuesta.integridad && (respuesta.integridad.eventos.length > 0 || respuesta.integridad.consentimientoEn) && (
+        <IntegridadCard integridad={respuesta.integridad} />
+      )}
 
       {respuesta.respuestasPorPregunta.map((rp, i) => {
         const pregunta = preguntasPorId.get(rp.preguntaId);
@@ -271,7 +337,7 @@ export default function DetalleRespuestaExamenPage() {
                 {rp.notaPorCriterio.map((c) => (
                   <div key={c.criterioId} style={{ marginBottom: 8 }}>
                     <strong>
-                      {c.nombre}: nivel {c.nivelSugerido}{cantidadNiveles > 0 ? `/${cantidadNiveles}` : ''} — {c.notaSugerida.toFixed(2)} pts
+                      {c.nombre}: nivel {c.nivelSugerido}{cantidadNiveles > 0 ? `/${cantidadNiveles}` : ''} — {formatearNota(c.notaSugerida)} pts
                     </strong>
                     <div className="muted" style={{ fontSize: 14 }}>
                       {c.comentario}
@@ -322,22 +388,27 @@ export default function DetalleRespuestaExamenPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div className="barra-acciones">
         <button
           className="btn btn-primary"
           onClick={handleAceptar}
           disabled={loading || recorrigiendo || sinCorregir}
           title={sinCorregir ? 'La IA todavía no corrigió esta respuesta: no hay sugerencia para aceptar.' : undefined}
         >
-          {loading ? 'Guardando…' : 'Aceptar sugerencia de la IA tal cual'}
+          {loading ? 'Guardando…' : nav.siguienteParaRevisarId ? 'Aceptar y pasar a la siguiente' : 'Aceptar sugerencia de la IA'}
         </button>
         <button className="btn btn-secondary" onClick={handleGuardarEdicion} disabled={loading || recorrigiendo}>
-          Guardar mi edición
+          {nav.siguienteParaRevisarId ? 'Guardar mis cambios y seguir' : 'Guardar mis cambios'}
         </button>
-        <button className="btn btn-secondary" onClick={handleRecorregir} disabled={loading || recorrigiendo}>
+        <button className="btn btn-ghost" onClick={handleRecorregir} disabled={loading || recorrigiendo}>
           {recorrigiendo ? (sinCorregir ? 'Corrigiendo…' : 'Re-corrigiendo…') : sinCorregir ? 'Corregir con IA' : 'Volver a correr la IA'}
         </button>
       </div>
+      {respuesta.modeloIa && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          Sugerencia generada por la IA ({respuesta.modeloIa}).
+        </p>
+      )}
     </div>
   );
 }

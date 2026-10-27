@@ -25,6 +25,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import AutoTextarea from '@/app/components/AutoTextarea';
+import { useConfirmar } from '@/app/components/Confirmar';
 import type { MatrizRubrica } from '@/lib/api';
 import { createMatrizRubrica, sugerirCriterios } from '@/lib/api';
 import {
@@ -67,6 +68,7 @@ const SIN_ENUNCIADO = 'Escribí primero el enunciado de la pregunta: la IA sugie
 const SIN_CRITERIOS_LISTOS = 'Completá el nombre, qué se espera y el peso de cada criterio para poder guardarlos como matriz.';
 
 export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatrizCreada, onAplicarATodas, errores }: RubricaEditorProps) {
+  const confirmar = useConfirmar();
   const uid = useId();
   const puntos = puntosPorCriterio(p);
   const hayPuntos = puntajeEfectivoDe(p) > 0;
@@ -168,7 +170,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   async function sugerirConIA() {
     const actual = preguntaRef.current;
     if (!actual.enunciado.trim() || pensando) return;
-    if (tieneCriteriosCargados(actual) && !window.confirm('Esto reemplaza los criterios actuales. ¿Seguir?')) return;
+    if (tieneCriteriosCargados(actual) && !(await confirmar({ mensaje: 'Esto reemplaza los criterios actuales.', textoConfirmar: 'Reemplazar' }))) return;
     setIa({ estado: 'pensando' });
     try {
       // La IA describe tantos niveles como tiene la escala del examen (3 a 7), así el detalle por nivel queda utilizable.
@@ -225,8 +227,8 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   return (
     <div>
       <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
-        Rúbrica: un criterio por fila, con su peso. La IA evalúa la respuesta contra estos criterios y los puntos de la pregunta se
-        reparten entre ellos según el peso de cada uno.
+        <strong>Criterios de corrección:</strong> lo que la IA mira para ponerle nota a la respuesta. Cada criterio tiene un peso: los
+        puntos de la pregunta se reparten en proporción. Lo más rápido es pedirle a la IA que los arme y después ajustarlos.
       </div>
 
       <div className={styles.barra}>
@@ -247,7 +249,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         )}
         <button
           type="button"
-          className={`btn btn-secondary ${styles.botonIA}`}
+          className={`btn ${hayEnunciado && !pensando && !tieneCriteriosCargados(p) ? 'btn-primary' : 'btn-secondary'} ${styles.botonIA}`}
           onClick={sugerirConIA}
           disabled={!hayEnunciado || pensando}
           title={hayEnunciado ? 'La IA propone criterios a partir del enunciado; después los revisás y ajustás' : SIN_ENUNCIADO}
@@ -262,6 +264,12 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         </button>
       </div>
 
+      {pensando && (
+        <div className={styles.avisoIA} role="status">
+          La IA está leyendo el enunciado y armando los criterios. Puede tardar hasta 30 segundos: no cierres esta pregunta mientras tanto. Si se demora,
+          también podés cargarlos a mano.
+        </div>
+      )}
       {ia.estado === 'borrador' && (
         <div className={styles.avisoIA} role="status">
           Borrador sugerido por la IA: revisalo y ajustalo antes de usarlo.
@@ -282,9 +290,15 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         const sinPuntos = conPeso && puntos[ci] <= 0; // con tan pocos puntos, este criterio se redondea a 0
         return (
           <div key={ci} style={{ marginBottom: 12 }}>
-            <div className="criterio-row" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr) 90px 100px auto', alignItems: 'center', marginBottom: 0 }}>
+            <div className="criterio-row" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr) 90px 100px auto', alignItems: 'start', marginBottom: 0 }}>
               <input placeholder="Criterio (ej: Claridad del argumento)" value={c.nombre} onChange={(e) => actualizarCriterio(ci, 'nombre', e.target.value)} />
-              <input placeholder="Qué se espera para cumplirlo" value={c.descripcion} onChange={(e) => actualizarCriterio(ci, 'descripcion', e.target.value)} />
+              <AutoTextarea
+                rows={1}
+                placeholder="Qué se espera para cumplirlo"
+                aria-label={`Qué se espera en el criterio ${ci + 1}`}
+                value={c.descripcion}
+                onChange={(e) => actualizarCriterio(ci, 'descripcion', e.target.value)}
+              />
               <input
                 type="number"
                 min="0"

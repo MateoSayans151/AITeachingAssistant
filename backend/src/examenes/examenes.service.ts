@@ -7,6 +7,7 @@ import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto'
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
 import { validarNivelesDescripcionCriterio } from './niveles.util';
 import { validarNivelesEscala, validarPuntajes } from './puntaje.util';
+import { RESUMEN_VACIO, examenesPorRevisar, resumenesDeExamenes } from './resumen-respuestas.util';
 import { MENSAJE_SIN_MAIL_PARA_PUBLICAR, NotificacionesService } from '../mail/notificaciones.service';
 
 export const MENSAJE_EXAMEN_CON_ALUMNOS =
@@ -99,12 +100,24 @@ export class ExamenesService {
     });
   }
 
-  findAllByCurso(cursoId: string) {
-    return this.prisma.examen.findMany({
+  /** La lista de exámenes de un curso, cada uno con cuántas respuestas hay y cuántas esperan al docente (`resumenRespuestas`). */
+  async findAllByCurso(cursoId: string) {
+    const examenes = await this.prisma.examen.findMany({
       where: { cursoId },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { preguntas: true, respuestas: true } } },
     });
+    const resumenes = await resumenesDeExamenes(this.prisma, examenes.map((e) => e.id));
+    return examenes.map((e) => ({ ...e, resumenRespuestas: resumenes.get(e.id) ?? RESUMEN_VACIO }));
+  }
+
+  /** Los exámenes del docente que tienen respuestas por revisar o sin corregir: lo que muestra la home en "Para revisar". */
+  async porRevisarDelDocente(docenteId: string) {
+    const examenes = await this.prisma.examen.findMany({
+      where: { curso: { docenteId } },
+      select: { id: true, titulo: true, cursoId: true, curso: { select: { nombre: true } } },
+    });
+    return examenesPorRevisar(examenes, await resumenesDeExamenes(this.prisma, examenes.map((e) => e.id)));
   }
 
   async findOne(id: string) {
@@ -158,6 +171,8 @@ export class ExamenesService {
           slugAcceso: randomUUID(),
           fechaInicio: dto.fechaInicio ? new Date(dto.fechaInicio) : undefined,
           fechaFin: dto.fechaFin ? new Date(dto.fechaFin) : undefined,
+          // Por defecto cualquier alumno con el link puede entrar: el docente no tiene que cargar mails antes.
+          accesoAbierto: dto.accesoAbierto ?? true,
         },
       }),
       this.prisma.examen.update({ where: { id: examenId }, data: { estado: 'publicado' } }),

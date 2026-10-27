@@ -103,6 +103,9 @@ export interface DatosForm {
   niveles: NivelForm[];
 }
 
+/** Las instrucciones son opcionales para el docente, pero el servidor pide un texto: si no escribió nada, se manda esta. */
+export const CONSIGNA_POR_DEFECTO = 'Respondé todas las preguntas.';
+
 export function datosPorDefecto(): DatosForm {
   return {
     cursoElegido: '',
@@ -161,7 +164,8 @@ export interface PreguntaForm {
   puntajeMaximo: string;
   criterios: CriterioForm[];
   opcionesChoice: OpcionChoiceForm[];
-  vfCorrecta: 'true' | 'false';
+  /** '' = el docente todavía no eligió: la respuesta correcta nunca se pre-elige (si no, es fácil publicar con la clave invertida). */
+  vfCorrecta: 'true' | 'false' | '';
   numRespuestaCorrecta: string;
   numTolerancia: string;
   paresIzquierda: string[];
@@ -170,17 +174,22 @@ export interface PreguntaForm {
   plegada: boolean;
 }
 
+/** Cantidad de opciones con que arranca una pregunta de opción múltiple o de casillas (las que queden vacías no se publican). */
+export const OPCIONES_INICIALES = 4;
+
+/** Letra de la opción en la posición `i` (base 0): 'a', 'b', 'c'… */
+export const idDeOpcion = (i: number) => String.fromCharCode(97 + i);
+
+// Una pregunta nueva arranca como opción múltiple (la más simple de cargar, se corrige sola y no pide rúbrica) y SIN respuesta
+// correcta marcada: el docente tiene que elegirla; si se pre-eligiera una, sería fácil publicar con la clave equivocada.
 export function preguntaVacia(niveles: NivelForm[]): PreguntaForm {
   return {
-    tipo: 'desarrollo',
+    tipo: 'opcion_multiple',
     enunciado: '',
     puntajeMaximo: '',
     criterios: [criterioVacio(niveles)],
-    opcionesChoice: [
-      { id: 'a', texto: '', correcta: true },
-      { id: 'b', texto: '', correcta: false },
-    ],
-    vfCorrecta: 'true',
+    opcionesChoice: Array.from({ length: OPCIONES_INICIALES }, (_, i) => ({ id: idDeOpcion(i), texto: '', correcta: false })),
+    vfCorrecta: '',
     numRespuestaCorrecta: '',
     numTolerancia: '0',
     paresIzquierda: ['', ''],
@@ -325,6 +334,9 @@ export function validarPregunta(q: PreguntaForm, indice: number): string[] {
       const llenas = q.opcionesChoice.filter((o) => o.texto.trim());
       if (llenas.length < 2) e.push(`${n}: cargá al menos 2 opciones con texto.`);
       else if (!llenas.some((o) => o.correcta)) e.push(`${n}: marcá cuál es la opción correcta${q.tipo === 'casillas' ? ' (o cuáles)' : ''}.`);
+    }
+    if (q.tipo === 'verdadero_falso' && q.vfCorrecta !== 'true' && q.vfCorrecta !== 'false') {
+      e.push(`${n}: elegí si la respuesta correcta es Verdadero o Falso.`);
     }
     if (q.tipo === 'numerica') {
       if (!esNumero(q.numRespuestaCorrecta)) e.push(`${n}: falta la respuesta correcta (un número).`);
@@ -728,7 +740,6 @@ export function validarDistribucion(d: DatosForm): string[] {
 export function validarDatos(d: DatosForm): string[] {
   const e: string[] = [];
   if (!d.titulo.trim()) e.push('Falta el título del examen.');
-  if (!d.consigna.trim()) e.push('Falta la consigna o las instrucciones generales.');
   if (d.cursoElegido === 'nuevo' ? !d.cursoNuevoNombre.trim() : !d.cursoElegido) {
     e.push(d.cursoElegido === 'nuevo' ? 'Falta el nombre del curso nuevo.' : 'Elegí un curso.');
   }
@@ -896,26 +907,49 @@ export function examenAFormulario(examen: Examen): ExamenFormDatos {
 
 // ---------------------------------------------------------------- paso "Publicar": lista de alumnos y errores del servidor
 
-/** "Nombre, email" por línea (o solo el email); acepta lo pegado desde una planilla (tabs, comas o punto y coma). */
+// Un email dentro de una línea: sin espacios ni separadores (`,` `;`) ni los signos con que Gmail/Outlook lo rodean (`<>`, comillas).
+const REGEX_EMAIL_EN_LINEA = /[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[^\s@,;<>()"']+/g;
+
+/** Texto suelto de la línea (lo que no es un email) en un nombre: sin `<>`, comillas ni separadores, con espacios simples. */
+function limpiarNombre(texto: string): string {
+  return texto.replace(/[<>()"']/g, ' ').replace(/[\t,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** "ana.perez@mail.com" -> "Ana Perez": nombre legible cuando el docente pegó solo el email. */
+function nombreDesdeEmail(email: string): string {
+  const local = email.split('@')[0].replace(/[._-]+/g, ' ').trim() || email;
+  return local.replace(/(^|\s)(\S)/g, (_, espacio: string, letra: string) => espacio + letra.toUpperCase());
+}
+
+/**
+ * "Nombre, email" por línea (o solo el email); acepta lo pegado desde una planilla (tabs, comas o punto y coma) y desde un
+ * cliente de correo (`Ana Pérez <ana@mail.com>`). Si una línea trae varios emails (`ana@mail.com; luis@mail.com`) los toma a
+ * todos: nunca descarta uno sin avisar.
+ */
 export function parsearAlumnos(texto: string): { alumnos: { nombre: string; email: string }[]; errores: string[] } {
   const alumnos: { nombre: string; email: string }[] = [];
   const errores: string[] = [];
   const vistos = new Set<string>();
   texto.split(/\r?\n/).forEach((linea, i) => {
     if (!linea.trim()) return;
-    const partes = linea.split(/[\t,;]+/).map((x) => x.trim()).filter(Boolean);
-    const email = (partes.find((x) => x.includes('@')) ?? '').toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const encontrados = linea.match(REGEX_EMAIL_EN_LINEA) ?? [];
+    if (encontrados.length === 0) {
       errores.push(`Línea ${i + 1}: no encontré un email válido ("${linea.trim().slice(0, 40)}").`);
       return;
     }
-    if (vistos.has(email)) {
-      errores.push(`Línea ${i + 1}: el email ${email} está repetido.`);
-      return;
-    }
-    vistos.add(email);
-    const nombre = partes.filter((x) => !x.includes('@')).join(' ') || email.split('@')[0];
-    alumnos.push({ nombre, email });
+    // Un solo email: el resto de la línea es el nombre (antes o después). Varios: el nombre es lo que queda pegado antes de cada uno.
+    const tramos = linea.split(REGEX_EMAIL_EN_LINEA);
+    const nombres =
+      encontrados.length === 1 ? [limpiarNombre(tramos.join(' '))] : encontrados.map((_, k) => limpiarNombre(tramos[k]));
+    encontrados.forEach((crudo, k) => {
+      const email = crudo.toLowerCase();
+      if (vistos.has(email)) {
+        errores.push(`Línea ${i + 1}: el email ${email} está repetido.`);
+        return;
+      }
+      vistos.add(email);
+      alumnos.push({ nombre: nombres[k] || nombreDesdeEmail(email), email });
+    });
   });
   return { alumnos, errores };
 }

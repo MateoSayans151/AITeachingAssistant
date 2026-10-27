@@ -109,6 +109,11 @@ el título y la consigna; el resto está plegado con un resumen de lo configurad
   enunciado para que el docente lo edite; no se aplica solo.
 - **Vista previa del alumno:** el botón muestra el examen tal como lo ve el alumno, con el mismo componente de pregunta y sin
   clave de respuestas. Nada de lo que se escribe ahí se guarda.
+- **Quién puede entrar al link:** por defecto **cualquiera que tenga el link** (*acceso abierto*): el alumno escribe su nombre y su mail al
+  entrar y se suma solo a la comisión, así que el docente no tiene que cargar mails antes. La alternativa es **solo la lista**: entran únicamente
+  los mails cargados. Con acceso abierto la identidad es el email que escribe el alumno (no se verifica; un mismo mail rinde una sola vez y su nota
+  le llega a esa casilla), la pantalla le avisa si el dominio parece mal escrito (`gmial.com`), no se suman alumnos con la ventana cerrada y cada
+  comisión tiene un tope de 1000 alumnos. Los links publicados antes de esta opción siguen siendo solo lista.
 - **Publicar:** se pega la lista de alumnos (se avisa de emails duplicados, inválidos o con typos de dominio como `gmial.com`),
   se elige el nombre de la comisión y las fechas opcionales, y se genera el link. **Enviar el link por mail a los alumnos**
   (`POST /api/examenes/:id/invitaciones`) usa Resend, igual que las notas: el plan gratuito permite 100 mails por día y el avance
@@ -166,6 +171,7 @@ de cuáles te faltan podés correrlas todas:
 | `20261003_supabase_auth.sql` | `docentes.auth_user_id` (login con Supabase Auth) |
 | `20261003_tp_link_alumnos.sql` | Link de entrega de trabajos prácticos (`slug_acceso`, modo seguro, ventana) e `intentos_entrega` |
 | `20261004_rls_todas_las_tablas.sql` | RLS en todas las tablas, sin policies (paso 3) |
+| `20261026_acceso_abierto.sql` | `examen_comisiones.acceso_abierto`: el link puede ser abierto (entra cualquiera) o solo para la lista. **Correrla antes de desplegar el código nuevo**: sin la columna, el back falla al leer cualquier link de examen |
 
 > Alternativa: en vez de correr `schema.sql` a mano, podés dejar que Prisma cree las tablas con
 > `npx prisma db push` (ver paso 2). **No es equivalente:** Prisma no modela `rag_fragmentos_material` (el RAG la

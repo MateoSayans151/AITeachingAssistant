@@ -48,7 +48,7 @@ const abierta = (puntaje: string, pesos: string[]): PreguntaForm => ({
   puntajeMaximo: puntaje,
   criterios: pesos.map((w, i) => criterio(w, `Criterio ${i + 1}`)),
 });
-const cerrada = (puntaje: string): PreguntaForm => ({ ...preguntaVacia(NIVELES), tipo: 'verdadero_falso', enunciado: 'V o F', puntajeMaximo: puntaje });
+const cerrada = (puntaje: string): PreguntaForm => ({ ...preguntaVacia(NIVELES), tipo: 'verdadero_falso', enunciado: 'V o F', puntajeMaximo: puntaje, vfCorrecta: 'true' });
 const suma = (xs: number[]) => redondearPuntos(xs.reduce((s, x) => s + x, 0));
 
 // ---------------------------------------------------------------------------
@@ -221,6 +221,9 @@ test('validarPregunta: las cerradas siguen pidiendo puntaje máximo y lo propio 
   assert.deepEqual(validarPregunta(cerrada(''), 0), ['Pregunta 1: falta el puntaje máximo.']);
   const mc: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'opcion_multiple', enunciado: 'x', puntajeMaximo: '1' };
   assert.deepEqual(validarPregunta(mc, 0), ['Pregunta 1: cargá al menos 2 opciones con texto.']);
+  const vf: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'verdadero_falso', enunciado: 'x', puntajeMaximo: '1' };
+  assert.deepEqual(validarPregunta(vf, 0), ['Pregunta 1: elegí si la respuesta correcta es Verdadero o Falso.'], 'la respuesta correcta nunca viene pre-elegida');
+  assert.deepEqual(validarPregunta({ ...vf, vfCorrecta: 'false' }, 0), []);
   const num: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'numerica', enunciado: 'x', puntajeMaximo: '1' };
   assert.deepEqual(validarPregunta(num, 0), ['Pregunta 1: falta la respuesta correcta (un número).']);
   const pares: PreguntaForm = { ...preguntaVacia(NIVELES), tipo: 'relacionar_pares', enunciado: 'x', puntajeMaximo: '1' };
@@ -449,9 +452,9 @@ test('datosPorDefecto y preguntaVacia son datos planos: sobreviven a un JSON.str
   assert.notEqual(datosPorDefecto().niveles, datos.niveles);
 });
 
-test('validarDatos: pide título, consigna y curso; la escala; y la duración en sesiones con tiempo', () => {
+test('validarDatos: pide título y curso (la consigna es opcional); la escala; y la duración en sesiones con tiempo', () => {
   const vacios = validarDatos(datosPorDefecto());
-  assert.deepEqual(vacios, ['Falta el título del examen.', 'Falta la consigna o las instrucciones generales.', 'Elegí un curso.']);
+  assert.deepEqual(vacios, ['Falta el título del examen.', 'Elegí un curso.']);
 
   const completo = { ...datosPorDefecto(), titulo: 'Parcial', consigna: 'Instrucciones', cursoElegido: 'c1' };
   assert.deepEqual(validarDatos(completo), []);
@@ -468,7 +471,7 @@ test('parsearAlumnos: nombre y email por línea, acepta lo pegado de una planill
   const { alumnos, errores } = parsearAlumnos('Ana Pérez, ANA@mail.com\nluis@mail.com\nMaría\tmaria@mail.com\n\nsin-arroba\nluis@mail.com\nPedro;pedro@mail.com');
   assert.deepEqual(alumnos, [
     { nombre: 'Ana Pérez', email: 'ana@mail.com' },
-    { nombre: 'luis', email: 'luis@mail.com' },
+    { nombre: 'Luis', email: 'luis@mail.com' },
     { nombre: 'María', email: 'maria@mail.com' },
     { nombre: 'Pedro', email: 'pedro@mail.com' },
   ]);
@@ -476,6 +479,42 @@ test('parsearAlumnos: nombre y email por línea, acepta lo pegado de una planill
   assert.match(errores[0], /Línea 5: no encontré un email válido \("sin-arroba"\)/);
   assert.match(errores[1], /Línea 6: el email luis@mail.com está repetido/);
   assert.deepEqual(parsearAlumnos('  \n'), { alumnos: [], errores: [] });
+});
+
+test('parsearAlumnos: una línea con varios emails los toma a todos (antes descartaba el segundo sin avisar)', () => {
+  const { alumnos, errores } = parsearAlumnos('maria@mail.com; juan@gmial.com\nAna Pérez, ana@mail.com; Luis Gómez, luis@mail.com\na@x.com b@x.com c@x.com');
+  assert.deepEqual(alumnos, [
+    { nombre: 'Maria', email: 'maria@mail.com' },
+    { nombre: 'Juan', email: 'juan@gmial.com' },
+    { nombre: 'Ana Pérez', email: 'ana@mail.com' },
+    { nombre: 'Luis Gómez', email: 'luis@mail.com' },
+    { nombre: 'A', email: 'a@x.com' },
+    { nombre: 'B', email: 'b@x.com' },
+    { nombre: 'C', email: 'c@x.com' },
+  ]);
+  assert.deepEqual(errores, []);
+});
+
+test('parsearAlumnos: acepta "Nombre <email>" (lo que se copia de Gmail u Outlook), con comillas y entre paréntesis', () => {
+  const { alumnos, errores } = parsearAlumnos('LUIS GOMEZ <Luis@Catedra.test>\n"Pérez, Ana" <ana@mail.com>\nSofía López (sofia@mail.com)');
+  assert.deepEqual(alumnos, [
+    { nombre: 'LUIS GOMEZ', email: 'luis@catedra.test' },
+    { nombre: 'Pérez Ana', email: 'ana@mail.com' },
+    { nombre: 'Sofía López', email: 'sofia@mail.com' },
+  ]);
+  assert.deepEqual(errores, []);
+});
+
+test('parsearAlumnos: un email repetido dentro de la misma línea se avisa y los demás se conservan; "pedro@@x" sigue siendo error', () => {
+  const { alumnos, errores } = parsearAlumnos('ana@mail.com; ana@mail.com; luis@mail.com\npedro@@x');
+  assert.deepEqual(alumnos.map((a) => a.email), ['ana@mail.com', 'luis@mail.com']);
+  assert.equal(errores.length, 2);
+  assert.match(errores[0], /Línea 1: el email ana@mail.com está repetido/);
+  assert.match(errores[1], /Línea 2: no encontré un email válido/);
+});
+
+test('parsearAlumnos: nombre legible cuando se pega solo el email (separa puntos y guiones, capitaliza)', () => {
+  assert.deepEqual(parsearAlumnos('ana.perez@mail.com\njuan_carlos-gomez@mail.com').alumnos.map((a) => a.nombre), ['Ana Perez', 'Juan Carlos Gomez']);
 });
 
 test('mensajesDelServidor: lista de class-validator, mensaje suelto, o nada', () => {

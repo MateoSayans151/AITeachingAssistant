@@ -192,13 +192,13 @@ test('preguntasParaAlumno: el enunciado va sin espacios de los costados, como lo
 // ---------------------------------------------------------------------------
 test('preguntasParaAlumno: pregunta recién agregada (vacía): no revienta y muestra un enunciado de reemplazo', () => {
   const [s] = preguntasParaAlumno([preguntaVacia(NIVELES)]);
-  assert.deepEqual(s, { id: 'p1', tipo: 'desarrollo', enunciado: ENUNCIADO_VACIO, puntajeMaximo: '0', opciones: null });
+  assert.deepEqual(s, { id: 'p1', tipo: 'opcion_multiple', enunciado: ENUNCIADO_VACIO, puntajeMaximo: '0', opciones: [] }, 'arranca como opción múltiple y sus opciones vacías no se muestran');
   assert.equal(preguntasParaAlumno([{ ...preguntaVacia(NIVELES), enunciado: '   ' }])[0].enunciado, ENUNCIADO_VACIO);
 });
 
 test('preguntasParaAlumno: opción múltiple / casillas con opciones vacías -> solo las que tienen texto (o [])', () => {
   for (const tipo of ['opcion_multiple', 'casillas'] as const) {
-    const vacia = { ...preguntaVacia(NIVELES), tipo, enunciado: 'Elegí' }; // trae 2 opciones sin texto
+    const vacia = { ...preguntaVacia(NIVELES), tipo, enunciado: 'Elegí' }; // trae 4 opciones sin texto
     assert.deepEqual(preguntasParaAlumno([vacia])[0].opciones, [], tipo);
 
     const una = { ...vacia, opcionesChoice: [{ id: 'a', texto: '', correcta: true }, { id: 'b', texto: 'Solo esta', correcta: false }, { id: 'c', texto: '   ', correcta: false }] };
@@ -267,8 +267,10 @@ test('textos: TEXTOS_INGRESO_ALUMNO es copia de lo que dice app/rendir/[slug]/pa
   for (const [clave, texto] of Object.entries(TEXTOS_INGRESO_ALUMNO)) {
     assert.ok(fuente.includes(sinEspaciosRaros(texto)), `"${clave}" ya no coincide con la pantalla real: ${texto}`);
   }
-  assert.ok(fuente.includes(avisoDuracionTitulo(0).replace('0', '{examen.duracionMinutos}')), 'el título del aviso de duración ya no coincide con la pantalla real');
+  // La pantalla real y la vista previa arman el título con la MISMA función: no pueden diferir.
+  assert.ok(fuente.includes('avisoDuracionTitulo(examen.duracionMinutos)'), 'la pantalla real ya no usa avisoDuracionTitulo');
   assert.equal(avisoDuracionTitulo(90), 'Tenés 90 minutos.');
+  assert.equal(avisoDuracionTitulo(1), 'Tenés 1 minuto.', 'en singular no dice "1 minutos"');
 });
 
 test('componente: el examen en curso y la vista previa usan el MISMO TarjetaPreguntaAlumno, y ExamenEnCurso ya no tiene su propio renderizado', () => {

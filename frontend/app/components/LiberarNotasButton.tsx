@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConfirmar } from './Confirmar';
 import {
   ApiError,
   ExamenConPendientes,
@@ -53,6 +54,7 @@ export function LiberarNotasButton({
   revisadas?: number;
   onChange: (examen: ExamenConPendientes) => void;
 }) {
+  const confirmar = useConfirmar();
   const [publicadoEn, setPublicadoEn] = useState<string | null>(null);
   const [sinRevisar, setSinRevisar] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -121,18 +123,23 @@ export function LiberarNotasButton({
         const revisadasAhora = respuestas.length - pendientes;
         aviso =
           (revisadasAhora > 0
-            ? `Se van a enviar por mail las notas de ${revisadasAhora} alumno(s) con el examen revisado. `
-            : 'Todavía no revisaste ninguna respuesta: por ahora no se envía ningún mail. ') +
+            ? `Se van a enviar por mail las notas de ${revisadasAhora === 1 ? '1 alumno' : `${revisadasAhora} alumnos`} con el examen revisado.\n\n`
+            : 'Todavía no revisaste ninguna respuesta: por ahora no se envía ningún mail.\n\n') +
           (pendientes > 0
-            ? `Hay ${pendientes} respuesta(s) sin revisar: esos alumnos reciben su mail apenas las revises. `
+            ? `Hay ${pendientes === 1 ? '1 respuesta sin revisar' : `${pendientes} respuestas sin revisar`}: ${pendientes === 1 ? 'ese alumno recibe' : 'esos alumnos reciben'} su mail apenas ${pendientes === 1 ? 'la revises' : 'las revises'}.\n\n`
             : '');
       } catch {
         /* si no se pudo contar, se confirma igual sin ese detalle */
       }
       if (resumen?.modoPrueba) {
-        aviso += `Estás en modo prueba: los mails llegan a ${resumen.modoPrueba}, no a los alumnos. `;
+        aviso += `Estás en modo prueba: los mails llegan a ${resumen.modoPrueba}, no a los alumnos.\n\n`;
       }
-      if (!window.confirm(`${aviso}Las notas publicadas no se pueden retirar. ¿Publicarlas y enviarlas por mail?`)) return;
+      const confirmado = await confirmar({
+        titulo: '¿Publicar las notas y enviarlas por mail?',
+        mensaje: `${aviso}Las notas publicadas no se pueden retirar.`,
+        textoConfirmar: 'Publicar y enviar',
+      });
+      if (!confirmado) return;
 
       const examen = await liberarFeedback(examenId);
       setPublicadoEn(examen.feedbackLiberadoEn);
@@ -229,7 +236,7 @@ export function LiberarNotasButton({
           <strong>Notas publicadas el {formatearFecha(fecha)}</strong>
           <p className="muted" style={{ marginTop: 6 }}>
             Cada alumno recibe su nota por mail apenas revisás su examen
-            {faltanRevisar ? `: todavía te quedan ${faltanRevisar} respuesta(s) sin revisar` : ''}.
+            {faltanRevisar ? `: todavía te ${faltanRevisar === 1 ? 'queda 1 respuesta' : `quedan ${faltanRevisar} respuestas`} sin revisar` : ''}.
           </p>
         </div>
         {envios}

@@ -309,6 +309,7 @@ function criterioDescripto(escala: NivelForm[], nombre = 'Claridad', detallar = 
 }
 const preguntaCon = (escala: NivelForm[], ...criterios: CriterioForm[]): PreguntaForm => ({
   ...preguntaVacia(escala),
+  tipo: 'desarrollo',
   enunciado: 'Explicá',
   puntajeMaximo: '10',
   criterios: criterios.length > 0 ? criterios : [criterioDescripto(escala)],
@@ -374,7 +375,7 @@ test('reconciliarNiveles: cada criterio de cada pregunta se arregla, y detallar 
   const sinDetalle = { ...criterioDescripto(vieja, 'Orden', false), niveles: vieja.map((n) => ({ orden: n.orden, nombre: n.nombre, descripcion: '' })) };
   const p1 = { ...preguntaCon(vieja, criterioDescripto(vieja, 'A'), sinDetalle), plegada: true, enunciado: 'Primera' };
   const p2 = preguntaCon(vieja, criterioDescripto(vieja, 'B'));
-  const cerrada: PreguntaForm = { ...preguntaVacia(vieja), tipo: 'verdadero_falso', enunciado: 'V o F', puntajeMaximo: '1' };
+  const cerrada: PreguntaForm = { ...preguntaVacia(vieja), tipo: 'verdadero_falso', enunciado: 'V o F', puntajeMaximo: '1', vfCorrecta: 'true' };
   const [r1, r2, r3] = reconciliarNiveles([p1, p2, cerrada], nueva, vieja);
   for (const c of [...r1.criterios, ...r2.criterios, ...r3.criterios]) {
     assert.equal(c.niveles.length, 6);

@@ -27,6 +27,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Curso, FeedbackModo, ModalidadExamen } from '@/lib/api';
 import {
+  CONSIGNA_POR_DEFECTO,
   MAX_NIVELES,
   MIN_NIVELES,
   agregarNivel,
@@ -137,8 +138,16 @@ export function PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAju
         <input id="titulo" value={datos.titulo} onChange={(e) => onChange({ titulo: e.target.value })} required />
       </div>
       <div className="field">
-        <label htmlFor="consigna">Consigna / instrucciones generales</label>
-        <textarea id="consigna" value={datos.consigna} onChange={(e) => onChange({ consigna: e.target.value })} required />
+        <label htmlFor="consigna">Instrucciones para los alumnos (opcional)</label>
+        <textarea
+          id="consigna"
+          value={datos.consigna}
+          placeholder="Ej: Podés usar calculadora. Tenés 90 minutos."
+          onChange={(e) => onChange({ consigna: e.target.value })}
+        />
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+          Si lo dejás vacío, los alumnos ven «{CONSIGNA_POR_DEFECTO}».
+        </p>
       </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="accordion-bar" style={{ marginTop: 0 }}>
@@ -154,30 +163,30 @@ export function PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAju
         {ajustesAbierto && (
           <div id="como-se-rinde" style={{ marginTop: 16 }}>
           <div className="field">
-            <label htmlFor="modalidad">Modalidad</label>
+            <label htmlFor="modalidad">¿Cómo lo rinden?</label>
             <select id="modalidad" value={datos.modalidad} onChange={(e) => onChange({ modalidad: e.target.value as ModalidadExamen })}>
-              <option value="ventana_dias">Ventana de varios días (el alumno entra cuando quiere dentro del rango)</option>
-              <option value="sesion_tiempo">Sesión con tiempo límite</option>
+              <option value="ventana_dias">Cuando quieran, dentro de un rango de días</option>
+              <option value="sesion_tiempo">En una sola sesión, con tiempo límite</option>
             </select>
           </div>
           {datos.modalidad === 'sesion_tiempo' && (
             <div className="field">
-              <label htmlFor="duracion">Duración (minutos)</label>
+              <label htmlFor="duracion">Cuánto tiempo tiene cada alumno (en minutos)</label>
               <input id="duracion" type="number" min="1" value={datos.duracionMinutos} onChange={(e) => onChange({ duracionMinutos: e.target.value })} />
             </div>
           )}
           <div style={{ display: 'flex', gap: 16 }}>
             <div className="field" style={{ flex: 1 }}>
-              <label htmlFor="escalaMin">Escala mínima</label>
+              <label htmlFor="escalaMin">Escala: nota mínima</label>
               <input id="escalaMin" type="number" value={datos.escalaMin} onChange={(e) => onChange({ escalaMin: e.target.value })} />
             </div>
             <div className="field" style={{ flex: 1 }}>
-              <label htmlFor="escalaMax">Escala máxima</label>
+              <label htmlFor="escalaMax">Escala: nota máxima</label>
               <input id="escalaMax" type="number" value={datos.escalaMax} onChange={(e) => onChange({ escalaMax: e.target.value })} />
             </div>
           </div>
           <p className="muted" style={{ fontSize: 13, margin: '-6px 0 16px' }}>
-            El total de puntos de las preguntas tiene que sumar la escala máxima.
+            Con qué notas se corrige (por defecto, de 0 a 10). El total de puntos de las preguntas tiene que sumar la nota máxima.
             {esNumero(datos.escalaMin) && Number(datos.escalaMin) !== 0 && (
               <>
                 <br />
@@ -186,20 +195,20 @@ export function PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAju
             )}
           </p>
           <div className="field">
-            <label htmlFor="feedbackModo">Liberación de feedback</label>
+            <label htmlFor="feedbackModo">¿Cuándo ven su nota y sus comentarios?</label>
             <select id="feedbackModo" value={datos.feedbackModo} onChange={(e) => onChange({ feedbackModo: e.target.value as FeedbackModo })}>
-              <option value="manual">Manual (el docente libera el feedback cuando quiere)</option>
-              <option value="inmediato">Inmediato (apenas el docente termina de revisar cada respuesta)</option>
+              <option value="manual">Cuando yo los publique (recomendado)</option>
+              <option value="inmediato">Apenas reviso cada respuesta</option>
             </select>
           </div>
           <div style={{ marginBottom: 4 }}>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
               <input type="checkbox" checked={datos.antiCheatOn} onChange={(e) => onChange({ antiCheatOn: e.target.checked })} />
-              Registrar señales de integridad durante el examen
+              Avisarme si el alumno sale de la pantalla, cambia de pestaña o pega texto
             </label>
             <p className="muted" style={{ margin: '6px 0 0' }}>
-              Solo se registran eventos (no se bloquea nada ni se baja la nota): vos los ves junto a cada respuesta y decidís. Antes de
-              empezar, el alumno ve exactamente qué se monitorea y tiene que aceptarlo.
+              Son «señales de integridad»: solo se registran (no se bloquea nada ni se baja la nota) y las ves junto a cada respuesta para
+              decidir vos. Antes de empezar, el alumno ve exactamente qué se registra y tiene que aceptarlo.
             </p>
             {datos.antiCheatOn && (
               <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>

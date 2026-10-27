@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useConfirmar } from '@/app/components/Confirmar';
+import { CopiarLinkButton } from '@/app/components/CopiarLinkButton';
+import { InvitarPorMail } from '@/app/examenes/nuevo/PasoPublicar';
 import {
   ApiError,
   Comision,
@@ -41,10 +44,13 @@ const fmtPts = (n: number) => (Math.round((n + Number.EPSILON) * 100) / 100).toL
 export default function ExamenDetallePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const confirmar = useConfirmar();
   const [examen, setExamen] = useState<Examen | null>(null);
   const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [comisionSeleccionada, setComisionSeleccionada] = useState('');
   const [linkGenerado, setLinkGenerado] = useState<string | null>(null);
+  // Por defecto el link lo puede abrir cualquier alumno; marcado, entran solo los de la lista de la comisión.
+  const [soloLista, setSoloLista] = useState(false);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -95,6 +101,7 @@ export default function ExamenDetallePage() {
         comisionId: comisionSeleccionada,
         fechaInicio: fechaLocalAIso(fechaInicio),
         fechaFin: fechaLocalAIso(fechaFin),
+        accesoAbierto: !soloLista,
       });
       setLinkGenerado(resultado.urlAcceso ?? null);
       setComisionSeleccionada('');
@@ -109,13 +116,13 @@ export default function ExamenDetallePage() {
   }
 
   async function handleEliminar() {
-    if (
-      !window.confirm(
-        `¿Eliminar el examen "${examen!.titulo}"?\n\nSe borra con todas sus preguntas, y los links que ya publicaste a las comisiones dejan de funcionar. No se puede deshacer.`,
-      )
-    ) {
-      return;
-    }
+    const confirmado = await confirmar({
+      titulo: `¿Eliminar el examen "${examen!.titulo}"?`,
+      mensaje: 'Se borra con todas sus preguntas, y los links que ya publicaste a las comisiones dejan de funcionar. No se puede deshacer.',
+      textoConfirmar: 'Eliminar examen',
+      peligrosa: true,
+    });
+    if (!confirmado) return;
     setEliminando(true);
     setErrorEliminar(null);
     try {
@@ -151,7 +158,11 @@ export default function ExamenDetallePage() {
           <Link href={`/examenes/${examen.id}/respuestas`} className="btn btn-primary">
             Ver respuestas
           </Link>
-          <Link href={`/examenes/${examen.id}/vara`} className="btn btn-secondary">
+          <Link
+            href={`/examenes/${examen.id}/vara`}
+            className="btn btn-secondary"
+            title="Subir o bajar las notas sugeridas por la IA con una regla, por ejemplo que apruebe el 60 % de los alumnos"
+          >
             Ajustar vara
           </Link>
           <Link href={`/examenes/nuevo?desde=${examen.id}`} className="btn btn-secondary">
@@ -168,6 +179,10 @@ export default function ExamenDetallePage() {
             {eliminando ? 'Eliminando…' : 'Eliminar examen'}
           </button>
         </div>
+        <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>
+          <strong>Ajustar vara:</strong> si la IA corrigió más estricto o más flojo de lo que esperabas, subí o bajá las notas sugeridas de todos con una
+          regla (por ejemplo, que aprueben el 60 %). Las respuestas que ya revisaste no cambian.
+        </p>
         {conAlumnos && (
           <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>
             No se puede borrar: ya hay alumnos que empezaron o entregaron.
@@ -209,14 +224,20 @@ export default function ExamenDetallePage() {
         {examen.comisiones?.map((ec) => (
           <div key={ec.id} style={{ marginBottom: 12 }}>
             <strong>{ec.comision?.nombre}</strong>
-            <div className="muted" style={{ fontSize: 13, wordBreak: 'break-all' }}>
-              {typeof window !== 'undefined' ? `${window.location.origin}/rendir/${ec.slugAcceso}` : ec.slugAcceso}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0' }}>
+              <span className="muted" style={{ fontSize: 13, wordBreak: 'break-all' }}>
+                {typeof window !== 'undefined' ? `${window.location.origin}/rendir/${ec.slugAcceso}` : ec.slugAcceso}
+              </span>
+              {typeof window !== 'undefined' && <CopiarLinkButton url={`${window.location.origin}/rendir/${ec.slugAcceso}`} />}
             </div>
             <div className="muted" style={{ fontSize: 13 }}>
               {ec.fechaInicio ? `Se habilita ${new Date(ec.fechaInicio).toLocaleString('es-AR')}` : 'Habilitado desde ya'}
               {' · '}
               {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
+              {' · '}
+              {ec.accesoAbierto ? 'entra cualquiera con el link' : 'entran solo los de la lista'}
             </div>
+            <InvitarPorMail examenId={examen.id} examenComisionId={ec.id} cantidadAlumnos={ec.comision?._count?.alumnos ?? null} />
           </div>
         ))}
 
@@ -238,6 +259,10 @@ export default function ExamenDetallePage() {
             </select>
             <input type="datetime-local" aria-label="Se habilita (opcional)" title="Se habilita (opcional)" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
             <input type="datetime-local" aria-label="Cierra (opcional)" title="Cierra (opcional)" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
+              <input type="checkbox" checked={soloLista} onChange={(e) => setSoloLista(e.target.checked)} />
+              Solo los alumnos de la lista
+            </label>
             <button className="btn btn-primary" onClick={handlePublicar} disabled={loading || !comisionSeleccionada}>
               {loading ? 'Publicando…' : 'Publicar / generar link'}
             </button>

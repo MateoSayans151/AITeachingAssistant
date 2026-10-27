@@ -8,6 +8,14 @@ export class IniciarIntentoDto {
   @IsEmail()
   alumnoEmail: string;
 
+  // Solo lo pide la pantalla cuando el examen tiene acceso abierto (el docente no cargó a los alumnos antes): es el nombre con
+  // el que va a aparecer en la lista de respuestas del docente. En un examen con lista se ignora.
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value))
+  @IsString()
+  @MaxLength(120)
+  alumnoNombre?: string;
+
   // Obligatorio (true) si el examen tiene anti-cheat: el alumno vio qué se monitorea y aceptó.
   @IsOptional()
   @IsBoolean()

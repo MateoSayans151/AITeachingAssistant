@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useConfirmar } from '@/app/components/Confirmar';
 import {
   AjusteVaraResumen,
   ApiError,
@@ -46,6 +47,7 @@ const signo = (n: number) => `${n > 0 ? '+' : ''}${Math.round(n * 100) / 100}`;
 
 export default function AjustarVaraPage() {
   const params = useParams<{ id: string }>();
+  const confirmar = useConfirmar();
   const [examen, setExamen] = useState<Examen | null>(null);
   const [ajustes, setAjustes] = useState<AjusteVaraResumen[]>([]);
   const [modo, setModo] = useState<ModoVara>('aprobados_esperados');
@@ -116,7 +118,16 @@ export default function AjustarVaraPage() {
   async function handleAplicar() {
     const regla = reglaActual();
     if (!regla) return;
-    if (bajan > 0 && !window.confirm(`Esta regla le baja la nota a ${bajan} alumno${bajan === 1 ? '' : 's'} respecto de lo que sugirió la IA. ¿Aplicarla?`)) return;
+    if (
+      bajan > 0 &&
+      !(await confirmar({
+        titulo: '¿Aplicar esta regla?',
+        mensaje: `Le baja la nota a ${bajan} alumno${bajan === 1 ? '' : 's'} respecto de lo que sugirió la IA.`,
+        textoConfirmar: 'Aplicar',
+      }))
+    ) {
+      return;
+    }
     setLoading(true);
     setError(null);
     setAviso(null);
@@ -132,7 +143,12 @@ export default function AjustarVaraPage() {
   }
 
   async function handleRevertir(ajuste: AjusteVaraResumen) {
-    if (!window.confirm('¿Revertir este ajuste? Las respuestas todavía sin revisar vuelven a la nota que tenían antes.')) return;
+    const confirmado = await confirmar({
+      titulo: '¿Revertir este ajuste?',
+      mensaje: 'Las respuestas todavía sin revisar vuelven a la nota que tenían antes.',
+      textoConfirmar: 'Revertir',
+    });
+    if (!confirmado) return;
     setLoading(true);
     setError(null);
     setAviso(null);

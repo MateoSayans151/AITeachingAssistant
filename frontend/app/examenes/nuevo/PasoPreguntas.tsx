@@ -24,6 +24,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
+import { useConfirmar } from '@/app/components/Confirmar';
 import type { MatrizRubrica, TipoPregunta } from '@/lib/api';
 import { esNumero, formatearPuntos, preguntaVacia, redondearPuntos, totalCoincideConEscala, totalDelExamen, validarPregunta } from '@/lib/examen-form';
 import type { NivelForm, PreguntaForm } from '@/lib/examen-form';
@@ -66,6 +67,7 @@ interface FocoPendiente {
 }
 
 export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMin, escalaMax, onUsarComoEscala, onMatrizCreada, errores }: PasoPreguntasProps) {
+  const confirmar = useConfirmar();
   const raiz = useRef<HTMLDivElement>(null);
   const foco = useRef<FocoPendiente | null>(null);
   const [aviso, setAviso] = useState(''); // visible un rato: lo que hizo "Repartir" o "usar esta rúbrica en todas"
@@ -153,16 +155,16 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
     setAnuncio(`Pregunta ${indice + 1} duplicada: la copia es la pregunta ${indice + 2}.`);
   }
 
-  function repartirEnPartesIguales() {
+  async function repartirEnPartesIguales() {
     if (!puedeRepartir || max === null) return;
-    if (hayPuntosCargados(preguntas) && !window.confirm('Esto reemplaza los puntos que cargaste. ¿Seguir?')) return;
+    if (hayPuntosCargados(preguntas) && !(await confirmar({ mensaje: 'Esto reemplaza los puntos que cargaste.', textoConfirmar: 'Repartir' }))) return;
     onChange(preguntas.map((p, i) => ({ ...p, puntajeMaximo: reparto[i] })));
     const partes = reparto.map((x) => formatearPuntos(Number(x)));
     setAviso(`Repartimos ${formatearPuntos(max)} pts entre ${preguntas.length} ${preguntas.length === 1 ? 'pregunta' : 'preguntas'}: ${partes.join(' / ')}.`);
   }
 
   /** "Usar esta rúbrica en todas las preguntas abiertas": copia los criterios de la pregunta `origen` a las demás abiertas (cada una conserva sus puntos). */
-  function aplicarATodas(origen: number) {
+  async function aplicarATodas(origen: number) {
     const destinos = preguntas.map((q, i) => i !== origen && esPreguntaAbierta(q));
     if (!destinos.some(Boolean)) return;
     if (!tieneCriteriosCargados(preguntas[origen])) {
@@ -170,7 +172,7 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
       return;
     }
     const pisa = preguntas.some((q, i) => destinos[i] && tieneCriteriosCargados(q));
-    if (pisa && !window.confirm('Esto reemplaza los criterios que ya cargaste en las otras preguntas abiertas. ¿Seguir?')) return;
+    if (pisa && !(await confirmar({ mensaje: 'Esto reemplaza los criterios que ya cargaste en las otras preguntas abiertas.', textoConfirmar: 'Reemplazar' }))) return;
     onChange(preguntas.map((q, i) => (destinos[i] ? copiarRubricaA(preguntas[origen], q) : q)));
     const cantidad = destinos.filter(Boolean).length;
     setAviso(`Copiamos la rúbrica de la pregunta ${origen + 1} a ${cantidad} ${cantidad === 1 ? 'pregunta abierta' : 'preguntas abiertas'}; cada una conserva sus puntos.`);

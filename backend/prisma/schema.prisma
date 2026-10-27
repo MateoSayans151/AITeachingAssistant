@@ -367,13 +367,16 @@ model Examen {
 }
 
 model ExamenComision {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examenId    String    @map("examen_id") @db.Uuid
-  comisionId  String    @map("comision_id") @db.Uuid
-  slugAcceso  String    @unique @map("slug_acceso")
-  fechaInicio DateTime? @map("fecha_inicio")
-  fechaFin    DateTime? @map("fecha_fin")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examenId      String    @map("examen_id") @db.Uuid
+  comisionId    String    @map("comision_id") @db.Uuid
+  slugAcceso    String    @unique @map("slug_acceso")
+  fechaInicio   DateTime? @map("fecha_inicio")
+  fechaFin      DateTime? @map("fecha_fin")
+  // true: el alumno que entra con un email fuera de la lista se agrega solo a la comisión; false: solo entran los de la lista.
+  // Los links publicados antes de esta opción quedan en false.
+  accesoAbierto Boolean   @default(false) @map("acceso_abierto")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   examen   Examen   @relation(fields: [examenId], references: [id], onDelete: Cascade)
   comision Comision @relation(fields: [comisionId], references: [id], onDelete: Cascade)

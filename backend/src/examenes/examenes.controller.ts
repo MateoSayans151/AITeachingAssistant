@@ -32,6 +32,12 @@ export class ExamenesController {
     return this.service.findAllByCurso(cursoId);
   }
 
+  // Antes de ':id' para que "pendientes" no se tome por un id. Es de la home: qué exámenes del docente esperan su revisión.
+  @Get('pendientes')
+  porRevisar(@DocenteId() docenteId: string) {
+    return this.service.porRevisarDelDocente(docenteId);
+  }
+
   @Get(':id')
   async findOne(@DocenteId() docenteId: string, @Param('id') id: string) {
     await this.acceso.examen(docenteId, id);

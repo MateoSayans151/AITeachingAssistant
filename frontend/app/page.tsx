@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Curso, listCursos } from '@/lib/api';
+import { Curso, ExamenPorRevisar, listCursos, listExamenesPorRevisar } from '@/lib/api';
+import { plural } from '@/lib/texto';
 import { useSesion } from '@/lib/auth';
 import { supabase, supabaseConfigurado } from '@/lib/supabase';
 
@@ -16,6 +17,7 @@ export default function HomePage() {
     if (recuperando) router.replace('/restablecer');
   }, [recuperando, router]);
   const [cursos, setCursos] = useState<Curso[] | null>(null);
+  const [porRevisar, setPorRevisar] = useState<ExamenPorRevisar[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,6 +25,10 @@ export default function HomePage() {
     listCursos()
       .then(setCursos)
       .catch((e) => setError(e.message));
+    // Si esto falla no se rompe la home: simplemente no se muestra el bloque "Para revisar".
+    listExamenesPorRevisar()
+      .then(setPorRevisar)
+      .catch(() => setPorRevisar([]));
   }, [docente]);
 
   if (cargando) {
@@ -42,7 +48,7 @@ export default function HomePage() {
       <header className="page-header">
         <div className="eyebrow">AI Teaching Assistant</div>
         <h1>Hola, {docente.nombre.split(' ')[0]}</h1>
-        <p>Armá un examen, compartí el link con tus comisiones y revisá las respuestas desde acá.</p>
+        <p>Armá un examen, mandales el link a tus alumnos y revisá las respuestas desde acá.</p>
       </header>
 
       <div style={{ marginBottom: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -53,6 +59,24 @@ export default function HomePage() {
           + Nuevo curso
         </Link>
       </div>
+
+      {porRevisar.length > 0 && (
+        <section style={{ marginBottom: 32 }} aria-labelledby="para-revisar">
+          <h2 id="para-revisar" style={{ fontSize: 22, marginBottom: 14 }}>
+            Para revisar
+          </h2>
+          {porRevisar.map((examen) => (
+            <Link key={examen.id} href={`/examenes/${examen.id}/respuestas`} className="card card-link">
+              <div className="card-title">{examen.titulo}</div>
+              <div className="card-meta">
+                {examen.cursoNombre} ·{' '}
+                {examen.porRevisar > 0 ? <strong>{plural(examen.porRevisar, 'respuesta para revisar', 'respuestas para revisar')}</strong> : 'la IA está corrigiendo'}
+                {examen.porRevisar > 0 && examen.sinCorregir > 0 && ` · ${plural(examen.sinCorregir, 'se está corrigiendo', 'se están corrigiendo')}`}
+              </div>
+            </Link>
+          ))}
+        </section>
+      )}
 
       <section>
         <h2 style={{ fontSize: 22, marginBottom: 14 }}>Tus cursos</h2>
@@ -72,7 +96,7 @@ export default function HomePage() {
             <div className="card-title">{curso.nombre}</div>
             <div className="card-meta">
               {curso.materia ? `${curso.materia} · ` : ''}
-              {curso._count?.comisiones ?? 0} comisiones · {curso._count?.examenes ?? 0} exámenes
+              {plural(curso._count?.comisiones ?? 0, 'comisión', 'comisiones')} · {plural(curso._count?.examenes ?? 0, 'examen', 'exámenes')}
             </div>
           </Link>
         ))}
@@ -122,11 +146,31 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Email al que se mandó el link de confirmación tras registrarse: mientras tenga valor se muestra "Revisá tu mail" en vez del formulario.
+  const [confirmarEn, setConfirmarEn] = useState<string | null>(null);
+  const [reenviado, setReenviado] = useState(false);
 
   function cambiarModo(m: Modo) {
     setModo(m);
     setError(null);
     setAviso(null);
+    setConfirmarEn(null);
+    setReenviado(false);
+  }
+
+  async function reenviarConfirmacion() {
+    if (!confirmarEn) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { error: err } = await supabase.auth.resend({ type: 'signup', email: confirmarEn, options: { emailRedirectTo: window.location.origin } });
+      if (err) setError(mensajeDeAuth(err));
+      else setReenviado(true);
+    } catch {
+      setError('No se pudo conectar con el servicio de cuentas. Revisá tu conexión y probá de nuevo.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -147,7 +191,7 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
         });
         if (err) setError(mensajeDeAuth(err));
         else if (data.user && data.user.identities?.length === 0) setError('Ya existe una cuenta con ese email. Iniciá sesión o recuperá tu contraseña.');
-        else if (!data.session) setAviso('Te enviamos un email para confirmar tu cuenta. Cuando lo confirmes, iniciá sesión.');
+        else if (!data.session) setConfirmarEn(email.trim());
       } else {
         const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/restablecer` });
         if (err) setError(mensajeDeAuth(err));
@@ -161,11 +205,28 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
   }
 
   return (
-    <div className="page" style={{ maxWidth: 480 }}>
+    <div className="page" style={{ maxWidth: 560 }}>
       <header className="page-header">
         <div className="eyebrow">AI Teaching Assistant</div>
-        <h1>{modo === 'login' ? 'Iniciá sesión' : modo === 'registro' ? 'Creá tu cuenta' : 'Recuperá tu contraseña'}</h1>
+        <h1>Armá el examen, la IA lo corrige, vos decidís la nota</h1>
+        <p>Para docentes que quieren corregir menos a mano y no perder el control de lo que le llega a cada alumno.</p>
       </header>
+
+      <ol className="pasos-inicio">
+        <li>
+          <strong>Armá tu examen.</strong> Preguntas de opción múltiple, verdadero/falso o de desarrollo, en pocos minutos.
+        </li>
+        <li>
+          <strong>Mandá el link.</strong> Tus alumnos lo rinden desde el celular o la compu, con su mail.
+        </li>
+        <li>
+          <strong>Revisá y publicá.</strong> La IA sugiere una nota y un comentario; vos los aceptás o los cambiás. Nada le llega al alumno sin tu visto bueno.
+        </li>
+      </ol>
+
+      <h2 style={{ fontSize: 22, marginBottom: 14 }}>
+        {confirmarEn ? 'Revisá tu mail' : modo === 'login' ? 'Entrá a tu cuenta' : modo === 'registro' ? 'Creá tu cuenta' : 'Recuperá tu contraseña'}
+      </h2>
 
       {!supabaseConfigurado && (
         <div className="error-box">
@@ -176,16 +237,48 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
       {error && <div className="error-box">{error}</div>}
       {aviso && <div className="card" style={{ marginBottom: 16 }}>{aviso}</div>}
 
-      <form onSubmit={handleSubmit}>
+      {confirmarEn && (
+        <div className="card">
+          <p style={{ marginBottom: 10 }}>
+            Te mandamos un mail a <strong>{confirmarEn}</strong>. Abrí el link que trae para confirmar tu cuenta: te lleva directo a la app.
+          </p>
+          <p className="muted" style={{ marginBottom: 16 }}>
+            Si no lo ves en unos minutos, mirá en la carpeta de spam o correo no deseado.
+          </p>
+          {reenviado && (
+            <p role="status" style={{ marginBottom: 12, color: 'var(--color-success)' }}>
+              Listo, te lo mandamos de nuevo.
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" onClick={reenviarConfirmacion} disabled={loading}>
+              {loading ? 'Un momento…' : 'Mandame el mail de nuevo'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => cambiarModo('login')}>
+              Ya confirmé: entrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} hidden={Boolean(confirmarEn)}>
         {modo === 'registro' && (
           <div className="field">
-            <label htmlFor="nombre">Nombre</label>
-            <input id="nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+            <label htmlFor="nombre">Nombre y apellido</label>
+            <input id="nombre" value={nombre} autoComplete="name" placeholder="Ej: Laura Fernández" onChange={(e) => setNombre(e.target.value)} required />
           </div>
         )}
         <div className="field">
           <label htmlFor="email">Email</label>
-          <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input
+            id="email"
+            type="email"
+            value={email}
+            autoComplete="email"
+            placeholder="tu@mail.com"
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
         {modo !== 'recuperar' && (
           <div className="field">
@@ -199,6 +292,11 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            {modo === 'registro' && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Mínimo 8 caracteres.
+              </p>
+            )}
           </div>
         )}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -206,7 +304,7 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
             {loading ? 'Un momento…' : modo === 'login' ? 'Entrar' : modo === 'registro' ? 'Crear cuenta' : 'Enviar enlace'}
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => cambiarModo(modo === 'login' ? 'registro' : 'login')}>
-            {modo === 'login' ? 'Crear una cuenta' : 'Ya tengo cuenta'}
+            {modo === 'login' ? 'Soy nuevo: crear cuenta' : 'Ya tengo cuenta'}
           </button>
         </div>
         {modo === 'login' && (

@@ -13,6 +13,7 @@ import { ApiError, createCurso, createExamen, getExamen, listCursos, listMatrice
 import type { Curso, MatrizRubrica } from '@/lib/api';
 import { useSesion } from '@/lib/auth';
 import {
+  CONSIGNA_POR_DEFECTO,
   construirPregunta,
   datosPorDefecto,
   esNumero,
@@ -62,6 +63,7 @@ function NuevoExamenForm() {
 
   const [paso, setPaso] = useState(0);
   const [errores, setErrores] = useState<string[]>([]);
+  const cajaErrores = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
 
   // Todo el formulario: `datos` (paso 1) y `preguntas` (paso 2). Son objetos planos, fáciles de serializar.
@@ -220,6 +222,9 @@ function NuevoExamenForm() {
       setPreguntas((prev) => reconciliarNiveles(prev, nuevos, anteriores));
     }
     patchDatos(patch);
+    // Con errores a la vista, la lista se actualiza mientras el docente corrige: los que ya resolvió desaparecen (antes quedaban
+    // en pantalla hasta apretar "Siguiente" otra vez, y parecía que lo cargado no valía).
+    if (errores.length > 0 && paso === 0) setErrores(validarDatos({ ...datos, ...patch }));
   };
 
   // ---------------------------------------------------------------- validación (paso a paso, con mensajes concretos)
@@ -267,10 +272,16 @@ function NuevoExamenForm() {
     setBorradorPendiente(null);
   }
 
+  /** Lleva la vista hasta el cuadro de errores: con el formulario largo, si no, quedaba fuera de pantalla y "Siguiente" parecía no hacer nada. */
+  function mostrarErrores() {
+    setTimeout(() => cajaErrores.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+  }
+
   function irASiguiente() {
     const e = validarPaso(paso);
     setErrores(e);
     if (e.length > 0 && paso === 0) abrirBloquesConError();
+    if (e.length > 0) mostrarErrores();
     if (e.length === 0) setPaso(paso + 1);
   }
 
@@ -288,6 +299,7 @@ function NuevoExamenForm() {
         setErrores(e);
         if (p === 0) abrirBloquesConError();
         setPaso(p);
+        mostrarErrores();
         return;
       }
     }
@@ -305,7 +317,7 @@ function NuevoExamenForm() {
       const examen = await createExamen({
         cursoId,
         titulo: datos.titulo.trim(),
-        consigna: datos.consigna.trim(),
+        consigna: datos.consigna.trim() || CONSIGNA_POR_DEFECTO,
         modalidad: datos.modalidad,
         duracionMinutos: datos.modalidad === 'sesion_tiempo' ? Number(datos.duracionMinutos) : undefined,
         escalaMin: Number(datos.escalaMin),
@@ -410,7 +422,7 @@ function NuevoExamenForm() {
       </div>
 
       {errores.length > 0 && (
-        <div className="error-box" role="alert">
+        <div className="error-box" role="alert" ref={cajaErrores}>
           {errores.length === 1 ? (
             errores[0]
           ) : (

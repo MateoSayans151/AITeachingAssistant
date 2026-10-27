@@ -302,6 +302,7 @@ h4 {
 .field textarea,
 .field select,
 .criterio-row input,
+.criterio-row textarea,
 .nivel-row input,
 .nivel-row textarea {
   width: 100%;
@@ -319,6 +320,7 @@ h4 {
 .field textarea:hover,
 .field select:hover,
 .criterio-row input:hover,
+.criterio-row textarea:hover,
 .nivel-row input:hover,
 .nivel-row textarea:hover {
   border-color: var(--color-neutral-800);
@@ -328,6 +330,7 @@ h4 {
 .field textarea:focus,
 .field select:focus,
 .criterio-row input:focus,
+.criterio-row textarea:focus,
 .nivel-row input:focus,
 .nivel-row textarea:focus {
   outline: 2px solid var(--color-accent);
@@ -740,7 +743,22 @@ textarea[aria-invalid='true']:hover {
 }
 
 
-/* ---- diálogo modal (opcional, por si se agrega alguno) ---- */
+/* Acción destructiva o irreversible (eliminar, publicar notas): mismo botón, en el rojo de error de la paleta. */
+.btn-danger {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--color-error) 85%, #000);
+}
+
+.btn-danger:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+}
+
+/* ---- diálogo modal (lo usa la confirmación de app/components/Confirmar.tsx) ---- */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -769,9 +787,223 @@ textarea[aria-invalid='true']:hover {
   font-size: 18px;
 }
 
+.dialog-message {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text);
+  white-space: pre-line;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+
+/* En el celular los botones del diálogo ocupan todo el ancho y se apilan: más fáciles de tocar. */
+@media (max-width: 520px) {
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dialog-actions .btn {
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
+/* ---- revisar una respuesta: moverse entre alumnos y acciones siempre a la vista ---- */
+.nav-respuestas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.nav-respuestas-pasos {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Aceptar, guardar y volver a correr quedan pegados al borde de abajo: no hay que bajar por todas las preguntas para decidir. */
+.barra-acciones {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  margin-top: var(--space-4);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 520px) {
+  .barra-acciones .btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
+/* ---- opciones que marca el alumno (opción múltiple, casillas, verdadero/falso) ----
+   Cada opción es un renglón entero tocable de al menos 44 px (lo recomendado para el dedo), no solo el círculo de 13 px. */
+.opciones-alumno {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.opciones-alumno-fila {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.opcion-alumno {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.opcion-alumno:hover {
+  border-color: var(--color-neutral-800);
+}
+
+.opcion-alumno input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* La elegida se distingue por el borde y el fondo, no solo por el círculo. */
+.opcion-alumno:has(input:checked) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.opcion-alumno:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.opciones-alumno-fila .opcion-alumno {
+  min-width: 140px;
+}
+
+/* En iOS Safari, un campo con letra de menos de 16 px hace zoom al tocarlo y la página queda corrida. */
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select,
+  .field input,
+  .field textarea,
+  .field select {
+    font-size: 16px;
+  }
+
+  .opciones-alumno-fila .opcion-alumno {
+    flex: 1 1 100%;
+  }
+}
+
+/* Instrucciones generales del examen, siempre a mano mientras el alumno rinde (plegadas para no robar lugar). */
+.instrucciones-examen {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.instrucciones-examen summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.instrucciones-examen p {
+  margin-top: var(--space-2);
+  white-space: pre-line;
+  color: var(--color-text-secondary);
+}
+
+/* Primera pantalla (sin sesión): qué es la app y cómo se usa, en tres pasos. */
+.pasos-inicio {
+  margin: 0 0 var(--space-6);
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.pasos-inicio strong {
+  color: var(--color-text);
+}
+
+/* ---- subir material: zona para arrastrar el archivo ---- */
+.etiqueta-campo {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.zona-archivo {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  text-align: center;
+}
+
+.zona-archivo.arrastrando {
+  border-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.zona-archivo.con-archivo {
+  border-style: solid;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+}
+
+.zona-archivo:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* El <input type=file> nativo queda oculto pero accesible por teclado (el botón "Elegí un archivo" es su etiqueta). */
+.archivo-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+

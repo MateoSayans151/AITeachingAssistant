@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ApiError, EstadoIntentoEntregar, InfoEntregar, getInfoEntregar, getIntentoEntrega, iniciarEntrega } from '@/lib/api';
 import { entrarPantallaCompleta, pantallaCompletaSoportada, salirDePantallaCompleta } from '@/lib/pantalla-completa';
+import { avisoDuracionTitulo } from '@/lib/vista-previa';
 import TrabajoEnCurso from './TrabajoEnCurso';
 
 const claveToken = (slug: string) => `ata_entrega_${slug}`;
@@ -177,7 +178,7 @@ export default function EntregarTrabajoPage() {
           <div className="card" style={{ marginBottom: 16 }}>
             {trabajo.duracionMinutos ? (
               <>
-                <strong>Tenés {trabajo.duracionMinutos} minutos.</strong>
+                <strong>{avisoDuracionTitulo(trabajo.duracionMinutos)}</strong>
                 <p className="muted" style={{ marginTop: 6 }}>
                   El tiempo empieza a correr cuando tocás “Comenzar” y no se detiene aunque cierres la pestaña. Lo que escribas se
                   guarda solo; si se termina el tiempo, se entrega lo último guardado.

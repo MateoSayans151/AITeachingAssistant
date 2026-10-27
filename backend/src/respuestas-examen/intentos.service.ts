@@ -18,12 +18,21 @@ import { LimitadorFallos } from './limitador-intentos.util';
 import { AlmacenFallosPrisma } from './almacen-fallos.prisma';
 import { MAX_CONTENIDO_BYTES } from './limites';
 import { EventoIntegridadDto, IniciarIntentoDto } from './dto/intento.dto';
+import { generarCodigoAcceso } from '../comisiones/comisiones.service';
 
 /** Margen para que llegue una entrega hecha justo al vencer (latencia, reloj del cliente). */
 export const GRACIA_ENTREGA_MS = 20_000;
 const MAX_EVENTOS_POR_INTENTO = 500;
 const VENTANA_FALLOS_MS = 10 * 60_000;
 const BARRIDO_VENCIDOS_MS = 60_000;
+/** Tope de alumnos que se pueden sumar solos a una comisión con acceso abierto (frena a quien quiera llenar la comisión de cuentas falsas). */
+export const MAX_ALUMNOS_ACCESO_ABIERTO = 1000;
+
+/** "ana.perez@mail.com" -> "Ana Perez": nombre legible cuando el alumno no escribió el suyo. */
+export function nombreDesdeEmail(email: string): string {
+  const local = email.split('@')[0].replace(/[._-]+/g, ' ').trim() || email;
+  return local.replace(/(^|\s)(\S)/g, (_, espacio: string, letra: string) => espacio + letra.toUpperCase());
+}
 
 @Injectable()
 export class IntentosService implements OnModuleInit, OnModuleDestroy {
@@ -73,6 +82,8 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
         antiCheat: antiCheatActivo(ec.examen.antiCheat),
       },
       comision: { nombre: ec.comision.nombre },
+      // true: cualquier alumno con el link puede entrar (la pantalla le pide también el nombre); false: solo los de la lista.
+      accesoAbierto: ec.accesoAbierto,
       ventana: { estado: ventana, fechaInicio: ec.fechaInicio, fechaFin: ec.fechaFin },
     };
   }
@@ -85,16 +96,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     const claveIp = `ip|${ip}`;
     await this.fallosPorIp.verificar(claveIp);
 
-    // Sin distinguir mayúsculas: también encuentra a quien quedó cargado en el listado como "Ana@Mail.com".
-    const alumno = await this.prisma.alumno.findFirst({
-      where: { comisionId: ec.comisionId, email: { equals: dto.alumnoEmail, mode: 'insensitive' } },
-    });
-    // El alumno se identifica solo con su email. El freno por IP limita que alguien
-    // pruebe emails al azar para ver quién está en la comisión.
-    if (!alumno) {
-      await this.fallosPorIp.fallo(claveIp);
-      throw new UnauthorizedException('Ese email no está en el listado de esta comisión. Revisalo o consultá con tu docente.');
-    }
+    const alumno = await this.resolverAlumno(ec, dto, claveIp);
 
     const yaEntrego = await this.prisma.respuestaExamen.count({ where: { examenId: ec.examenId, alumnoId: alumno.id } });
     if (yaEntrego) throw new BadRequestException('Ya enviaste una respuesta para este examen');
@@ -130,6 +132,51 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { token: await this.firmarToken(intento), ...(await this.estadoIntento(intento.id, slug)) };
+  }
+
+  /**
+   * El alumno que entra con ese email. Se identifica solo con su email (sin distinguir mayúsculas: también encuentra a quien quedó
+   * cargado como "Ana@Mail.com"). Si no figura en la comisión:
+   *  - con acceso abierto se lo agrega solo, con el nombre que escribió (o uno armado con su email), siempre que la ventana del
+   *    examen esté abierta y la comisión no haya llegado al tope;
+   *  - si no, se rechaza, y el freno por IP limita que alguien pruebe emails al azar para ver quién está en la comisión.
+   */
+  async resolverAlumno(
+    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null },
+    dto: IniciarIntentoDto,
+    claveIp: string,
+  ) {
+    const buscar = () =>
+      this.prisma.alumno.findFirst({ where: { comisionId: ec.comisionId, email: { equals: dto.alumnoEmail, mode: 'insensitive' } } });
+    const existente = await buscar();
+    if (existente) return existente;
+
+    if (!ec.accesoAbierto) {
+      await this.fallosPorIp.fallo(claveIp);
+      throw new UnauthorizedException('Ese email no está en el listado de esta comisión. Revisalo o consultá con tu docente.');
+    }
+
+    // Un examen cerrado o que todavía no abrió no suma alumnos nuevos.
+    this.validarVentana(ec);
+    const cantidad = await this.prisma.alumno.count({ where: { comisionId: ec.comisionId } });
+    if (cantidad >= MAX_ALUMNOS_ACCESO_ABIERTO) {
+      throw new ConflictException('Este examen llegó al máximo de alumnos que pueden entrar. Avisale a tu docente.');
+    }
+    try {
+      return await this.prisma.alumno.create({
+        data: {
+          comisionId: ec.comisionId,
+          nombre: dto.alumnoNombre?.trim() || nombreDesdeEmail(dto.alumnoEmail),
+          email: dto.alumnoEmail,
+          codigoAcceso: generarCodigoAcceso(),
+        },
+      });
+    } catch (e: any) {
+      if (e?.code !== 'P2002') throw e; // dos pestañas entrando a la vez con el mismo email: nos quedamos con el que ganó
+      const ganador = await buscar();
+      if (!ganador) throw e;
+      return ganador;
+    }
   }
 
   /** Estado actual del intento (para retomar tras un refresh): preguntas + borrador + vencimiento. */
