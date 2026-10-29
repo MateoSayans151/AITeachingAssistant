@@ -10,6 +10,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   app.use('/api/rendir/:slug/borrador', json({ limit: LIMITE_CUERPO_RENDIR }));
   app.use('/api/rendir/:slug/entregar', json({ limit: LIMITE_CUERPO_RENDIR }));
+  // Capturas de pantalla (JPEG en base64, hasta ~400 KB).
+  app.use('/api/rendir/:slug/capturas', json({ limit: '600kb' }));
   app.use('/api/entregar/:slug/borrador', json({ limit: LIMITE_CUERPO_RENDIR }));
   app.use('/api/entregar/:slug/enviar', json({ limit: LIMITE_CUERPO_RENDIR }));
   // Material de cátedra pegado como texto: hasta 200.000 caracteres (el resto de la API conserva 100 KB).
@@ -28,6 +30,11 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000',
   });
+
+  // Detrás de un proxy (Render, Railway…) la IP real del alumno viene en X-Forwarded-For: sin esto todos los pedidos parecen venir del
+  // proxy y ni el freno por IP ni el seguimiento de origen sirven. TRUST_PROXY = cantidad de proxies delante (normalmente 1).
+  const confiarProxy = Number(process.env.TRUST_PROXY);
+  if (Number.isInteger(confiarProxy) && confiarProxy > 0) (app as any).set('trust proxy', confiarProxy);
 
   app.setGlobalPrefix('api');
 

@@ -224,7 +224,21 @@ export function PasoDatos({ datos, onChange, cursos, ajustesAbierto, onToggleAju
                   <input type="checkbox" checked={datos.acPegado} onChange={(e) => onChange({ acPegado: e.target.checked })} />
                   Pegado de texto en las respuestas
                 </label>
-                {!datos.acPantalla && !datos.acPestana && !datos.acPegado && <p className="muted">Sin ningún control marcado, el examen se rinde sin monitoreo.</p>}
+                <label style={{ display: 'flex', gap: 8 }}>
+                  <input type="checkbox" checked={datos.acCaptura} onChange={(e) => onChange({ acCaptura: e.target.checked })} />
+                  <span>
+                    Pantalla compartida con capturas: el alumno comparte la pantalla completa y se guardan capturas cada pocos minutos y cuando
+                    sale de la ventana
+                  </span>
+                </label>
+                {datos.acCaptura && (
+                  <p className="muted" style={{ margin: 0 }}>
+                    Las capturas solo las ves vos, junto a cada respuesta, y se borran solas a los 7 días (podés borrarlas antes). Necesita una
+                    computadora: desde un celular el alumno no puede compartir la pantalla. Es el control más invasivo: usalo para exámenes que lo
+                    justifiquen y avisale a los alumnos con tiempo.
+                  </p>
+                )}
+                {!datos.acPantalla && !datos.acPestana && !datos.acPegado && !datos.acCaptura && <p className="muted">Sin ningún control marcado, el examen se rinde sin monitoreo.</p>}
                 {datos.modalidad === 'ventana_dias' && (
                   <p className="muted">
                     Ojo: en una ventana de varios días el alumno rinde desde su casa, y estos controles dicen poco. Suelen tener más

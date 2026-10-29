@@ -227,6 +227,13 @@ enum TipoEventoIntegridad {
   salida_pantalla_completa
   cambio_pestana
   pegado
+  pantalla_compartida_detenida
+  superficie_no_permitida
+  monitor_extendido
+  salto_de_texto
+  cambio_de_origen
+  captura_omitida
+  latido_perdido
 
   @@map("tipo_evento_integridad")
 }
@@ -367,19 +374,24 @@ model Examen {
 }
 
 model ExamenComision {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examenId      String    @map("examen_id") @db.Uuid
-  comisionId    String    @map("comision_id") @db.Uuid
-  slugAcceso    String    @unique @map("slug_acceso")
-  fechaInicio   DateTime? @map("fecha_inicio")
-  fechaFin      DateTime? @map("fecha_fin")
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examenId         String    @map("examen_id") @db.Uuid
+  comisionId       String    @map("comision_id") @db.Uuid
+  slugAcceso       String    @unique @map("slug_acceso")
+  fechaInicio      DateTime? @map("fecha_inicio")
+  fechaFin         DateTime? @map("fecha_fin")
   // true: el alumno que entra con un email fuera de la lista se agrega solo a la comisión; false: solo entran los de la lista.
   // Los links publicados antes de esta opción quedan en false.
-  accesoAbierto Boolean   @default(false) @map("acceso_abierto")
-  createdAt     DateTime  @default(now()) @map("created_at")
+  accesoAbierto    Boolean   @default(false) @map("acceso_abierto")
+  // true: para entrar hay que escribir el código que llega al mail (OTP). Los links anteriores quedan en false.
+  verificarEmail   Boolean   @default(false) @map("verificar_email")
+  // Si está, solo pueden entrar mails de ese dominio (p. ej. "alumnos.edu.ar"); los ya cargados en la lista no se ven afectados.
+  dominioPermitido String?   @map("dominio_permitido")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  examen   Examen   @relation(fields: [examenId], references: [id], onDelete: Cascade)
-  comision Comision @relation(fields: [comisionId], references: [id], onDelete: Cascade)
+  examen   Examen         @relation(fields: [examenId], references: [id], onDelete: Cascade)
+  comision Comision       @relation(fields: [comisionId], references: [id], onDelete: Cascade)
+  codigos  CodigoAcceso[]
 
   @@unique([examenId, comisionId])
   @@map("examen_comisiones")
@@ -469,10 +481,26 @@ model IntentoExamen {
   consentimientoEn      DateTime?     @map("consentimiento_en")
   entregadoEn           DateTime?     @map("entregado_en")
   createdAt             DateTime      @default(now()) @map("created_at")
+  // Sesión única: cada login (con código) sube el contador; el token de una sesión anterior deja de valer.
+  sesion                Int           @default(0)
+  // Origen del último pedido autenticado: si cambia (otra IP, navegador o pestaña) queda un evento.
+  ultimoOrigenIp        String?       @map("ultimo_origen_ip")
+  ultimoOrigenUa        String?       @map("ultimo_origen_ua")
+  ultimoClienteId       String?       @map("ultimo_cliente_id")
+  ultimoLatidoEn        DateTime?     @map("ultimo_latido_en")
+  // Capturas dirigidas por el servidor: cuándo toca la próxima y cuál pidió (si está pendiente).
+  proximaCapturaEn      DateTime?     @map("proxima_captura_en")
+  capturaPedidaId       String?       @map("captura_pedida_id") @db.Uuid
+  capturaPedidaEn       DateTime?     @map("captura_pedida_en")
+  // Código corto que la página muestra y que rota en cada latido: tiene que verse en las capturas.
+  marcaActual           String?       @map("marca_actual")
+  marcaAnterior         String?       @map("marca_anterior")
 
-  examen  Examen             @relation(fields: [examenId], references: [id], onDelete: Cascade)
-  alumno  Alumno             @relation(fields: [alumnoId], references: [id], onDelete: Cascade)
-  eventos EventoIntegridad[]
+  examen   Examen              @relation(fields: [examenId], references: [id], onDelete: Cascade)
+  alumno   Alumno              @relation(fields: [alumnoId], references: [id], onDelete: Cascade)
+  eventos  EventoIntegridad[]
+  sesiones SesionIntento[]
+  capturas CapturaIntegridad[]
 
   @@unique([examenId, alumnoId])
   @@index([estado, expiraEn])
@@ -544,4 +572,54 @@ model FalloAcceso {
   @@index([clave, ocurridoEn])
   @@index([ocurridoEn])
   @@map("fallos_acceso")
+}
+
+model CodigoAcceso {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examenComisionId String    @map("examen_comision_id") @db.Uuid
+  email            String
+  codigoHash       String    @map("codigo_hash")
+  expiraEn         DateTime  @map("expira_en")
+  intentos         Int       @default(0)
+  consumidoEn      DateTime? @map("consumido_en")
+  ip               String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  examenComision ExamenComision @relation(fields: [examenComisionId], references: [id], onDelete: Cascade)
+
+  @@index([examenComisionId, email, createdAt])
+  @@index([createdAt])
+  @@map("codigos_acceso")
+}
+
+model SesionIntento {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  intentoId  String   @map("intento_id") @db.Uuid
+  iniciadaEn DateTime @default(now()) @map("iniciada_en")
+  ip         String?
+  userAgent  String?  @map("user_agent")
+
+  intento IntentoExamen @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+
+  @@index([intentoId])
+  @@map("sesiones_intento")
+}
+
+model CapturaIntegridad {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  intentoId   String   @map("intento_id") @db.Uuid
+  ocurridoEn  DateTime @default(now()) @map("ocurrido_en")
+  motivo      String
+  ruta        String
+  bytes       Int
+  // La marca que el cliente dice haber mostrado al capturar, y si coincide con la que el servidor emitió.
+  marca       String?
+  marcaValida Boolean  @default(false) @map("marca_valida")
+  eliminarEn  DateTime @map("eliminar_en")
+
+  intento IntentoExamen @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+
+  @@index([intentoId, ocurridoEn])
+  @@index([eliminarEn])
+  @@map("capturas_integridad")
 }

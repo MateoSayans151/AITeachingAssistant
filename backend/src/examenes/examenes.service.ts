@@ -173,6 +173,8 @@ export class ExamenesService {
           fechaFin: dto.fechaFin ? new Date(dto.fechaFin) : undefined,
           // Por defecto cualquier alumno con el link puede entrar: el docente no tiene que cargar mails antes.
           accesoAbierto: dto.accesoAbierto ?? true,
+          verificarEmail: dto.verificarEmail ?? false,
+          dominioPermitido: dto.dominioPermitido || null,
         },
       }),
       this.prisma.examen.update({ where: { id: examenId }, data: { estado: 'publicado' } }),

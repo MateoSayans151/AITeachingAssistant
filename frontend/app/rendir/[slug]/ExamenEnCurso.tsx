@@ -5,11 +5,23 @@ import {
   ApiError,
   AntiCheatConfig,
   EstadoIntentoRendir,
-  TipoEventoIntegridad,
+  MotivoCaptura,
+  TipoEventoCliente,
+  enviarLatido,
   entregarIntento,
   guardarBorrador,
   registrarEvento,
+  subirCaptura,
 } from '@/lib/api';
+import {
+  ErrorCompartirPantalla,
+  MENSAJES_COMPARTIR,
+  capturarFrame,
+  compartirPantalla,
+  detenerPantalla,
+  hayMonitorExtendido,
+  pantallaActiva,
+} from '@/lib/captura-pantalla';
 import { TarjetaPreguntaAlumno } from '@/app/components/PreguntaAlumno';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { alCambiarPantallaCompleta, enPantallaCompleta, entrarPantallaCompleta, pantallaCompletaSoportada } from '@/lib/pantalla-completa';
@@ -22,6 +34,20 @@ const esDemasiadoGrande = (e: unknown) => e instanceof ApiError && (e.status ===
 
 const AUTOGUARDADO_DEBOUNCE_MS = 1500;
 const REINTENTO_MS = 5000;
+/** Cada cuánto avisa el navegador que sigue vivo (y recibe la marca y los pedidos de captura). */
+const LATIDO_MS = 15_000;
+/** Después de un evento sospechoso se toman dos capturas: cuando la otra ventana ya está al frente, y unos segundos más tarde. */
+const CAPTURAS_DE_EVENTO_MS = [1500, 5000];
+
+/** El servidor cerró esta sesión porque el alumno volvió a ingresar (con su código) desde otro lugar. */
+function esSesionReemplazada(e: unknown): boolean {
+  if (!(e instanceof ApiError) || e.status !== 401) return false;
+  try {
+    return JSON.parse(e.body)?.codigo === 'SESION_REEMPLAZADA';
+  } catch {
+    return false;
+  }
+}
 const claveLocal = (slug: string) => `ata_borrador_${slug}`;
 
 function leerBorradorLocal(slug: string): Respuestas | null {
@@ -50,10 +76,16 @@ export default function ExamenEnCurso({
   titulo,
   consigna,
   alTerminar,
+  alReemplazar,
+  pantallaInicial,
 }: {
   slug: string;
   token: string;
   inicial: EstadoIntentoRendir;
+  /** La pantalla que el alumno compartió antes de empezar (si el examen la pide). Tras un refresh no hay: se vuelve a pedir. */
+  pantallaInicial?: MediaStream | null;
+  /** El servidor cerró esta sesión porque el alumno ingresó desde otro lugar: vuelve a la pantalla de ingreso. */
+  alReemplazar?: () => void;
   titulo: string;
   /** Instrucciones generales del examen: antes de empezar se ven en la pantalla de ingreso; durante el examen quedan a mano acá. */
   consigna?: string;
@@ -70,6 +102,16 @@ export default function ExamenEnCurso({
   const [entregando, setEntregando] = useState(false);
   const [errorEntrega, setErrorEntrega] = useState<string | null>(null);
   const [fueraDePantalla, setFueraDePantalla] = useState(false);
+  const [sesionReemplazada, setSesionReemplazada] = useState(false);
+  // Pantalla compartida (control opcional del examen) y la marca que muestra la página (tiene que verse en las capturas).
+  const [pantalla, setPantalla] = useState<MediaStream | null>(pantallaInicial ?? null);
+  const [errorPantalla, setErrorPantalla] = useState<string | null>(null);
+  const [compartiendoAhora, setCompartiendoAhora] = useState(false);
+  const [marca, setMarca] = useState<string | null>(null);
+  const pantallaRef = useRef<MediaStream | null>(pantalla);
+  pantallaRef.current = pantalla;
+  const marcaRef = useRef<string | null>(null);
+  const necesitaPantalla = !!antiCheat?.pantallaCompartida;
 
   // Diferencia entre el reloj del servidor y el de este dispositivo.
   const desfase = useRef(new Date(inicial.ahora).getTime() - Date.now());
@@ -88,6 +130,7 @@ export default function ExamenEnCurso({
     (como: 'entregado' | 'vencido') => {
       if (terminando.current) return;
       terminando.current = true;
+      detenerPantalla(pantallaRef.current);
       try {
         window.localStorage.removeItem(claveLocal(slug));
       } catch {
@@ -115,6 +158,8 @@ export default function ExamenEnCurso({
       } else if (esDemasiadoGrande(e)) {
         demasiadoGrande.current = true; // no se reintenta: cada intento reenviaría todo el texto
         setGuardado('demasiado_grande');
+      } else if (esSesionReemplazada(e)) {
+        setSesionReemplazada(true);
       } else if (e instanceof ApiError && e.status === 401) {
         setGuardado('sin_conexion');
         setErrorEntrega('Tu sesión del examen venció. Volvé a ingresar con tu email: lo que escribiste está guardado.');
@@ -163,6 +208,8 @@ export default function ExamenEnCurso({
       } catch (e) {
         if (e instanceof ApiError && e.status === 409) {
           terminar('vencido');
+        } else if (esSesionReemplazada(e)) {
+          setSesionReemplazada(true);
         } else if (esDemasiadoGrande(e)) {
           if (automatica) {
             // Se terminó el tiempo: se entrega lo último que sí se alcanzó a guardar en el servidor.
@@ -204,7 +251,7 @@ export default function ExamenEnCurso({
   }, [seAcabo, entregar]);
 
   // ---------------------------------------------------------------- anti-cheat (solo registra; nunca bloquea ni baja nota)
-  const cola = useRef<Array<{ tipo: TipoEventoIntegridad; detalle?: string }>>([]);
+  const cola = useRef<Array<{ tipo: TipoEventoCliente; detalle?: string }>>([]);
   const vaciando = useRef(false);
   const vaciarCola = useCallback(async () => {
     // Un solo ciclo a la vez: si entra un evento mientras se envía otro, el ciclo en curso lo
@@ -228,12 +275,101 @@ export default function ExamenEnCurso({
     }
   }, [slug, token]);
   const reportar = useCallback(
-    (tipo: TipoEventoIntegridad, detalle?: string) => {
+    (tipo: TipoEventoCliente, detalle?: string) => {
       cola.current.push({ tipo, detalle });
       vaciarCola();
     },
     [vaciarCola],
   );
+
+  // ---------------------------------------------------------------- pantalla compartida y capturas
+  const capturando = useRef(false);
+  const ultimaDeEvento = useRef<Record<string, number>>({});
+  /** Saca una captura de lo que se ve y la manda. Si falla no se reintenta: el servidor anota si una pedida no llega. */
+  const tomarCaptura = useCallback(
+    async (motivo: MotivoCaptura, pedidoId?: string) => {
+      const stream = pantallaRef.current;
+      if (!stream || terminando.current || capturando.current) return;
+      capturando.current = true;
+      try {
+        const imagen = await capturarFrame(stream);
+        if (!imagen) return;
+        await subirCaptura(slug, token, { motivo, pedidoId, marca: marcaRef.current ?? undefined, imagen });
+      } catch {
+        /* sin reintento */
+      } finally {
+        capturando.current = false;
+      }
+    },
+    [slug, token],
+  );
+  /** Dos capturas después de un evento sospechoso (el servidor limita cuántas guarda). */
+  const capturarPorEvento = useCallback(
+    (motivo: Exclude<MotivoCaptura, 'muestreo'>) => {
+      if (!necesitaPantalla) return;
+      const ahora = Date.now();
+      if (ahora - (ultimaDeEvento.current[motivo] ?? 0) < 8000) return; // no más de un par por evento seguido
+      ultimaDeEvento.current[motivo] = ahora;
+      for (const ms of CAPTURAS_DE_EVENTO_MS) setTimeout(() => tomarCaptura(motivo), ms);
+    },
+    [necesitaPantalla, tomarCaptura],
+  );
+
+  // Si el alumno corta la pantalla compartida (botón del navegador) queda anotado y el examen se oculta hasta que la vuelva a compartir.
+  useEffect(() => {
+    const pista = pantalla?.getVideoTracks()[0];
+    setCompartiendoAhora(pantallaActiva(pantalla));
+    if (!pista) return;
+    const alCortar = () => {
+      setCompartiendoAhora(false);
+      if (!terminando.current) reportar('pantalla_compartida_detenida');
+    };
+    pista.addEventListener('ended', alCortar);
+    return () => pista.removeEventListener('ended', alCortar);
+  }, [pantalla, reportar]);
+
+  async function volverACompartir() {
+    setErrorPantalla(null);
+    try {
+      const nueva = await compartirPantalla();
+      setPantalla(nueva);
+      if (antiCheat?.pantallaCompleta && !enPantallaCompleta()) entrarPantallaCompleta(); // mejor esfuerzo: si el navegador no deja, queda el aviso de siempre
+    } catch (e) {
+      setErrorPantalla(MENSAJES_COMPARTIR[e instanceof ErrorCompartirPantalla ? e.motivo : 'error']);
+    }
+  }
+
+  // Latido: el navegador avisa que sigue vivo, y el servidor responde con la marca visible y, a veces, con el pedido de una captura.
+  useEffect(() => {
+    if (!antiCheat || sesionReemplazada) return;
+    let vivo = true;
+    let extendidoAnotado = false;
+    const latir = async () => {
+      if (terminando.current) return;
+      try {
+        const r = await enviarLatido(slug, token, { foco: document.hasFocus(), visible: !document.hidden, compartiendo: pantallaActiva(pantallaRef.current) });
+        if (!vivo) return;
+        marcaRef.current = r.marca;
+        setMarca(r.marca);
+        if (r.capturaPedida) void tomarCaptura('muestreo', r.capturaPedida.id);
+        if (antiCheat.pantallaCompartida && hayMonitorExtendido() && !extendidoAnotado) {
+          extendidoAnotado = true;
+          reportar('monitor_extendido');
+        }
+      } catch (e) {
+        if (!vivo) return;
+        if (esSesionReemplazada(e)) setSesionReemplazada(true);
+        else if (e instanceof ApiError && e.status === 409) terminar('vencido');
+        /* sin conexión: el próximo latido lo reintenta (el servidor anota el hueco) */
+      }
+    };
+    void latir();
+    const t = setInterval(latir, LATIDO_MS);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, [antiCheat, slug, token, sesionReemplazada, tomarCaptura, reportar, terminar]);
   useEffect(() => {
     const t = setInterval(vaciarCola, REINTENTO_MS);
     return () => clearInterval(t);
@@ -250,6 +386,7 @@ export default function ExamenEnCurso({
       if (fuera || terminando.current) return;
       fuera = true;
       if (cfg.cambioPestana) reportar('cambio_pestana');
+      capturarPorEvento('cambio_pestana');
     };
     const volvio = () => {
       fuera = false;
@@ -260,6 +397,7 @@ export default function ExamenEnCurso({
       if (pantallaCompleta && !enPantallaCompleta()) {
         setFueraDePantalla(true);
         reportar('salida_pantalla_completa');
+        capturarPorEvento('salida_pantalla_completa');
       } else {
         setFueraDePantalla(false);
       }
@@ -283,7 +421,7 @@ export default function ExamenEnCurso({
       dejarDeEscucharPantalla();
       document.removeEventListener('paste', onPaste);
     };
-  }, [antiCheat, reportar]);
+  }, [antiCheat, reportar, capturarPorEvento]);
 
   // Aviso del navegador al intentar cerrar/recargar con el examen abierto.
   useEffect(() => {
@@ -298,6 +436,8 @@ export default function ExamenEnCurso({
 
   const respondidas = useMemo(() => preguntas.filter((p) => tieneRespuesta(respuestas[p.id])).length, [preguntas, respuestas]);
   const poco = restanteMs !== null && restanteMs < 5 * 60_000;
+  // Sin pantalla compartida (si el examen la pide) no se ven las preguntas: el tiempo sigue corriendo.
+  const bloqueadoPorPantalla = necesitaPantalla && !compartiendoAhora && !seAcabo;
 
   const etiquetaGuardado =
     guardado === 'guardando'
@@ -336,6 +476,11 @@ export default function ExamenEnCurso({
         <span className="muted" data-testid="estado-guardado">
           {etiquetaGuardado}
         </span>
+        {necesitaPantalla && marca && !sesionReemplazada && (
+          <span className="muted" data-testid="marca" title="Este código cambia solo; tiene que verse en las capturas de tu pantalla." style={{ fontFamily: 'monospace', letterSpacing: 2 }}>
+            ID {marca}
+          </span>
+        )}
         {restanteMs !== null && (
           <strong data-testid="reloj" style={{ color: poco ? 'var(--color-danger, #b00020)' : undefined, fontVariantNumeric: 'tabular-nums' }}>
             {seAcabo ? 'Tiempo terminado' : `Tiempo restante ${formatearRestante(restanteMs)}`}
@@ -343,7 +488,32 @@ export default function ExamenEnCurso({
         )}
       </div>
 
-      {fueraDePantalla && antiCheat?.pantallaCompleta && !seAcabo && (
+      {sesionReemplazada && (
+        <div className="error-box" role="alert" data-testid="sesion-reemplazada" style={{ marginBottom: 16 }}>
+          <strong>Abriste este examen en otro lugar.</strong> Esta sesión se cerró para que no haya dos personas respondiendo a la vez. Lo que escribiste
+          antes está guardado. Si querés seguir desde acá, ingresá de nuevo con un código nuevo (eso cerrará la otra sesión).{' '}
+          <button type="button" className="btn btn-primary" onClick={alReemplazar}>
+            Ingresar de nuevo
+          </button>
+        </div>
+      )}
+
+      {bloqueadoPorPantalla && !sesionReemplazada && (
+        <div className="card" role="alert" data-testid="barrera-pantalla" style={{ marginBottom: 16 }}>
+          <div className="card-title" style={{ marginBottom: 8 }}>
+            Compartí tu pantalla para continuar
+          </div>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            Este examen se rinde compartiendo la pantalla completa. Tus respuestas siguen guardadas y el tiempo sigue corriendo.
+          </p>
+          {errorPantalla && <div className="error-box">{errorPantalla}</div>}
+          <button type="button" className="btn btn-primary" onClick={volverACompartir}>
+            Compartir pantalla completa
+          </button>
+        </div>
+      )}
+
+      {fueraDePantalla && antiCheat?.pantallaCompleta && !seAcabo && !bloqueadoPorPantalla && !sesionReemplazada && (
         <div className="error-box" role="alert" style={{ marginBottom: 16 }}>
           Este examen se rinde en pantalla completa.{' '}
           <button
@@ -359,14 +529,14 @@ export default function ExamenEnCurso({
 
       {errorEntrega && <div className="error-box">{errorEntrega}</div>}
 
-      {consigna?.trim() && (
+      {consigna?.trim() && !sesionReemplazada && (
         <details className="instrucciones-examen">
           <summary>Instrucciones del examen</summary>
           <p>{consigna}</p>
         </details>
       )}
 
-      {preguntas.map((p, i) => (
+      {!bloqueadoPorPantalla && !sesionReemplazada && preguntas.map((p, i) => (
         <TarjetaPreguntaAlumno
           key={p.id}
           pregunta={p}
@@ -377,6 +547,7 @@ export default function ExamenEnCurso({
         />
       ))}
 
+      {!bloqueadoPorPantalla && !sesionReemplazada && (
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           className="btn btn-primary"
@@ -400,6 +571,7 @@ export default function ExamenEnCurso({
           {respondidas} de {preguntas.length} respondidas
         </span>
       </div>
+      )}
     </div>
   );
 }

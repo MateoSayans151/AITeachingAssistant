@@ -117,6 +117,11 @@ export class AntiCheatInputDto {
 
   @IsBoolean()
   pegado: boolean;
+
+  // El alumno comparte su pantalla completa y se guardan capturas (ocasionales y al detectar un evento). Opcional: los exámenes anteriores no lo tienen.
+  @IsOptional()
+  @IsBoolean()
+  pantallaCompartida?: boolean;
 }
 
 export class DistribucionEsperadaInputDto {

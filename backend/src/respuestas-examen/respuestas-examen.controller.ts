@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { RespuestasExamenService } from './respuestas-examen.service';
 import { IntentosService } from './intentos.service';
 import { RevisarRespuestaExamenDto } from './dto/revisar-respuesta-examen.dto';
 import { DocenteId } from '../auth/docente-id.decorator';
 import { AccesoService } from '../acceso/acceso.service';
 import { VaraService } from '../examenes/vara.service';
+import { IntegridadService } from './integridad.service';
 
 @Controller('examenes/:examenId/respuestas')
 export class RespuestasExamenController {
@@ -13,6 +15,7 @@ export class RespuestasExamenController {
     private readonly intentos: IntentosService,
     private readonly acceso: AccesoService,
     private readonly vara: VaraService,
+    private readonly integridad: IntegridadService,
   ) {}
 
   @Get()
@@ -64,5 +67,38 @@ export class RespuestasExamenController {
   async recorregir(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string) {
     await this.acceso.respuestaExamen(docenteId, examenId, id);
     return this.service.corregir(id);
+  }
+
+  // ---- Capturas de pantalla del intento (solo el docente dueño del examen) ----
+  @Get(':id/capturas')
+  async capturas(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string) {
+    await this.acceso.respuestaExamen(docenteId, examenId, id);
+    return this.integridad.listarCapturas(await this.integridad.intentoIdDeRespuesta(examenId, id));
+  }
+
+  @Get(':id/capturas/:capturaId')
+  async captura(
+    @DocenteId() docenteId: string,
+    @Param('examenId') examenId: string,
+    @Param('id') id: string,
+    @Param('capturaId') capturaId: string,
+    @Res() res: Response,
+  ) {
+    await this.acceso.respuestaExamen(docenteId, examenId, id);
+    const datos = await this.integridad.leerCaptura(await this.integridad.intentoIdDeRespuesta(examenId, id), capturaId);
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' }).send(datos);
+  }
+
+  @Delete(':id/capturas/:capturaId')
+  async borrarCaptura(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string, @Param('capturaId') capturaId: string) {
+    await this.acceso.respuestaExamen(docenteId, examenId, id);
+    await this.integridad.borrarCaptura(await this.integridad.intentoIdDeRespuesta(examenId, id), capturaId);
+    return { borrada: true };
+  }
+
+  @Delete(':id/capturas')
+  async borrarCapturas(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string) {
+    await this.acceso.respuestaExamen(docenteId, examenId, id);
+    return { borradas: await this.integridad.borrarCapturas(await this.integridad.intentoIdDeRespuesta(examenId, id)) };
   }
 }

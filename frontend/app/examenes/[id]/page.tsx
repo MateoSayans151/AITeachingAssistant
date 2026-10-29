@@ -51,6 +51,8 @@ export default function ExamenDetallePage() {
   const [linkGenerado, setLinkGenerado] = useState<string | null>(null);
   // Por defecto el link lo puede abrir cualquier alumno; marcado, entran solo los de la lista de la comisión.
   const [soloLista, setSoloLista] = useState(false);
+  const [verificarEmail, setVerificarEmail] = useState(false);
+  const [dominioPermitido, setDominioPermitido] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -102,6 +104,8 @@ export default function ExamenDetallePage() {
         fechaInicio: fechaLocalAIso(fechaInicio),
         fechaFin: fechaLocalAIso(fechaFin),
         accesoAbierto: !soloLista,
+        verificarEmail,
+        dominioPermitido: dominioPermitido.trim() || undefined,
       });
       setLinkGenerado(resultado.urlAcceso ?? null);
       setComisionSeleccionada('');
@@ -236,6 +240,7 @@ export default function ExamenDetallePage() {
               {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
               {' · '}
               {ec.accesoAbierto ? 'entra cualquiera con el link' : 'entran solo los de la lista'}
+              {ec.verificarEmail ? ` · con código por mail${ec.dominioPermitido ? ` (solo @${ec.dominioPermitido})` : ''}` : ''}
             </div>
             <InvitarPorMail examenId={examen.id} examenComisionId={ec.id} cantidadAlumnos={ec.comision?._count?.alumnos ?? null} />
           </div>
@@ -263,6 +268,20 @@ export default function ExamenDetallePage() {
               <input type="checkbox" checked={soloLista} onChange={(e) => setSoloLista(e.target.checked)} />
               Solo los alumnos de la lista
             </label>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 14 }} title="Los alumnos reciben un código de 6 dígitos por mail">
+              <input type="checkbox" checked={verificarEmail} onChange={(e) => setVerificarEmail(e.target.checked)} />
+              Pedir código por mail
+            </label>
+            {verificarEmail && !soloLista && (
+              <input
+                aria-label="Dominio permitido (opcional)"
+                title="Solo mails de este dominio (opcional)"
+                placeholder="dominio permitido, ej. alumnos.edu.ar"
+                value={dominioPermitido}
+                onChange={(e) => setDominioPermitido(e.target.value)}
+                maxLength={100}
+              />
+            )}
             <button className="btn btn-primary" onClick={handlePublicar} disabled={loading || !comisionSeleccionada}>
               {loading ? 'Publicando…' : 'Publicar / generar link'}
             </button>

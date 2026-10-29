@@ -165,9 +165,11 @@ function DialogoVistaPrevia({ datos, preguntas, onCerrar }: VistaPreviaButtonPro
                   {cfg.pantallaCompleta && <li>{TEXTOS_INGRESO_ALUMNO.monitoreoPantalla}</li>}
                   {cfg.cambioPestana && <li>{TEXTOS_INGRESO_ALUMNO.monitoreoPestana}</li>}
                   {cfg.pegado && <li>{TEXTOS_INGRESO_ALUMNO.monitoreoPegado}</li>}
+                  {cfg.pantallaCompartida && <li>{TEXTOS_INGRESO_ALUMNO.monitoreoCaptura}</li>}
+                  <li>{TEXTOS_INGRESO_ALUMNO.monitoreoIngreso}</li>
                 </ul>
                 <p className="muted" style={{ marginBottom: 12 }}>
-                  {TEXTOS_INGRESO_ALUMNO.monitoreoNota}
+                  {cfg.pantallaCompartida ? TEXTOS_INGRESO_ALUMNO.monitoreoNotaCaptura : TEXTOS_INGRESO_ALUMNO.monitoreoNota}
                 </p>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <input type="checkbox" disabled style={{ marginTop: 4 }} />

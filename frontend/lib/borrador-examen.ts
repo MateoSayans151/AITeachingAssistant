@@ -140,6 +140,7 @@ export function leerBorrador(crudo: string | null | undefined): Borrador | null 
     acPantalla: booleano(d.acPantalla, defecto.acPantalla),
     acPestana: booleano(d.acPestana, defecto.acPestana),
     acPegado: booleano(d.acPegado, defecto.acPegado),
+    acCaptura: booleano(d.acCaptura, defecto.acCaptura),
     distOn: booleano(d.distOn, false),
     umbralAprobacion: texto(d.umbralAprobacion, defecto.umbralAprobacion),
     aprobadosPct: texto(d.aprobadosPct, defecto.aprobadosPct),

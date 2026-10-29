@@ -1,4 +1,5 @@
-import { IsBoolean, IsDateString, IsOptional, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsDateString, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 export class PublicarComisionDto {
   @IsUUID()
@@ -16,4 +17,17 @@ export class PublicarComisionDto {
   @IsBoolean()
   @IsOptional()
   accesoAbierto?: boolean;
+
+  // true: el alumno tiene que escribir un código de 6 dígitos que le llega al mail. Por defecto false (los links ya publicados siguen igual).
+  @IsBoolean()
+  @IsOptional()
+  verificarEmail?: boolean;
+
+  // Dominio al que tienen que pertenecer los mails que entran (p. ej. "alumnos.edu.ar"). Vacío = cualquiera.
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase().replace(/^@+/, '') : value))
+  @IsString()
+  @MaxLength(100)
+  @Matches(/^([a-z0-9-]+\.)+[a-z]{2,}$|^$/, { message: 'El dominio no es válido (ejemplo: alumnos.edu.ar)' })
+  dominioPermitido?: string;
 }

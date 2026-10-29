@@ -171,6 +171,7 @@ de cuáles te faltan podés correrlas todas:
 | `20261003_supabase_auth.sql` | `docentes.auth_user_id` (login con Supabase Auth) |
 | `20261003_tp_link_alumnos.sql` | Link de entrega de trabajos prácticos (`slug_acceso`, modo seguro, ventana) e `intentos_entrega` |
 | `20261004_rls_todas_las_tablas.sql` | RLS en todas las tablas, sin policies (paso 3) |
+| `20261028_otp_sesion_unica_y_capturas.sql` | Código de acceso por mail (`codigos_acceso`, `examen_comisiones.verificar_email` y `dominio_permitido`), sesión única y origen del intento, latido, `sesiones_intento`, `capturas_integridad` y los eventos nuevos. Todo es opt-in: lo ya publicado no cambia. **Volvé a correr después `20261004_rls_todas_las_tablas.sql`** (recorre las tablas existentes) y creá el bucket privado `capturas` en Supabase Storage |
 | `20261026_acceso_abierto.sql` | `examen_comisiones.acceso_abierto`: el link puede ser abierto (entra cualquiera) o solo para la lista. **Correrla antes de desplegar el código nuevo**: sin la columna, el back falla al leer cualquier link de examen |
 
 > Alternativa: en vez de correr `schema.sql` a mano, podés dejar que Prisma cree las tablas con
@@ -255,6 +256,47 @@ activa, el alumno ve **qué se monitorea** y tiene que aceptarlo para empezar: e
 consentimiento y solo registra los eventos que el docente activó. Las señales se guardan como eventos del intento y se
 muestran en la revisión del docente como información para su criterio: **nunca bloquean el examen ni modifican la
 nota**.
+
+### Verificación del mail con código (OTP)
+
+Opcional por publicación (`verificarEmail`, apagado por defecto: los links ya publicados siguen igual). Con la opción activa, el alumno
+pide un código de 6 dígitos que le llega **al mail con el que figura** (el mismo al que después le llega la nota) y lo escribe para empezar.
+Lo que logra: que no pueda rendir en su lugar alguien que solo conoce su mail, y que el examen quede en **una sola sesión a la vez**
+(volver a ingresar con un código nuevo cierra la anterior; las dos personas no pueden responder juntas). Detalles:
+
+- El código dura 10 minutos, se usa una sola vez y admite 5 intentos; en la base se guarda solo un HMAC (con `JWT_SECRET`), no el código.
+- Pedir un código responde siempre lo mismo, esté o no el mail en la lista: no sirve para averiguar quién cursa. Con acceso abierto, el alumno
+  recién se crea al verificar el código, y el docente puede restringir el **dominio** de los mails (`dominioPermitido`, ej. `alumnos.edu.ar`)
+  para que no entren mails descartables ni varias cuentas de la misma persona.
+- Límites: 1 pedido por minuto y 3 cada 10 minutos por mail, tope por publicación y por IP (altos a propósito: un aula entera empieza a la vez y
+  comparte IP). Los fallos de verificación se frenan por mail, no por IP.
+- **Cuota de mails:** cada alumno consume un mail (el plan gratuito de Resend permite 100 por día, y las invitaciones comparten ese cupo).
+  Falta un captcha en el pedido de código: hoy lo que limita a quien quiera gastar la cuota con mails al azar es el dominio permitido o la lista
+  de alumnos. Sin Resend configurado el código no se puede mandar (503), salvo en desarrollo, donde queda en el log del servidor.
+- Además se registra siempre el historial de ingresos del intento (IP y navegador) y, si el examen tiene monitoreo, un evento cuando el
+  token se usa desde otro lugar, navegador o pestaña (lo que pasa si se lo copia a otro equipo).
+
+### Pantalla compartida con capturas
+
+Opción del anti-cheat (`pantallaCompartida`). El alumno tiene que compartir su **pantalla completa** (se verifica que no sea una ventana o
+una pestaña, y que no haya más de un monitor donde el navegador lo informa) y el servidor guarda capturas para que el docente las revise:
+
+- **Las pide el servidor**, no el navegador: cada 4 a 10 minutos (al azar, promedio 7) y, además, el navegador manda dos más cuando el alumno
+  sale de la ventana o de la pantalla completa. Si una captura pedida no llega, queda el evento `captura_omitida`.
+- Cada latido (cada 15 s) devuelve un **ID de 4 caracteres que rota** y que la página muestra en la barra del examen: tiene que verse en las
+  capturas. La galería del docente avisa cuando el ID de una captura no coincide con el que emitió el servidor.
+- Si el alumno deja de compartir, el examen se oculta hasta que vuelva a hacerlo (el tiempo sigue corriendo). Tras un refresh hay que
+  compartir de nuevo.
+- Las imágenes se guardan en el bucket privado `capturas` de Supabase Storage (ver `.env.example`), solo las ve el docente dueño del examen (se
+  bajan con su sesión, no hay URLs públicas), se pueden borrar de a una o todas, y se borran solas a los 7 días (`CAPTURAS_RETENCION_DIAS`).
+  Son ~60 KB cada una: unos 2 a 3 MB por alumno en un examen de una hora.
+- Limitaciones: necesita una computadora (los celulares no pueden compartir la pantalla); en Mac el navegador necesita permiso de "Grabación
+  de pantalla"; todo lo que corre en el navegador lo puede alterar un alumno con conocimientos técnicos (por eso el servidor decide cuándo pedir y
+  anota lo que falta), y no ve un segundo dispositivo ni apps que se excluyen a sí mismas de la captura. Es un control invasivo: hay que
+  avisar con tiempo, ofrecer una alternativa a quien no pueda o no quiera, y tratarlo como evidencia para el criterio del docente, nunca como prueba.
+
+Señales que deduce el servidor sin depender del navegador: **saltos de texto** (más de 300 caracteres de golpe y a más de 30 por segundo entre
+dos autoguardados), **huecos del latido** (más de 60 s sin señales) y el **latido sin foco**.
 
 ## 4. Deploy
 

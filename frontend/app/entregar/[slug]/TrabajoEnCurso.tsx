@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, EstadoIntentoEntregar, TipoEventoIntegridad, enviarEntrega, guardarBorradorEntrega, registrarEventoEntrega } from '@/lib/api';
+import { ApiError, EstadoIntentoEntregar, TipoEventoEntrega, enviarEntrega, guardarBorradorEntrega, registrarEventoEntrega } from '@/lib/api';
 import { alCambiarPantallaCompleta, enPantallaCompleta, entrarPantallaCompleta, pantallaCompletaSoportada } from '@/lib/pantalla-completa';
 
 type EstadoGuardado = 'guardado' | 'guardando' | 'pendiente' | 'sin_conexion' | 'demasiado_grande';
@@ -209,7 +209,7 @@ export default function TrabajoEnCurso({
   }, [seAcabo, entregar]);
 
   // ---------------------------------------------------------------- modo seguro (solo registra; nunca bloquea ni baja nota)
-  const cola = useRef<TipoEventoIntegridad[]>([]);
+  const cola = useRef<TipoEventoEntrega[]>([]);
   const vaciando = useRef(false);
   const vaciarCola = useCallback(async () => {
     // Un solo ciclo a la vez: si entra un evento mientras se envía otro, el ciclo en curso lo
@@ -232,7 +232,7 @@ export default function TrabajoEnCurso({
     }
   }, [slug, token]);
   const reportar = useCallback(
-    (tipo: TipoEventoIntegridad) => {
+    (tipo: TipoEventoEntrega) => {
       cola.current.push(tipo);
       vaciarCola();
     },

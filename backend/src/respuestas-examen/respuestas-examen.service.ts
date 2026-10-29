@@ -269,7 +269,11 @@ export class RespuestasExamenService {
     }
     const intento = await this.prisma.intentoExamen.findUnique({
       where: { examenId_alumnoId: { examenId, alumnoId: respuesta.alumnoId } },
-      include: { eventos: { orderBy: { ocurridoEn: 'asc' } } },
+      include: {
+        eventos: { orderBy: { ocurridoEn: 'asc' } },
+        sesiones: { orderBy: { iniciadaEn: 'asc' } },
+        _count: { select: { capturas: true } },
+      },
     });
     return {
       ...respuesta,
@@ -282,6 +286,9 @@ export class RespuestasExamenService {
             expiraEn: intento.expiraEn,
             consentimientoEn: intento.consentimientoEn,
             eventos: intento.eventos.map((e) => ({ tipo: e.tipo, ocurridoEn: e.ocurridoEn, detalle: e.detalle })),
+            // Log de acceso: cada vez que el alumno ingresó (IP y navegador). Más de uno, o de distintos lugares, merece una mirada.
+            sesiones: intento.sesiones.map((x) => ({ iniciadaEn: x.iniciadaEn, ip: x.ip, userAgent: x.userAgent })),
+            capturas: intento._count.capturas,
           }
         : null,
     };

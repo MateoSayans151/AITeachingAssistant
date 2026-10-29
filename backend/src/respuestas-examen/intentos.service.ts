@@ -7,6 +7,8 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -17,8 +19,37 @@ import { antiCheatActivo, eventoPermitido } from './anticheat.util';
 import { LimitadorFallos } from './limitador-intentos.util';
 import { AlmacenFallosPrisma } from './almacen-fallos.prisma';
 import { MAX_CONTENIDO_BYTES } from './limites';
-import { EventoIntegridadDto, IniciarIntentoDto } from './dto/intento.dto';
+import { CapturaDto, EventoIntegridadDto, IniciarIntentoDto, LatidoDto, SolicitarCodigoDto } from './dto/intento.dto';
 import { generarCodigoAcceso } from '../comisiones/comisiones.service';
+import { CodigosAccesoService, emailEnDominio, normalizarDominio } from './codigos-acceso.service';
+import { EventoServidor, IntegridadService } from './integridad.service';
+
+/** De dónde viene un pedido: la IP la saca Nest; el navegador y el id de pestaña los manda el cliente (son indicios, no pruebas). */
+export interface Origen {
+  ip?: string;
+  userAgent?: string;
+  clienteId?: string;
+}
+
+/** Un salto de texto: más de esto de golpe y más rápido de lo que se puede tipear. */
+export const SALTO_MIN_CARACTERES = 300;
+export const SALTO_MIN_CARACTERES_POR_SEGUNDO = 30;
+
+/**
+ * Compara el borrador anterior con el nuevo y devuelve las respuestas de texto que crecieron de golpe: mucho texto en muy poco
+ * tiempo no se tipea. Es una señal que el cliente no puede suprimir (el autoguardado es lo que alimenta al servidor).
+ */
+export function saltosDeTexto(anterior: Record<string, unknown>, nuevo: Record<string, unknown>, transcurridoMs: number) {
+  const segundos = Math.max(transcurridoMs, 1000) / 1000;
+  const saltos: { preguntaId: string; caracteres: number }[] = [];
+  for (const [id, valor] of Object.entries(nuevo)) {
+    if (typeof valor !== 'string') continue;
+    const previo = typeof anterior[id] === 'string' ? (anterior[id] as string).length : 0;
+    const crecio = valor.length - previo;
+    if (crecio >= SALTO_MIN_CARACTERES && crecio / segundos >= SALTO_MIN_CARACTERES_POR_SEGUNDO) saltos.push({ preguntaId: id, caracteres: crecio });
+  }
+  return saltos;
+}
 
 /** Margen para que llegue una entrega hecha justo al vencer (latencia, reloj del cliente). */
 export const GRACIA_ENTREGA_MS = 20_000;
@@ -45,6 +76,8 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly respuestas: RespuestasExamenService,
+    @Optional() private readonly codigos?: CodigosAccesoService,
+    @Optional() private readonly integridad?: IntegridadService,
   ) {
     // Los fallos viven en la base (no en memoria del proceso): el freno vale con varias instancias.
     this.almacenFallos = new AlmacenFallosPrisma(prisma);
@@ -58,6 +91,8 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
       this.almacenFallos
         .purgarAnteriores(Date.now() - 2 * VENTANA_FALLOS_MS)
         .catch((e) => this.logger.error('Falló la limpieza de fallos de acceso', e as Error));
+      this.codigos?.purgar().catch((e) => this.logger.error('Falló la limpieza de códigos de acceso', e as Error));
+      this.integridad?.purgarVencidas().catch((e) => this.logger.error('Falló el borrado de capturas vencidas', e as Error));
     }, BARRIDO_VENCIDOS_MS);
     this.barrido.unref?.();
   }
@@ -80,10 +115,15 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
         modalidad: ec.examen.modalidad,
         duracionMinutos: ec.examen.duracionMinutos,
         antiCheat: antiCheatActivo(ec.examen.antiCheat),
+        // Solo si el examen pide pantalla compartida: cuántos días se guardan las capturas.
+        retencionCapturasDias: antiCheatActivo(ec.examen.antiCheat)?.pantallaCompartida ? (this.integridad?.retencionDias ?? null) : null,
       },
       comision: { nombre: ec.comision.nombre },
       // true: cualquier alumno con el link puede entrar (la pantalla le pide también el nombre); false: solo los de la lista.
       accesoAbierto: ec.accesoAbierto,
+      // true: para entrar hay que pedir un código que llega al mail. dominioPermitido: solo mails de ese dominio pueden entrar.
+      verificarEmail: ec.verificarEmail,
+      dominioPermitido: normalizarDominio(ec.dominioPermitido),
       ventana: { estado: ventana, fechaInicio: ec.fechaInicio, fechaFin: ec.fechaFin },
     };
   }
@@ -91,10 +131,25 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
   // ---------------------------------------------------------------------------
   // Iniciar (o retomar) el intento
   // ---------------------------------------------------------------------------
-  async iniciar(slug: string, dto: IniciarIntentoDto, ip: string) {
+  /** Pide el código de acceso por mail. Siempre responde lo mismo, esté o no el mail en la lista. */
+  async solicitarCodigo(slug: string, dto: SolicitarCodigoDto, ip: string) {
+    const ec = await this.examenComision(slug);
+    if (!ec.verificarEmail) throw new BadRequestException('Este examen no usa código: ingresá directamente con tu mail.');
+    if (!this.codigos) throw new ServiceUnavailableException('La verificación por mail no está disponible en este momento.');
+    await this.codigos.solicitar(ec, dto.alumnoEmail, ip);
+    return { enviado: true };
+  }
+
+  async iniciar(slug: string, dto: IniciarIntentoDto, ip: string, origen: Omit<Origen, 'ip'> = {}) {
     const ec = await this.examenComision(slug);
     const claveIp = `ip|${ip}`;
     await this.fallosPorIp.verificar(claveIp);
+
+    if (ec.verificarEmail) {
+      // Primero se prueba que el alumno tiene el buzón; recién después se lo busca (o se lo crea, con acceso abierto).
+      if (!this.codigos) throw new ServiceUnavailableException('La verificación por mail no está disponible en este momento.');
+      await this.codigos.consumir(ec, dto.alumnoEmail, dto.codigo, ip);
+    }
 
     const alumno = await this.resolverAlumno(ec, dto, claveIp);
 
@@ -131,7 +186,16 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('El tiempo de este examen ya terminó. Lo que alcanzaste a completar se entregó.');
     }
 
-    return { token: await this.firmarToken(intento), ...(await this.estadoIntento(intento.id, slug)) };
+    // Cada inicio de sesión sube el contador: con verificación de mail, el token de la sesión anterior deja de valer.
+    const ua = origen.userAgent?.slice(0, 300);
+    const actualizado = await this.prisma.intentoExamen.update({
+      where: { id: intento.id },
+      data: { sesion: { increment: 1 }, ultimoOrigenIp: ip, ultimoOrigenUa: ua, ultimoClienteId: origen.clienteId?.slice(0, 64) },
+      select: { sesion: true },
+    });
+    await this.prisma.sesionIntento.create({ data: { intentoId: intento.id, ip, userAgent: ua } });
+
+    return { token: await this.firmarToken(intento, actualizado.sesion), ...(await this.estadoIntento(intento.id, slug)) };
   }
 
   /**
@@ -142,7 +206,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
    *  - si no, se rechaza, y el freno por IP limita que alguien pruebe emails al azar para ver quién está en la comisión.
    */
   async resolverAlumno(
-    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null },
+    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null; dominioPermitido?: string | null },
     dto: IniciarIntentoDto,
     claveIp: string,
   ) {
@@ -158,6 +222,9 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
 
     // Un examen cerrado o que todavía no abrió no suma alumnos nuevos.
     this.validarVentana(ec);
+    if (!emailEnDominio(dto.alumnoEmail, ec.dominioPermitido)) {
+      throw new BadRequestException(`Para rendir este examen tenés que usar un mail de @${normalizarDominio(ec.dominioPermitido)}.`);
+    }
     const cantidad = await this.prisma.alumno.count({ where: { comisionId: ec.comisionId } });
     if (cantidad >= MAX_ALUMNOS_ACCESO_ABIERTO) {
       throw new ConflictException('Este examen llegó al máximo de alumnos que pueden entrar. Avisale a tu docente.');
@@ -214,11 +281,49 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     const limpio = await this.filtrarPorPreguntas(intento.examenId, respuestas);
     this.validarTamano(limpio, 'El borrador');
     const guardadoEn = new Date();
+    await this.anotarSaltosDeTexto(intento, limpio, guardadoEn);
     await this.prisma.intentoExamen.update({
       where: { id: intentoId },
       data: { borrador: limpio as any, borradorActualizadoEn: guardadoEn },
     });
     return { guardadoEn };
+  }
+
+  /** Si el examen monitorea, anota las respuestas que crecieron de golpe (ver `saltosDeTexto`). */
+  private async anotarSaltosDeTexto(
+    intento: { id: string; examenId: string; borrador: unknown; borradorActualizadoEn: Date | null; inicioEn: Date },
+    nuevo: Record<string, unknown>,
+    ahora: Date,
+  ) {
+    if (!this.integridad) return;
+    try {
+      const anterior = (intento.borrador ?? {}) as Record<string, unknown>;
+      const desde = (intento.borradorActualizadoEn ?? intento.inicioEn).getTime();
+      const saltos = saltosDeTexto(anterior, nuevo, ahora.getTime() - desde);
+      if (saltos.length === 0) return;
+      const examen = await this.prisma.examen.findUnique({ where: { id: intento.examenId }, select: { antiCheat: true } });
+      if (!antiCheatActivo(examen?.antiCheat)) return; // sin monitoreo (ni consentimiento) no se anota nada
+      await this.integridad.anotar(
+        intento.id,
+        saltos.map<EventoServidor>((j) => ({ tipo: 'salto_de_texto', detalle: `pregunta ${j.preguntaId}: +${j.caracteres} caracteres de golpe` })),
+      );
+    } catch (e) {
+      this.logger.warn(`No se pudo evaluar el salto de texto: ${(e as Error).message}`); // nunca debe romper el autoguardado
+    }
+  }
+
+  async latido(intentoId: string, dto: LatidoDto) {
+    const intento = await this.intentoActivo(intentoId);
+    const examen = await this.prisma.examen.findUniqueOrThrow({ where: { id: intento.examenId }, select: { antiCheat: true } });
+    if (!this.integridad) return { marca: null, capturaPedida: null, ahora: new Date().toISOString() };
+    return this.integridad.latido(intento, antiCheatActivo(examen.antiCheat), dto);
+  }
+
+  async subirCaptura(intentoId: string, dto: CapturaDto) {
+    const intento = await this.intentoActivo(intentoId);
+    const examen = await this.prisma.examen.findUniqueOrThrow({ where: { id: intento.examenId }, select: { antiCheat: true } });
+    if (!this.integridad) return { registrada: false };
+    return this.integridad.registrarCaptura(intento, antiCheatActivo(examen.antiCheat), dto);
   }
 
   async registrarEvento(intentoId: string, dto: EventoIntegridadDto) {
@@ -284,16 +389,17 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
   // ---------------------------------------------------------------------------
   // Token del intento (aislado del token de docente: typ 'intento')
   // ---------------------------------------------------------------------------
-  private async firmarToken(intento: { id: string; expiraEn: Date | null }) {
+  private async firmarToken(intento: { id: string; expiraEn: Date | null }, sesion: number) {
     const restanteS = intento.expiraEn ? Math.ceil((intento.expiraEn.getTime() - Date.now() + GRACIA_ENTREGA_MS) / 1000) : 7 * 24 * 3600;
-    return this.jwt.signAsync({ sub: intento.id, typ: 'intento' }, { expiresIn: Math.max(restanteS, 60) });
+    // `ses` es la sesión a la que pertenece el token (ver `intentoDeToken`).
+    return this.jwt.signAsync({ sub: intento.id, typ: 'intento', ses: sesion }, { expiresIn: Math.max(restanteS, 60) });
   }
 
   /** Valida el Bearer del alumno y que el intento sea de este link. Devuelve el id del intento. */
-  async intentoDeToken(authorization: string | undefined, slug: string): Promise<string> {
+  async intentoDeToken(authorization: string | undefined, slug: string, origen?: Origen): Promise<string> {
     const [tipo, token] = (authorization ?? '').split(' ');
     if (tipo !== 'Bearer' || !token) throw new UnauthorizedException('Falta el token del examen');
-    let payload: { sub: string; typ?: string };
+    let payload: { sub: string; typ?: string; ses?: number };
     try {
       payload = await this.jwt.verifyAsync(token);
     } catch {
@@ -306,7 +412,49 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     if (!intento || intento.examenId !== ec.examenId || intento.alumno.comisionId !== ec.comisionId) {
       throw new ForbiddenException('Este intento no corresponde a este examen');
     }
+    // Sesión única (solo con verificación de mail: sin ella, cualquiera que supiera un mail podría sacar al alumno de su examen).
+    // Un token sin `ses` (emitido antes de esta versión) vale como sesión 0.
+    if (ec.verificarEmail && (payload.ses ?? 0) !== intento.sesion) {
+      throw new UnauthorizedException({
+        statusCode: 401,
+        error: 'Unauthorized',
+        codigo: 'SESION_REEMPLAZADA',
+        message: 'Abriste este examen en otro lugar: esta sesión se cerró. Lo que escribiste antes está guardado.',
+      });
+    }
+    if (origen) await this.seguirOrigen(intento, ec.examen.antiCheat, origen);
     return intento.id;
+  }
+
+  /**
+   * Si el pedido viene de otra IP, otro navegador u otra pestaña/dispositivo que el anterior, queda anotado: es lo que pasa cuando
+   * se copia el token a otro equipo (la sesión única no lo ve, porque no hay un login nuevo). Es un indicio: la IP cambia sola al
+   * pasar de wifi a datos.
+   */
+  private async seguirOrigen(
+    intento: { id: string; ultimoOrigenIp: string | null; ultimoOrigenUa: string | null; ultimoClienteId: string | null },
+    antiCheat: unknown,
+    origen: Origen,
+  ) {
+    const ua = origen.userAgent?.slice(0, 300);
+    const cliente = origen.clienteId?.slice(0, 64);
+    const cambios: string[] = [];
+    if (origen.ip && intento.ultimoOrigenIp && origen.ip !== intento.ultimoOrigenIp) cambios.push('IP');
+    if (ua && intento.ultimoOrigenUa && ua !== intento.ultimoOrigenUa) cambios.push('navegador');
+    if (cliente && intento.ultimoClienteId && cliente !== intento.ultimoClienteId) cambios.push('pestaña o dispositivo');
+    const primera = (!intento.ultimoOrigenIp && origen.ip) || (!intento.ultimoClienteId && cliente);
+    if (cambios.length === 0 && !primera) return;
+    try {
+      await this.prisma.intentoExamen.update({
+        where: { id: intento.id },
+        data: { ultimoOrigenIp: origen.ip ?? intento.ultimoOrigenIp, ultimoOrigenUa: ua ?? intento.ultimoOrigenUa, ultimoClienteId: cliente ?? intento.ultimoClienteId },
+      });
+      if (cambios.length > 0 && this.integridad && antiCheatActivo(antiCheat)) {
+        await this.integridad.anotar(intento.id, [{ tipo: 'cambio_de_origen', detalle: `cambió: ${cambios.join(', ')}` }]);
+      }
+    } catch (e) {
+      this.logger.warn(`No se pudo seguir el origen del intento: ${(e as Error).message}`);
+    }
   }
 
   // ---------------------------------------------------------------------------

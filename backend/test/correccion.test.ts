@@ -475,7 +475,7 @@ test('POST /examenes/:examenId/respuestas/corregir-pendientes: chequea el acceso
   const llamadas: string[] = [];
   const acceso = { examen: async (docenteId: string, examenId: string) => llamadas.push(`acceso:${docenteId}:${examenId}`) };
   const service = { corregirPendientes: async (examenId: string) => (llamadas.push(`service:${examenId}`), { pendientes: 7 }) };
-  const controller = new RespuestasExamenController(service as any, {} as any, acceso as any, {} as any);
+  const controller = new RespuestasExamenController(service as any, {} as any, acceso as any, {} as any, {} as any);
 
   assert.deepEqual(await controller.corregirPendientes('doc-1', 'ex-1'), { pendientes: 7 });
   assert.deepEqual(llamadas, ['acceso:doc-1:ex-1', 'service:ex-1']);

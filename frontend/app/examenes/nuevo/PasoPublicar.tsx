@@ -66,6 +66,9 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
   const [modoPublicar, setModoPublicar] = useState<'nueva' | 'existente'>('nueva');
   // Por defecto entra cualquiera con el link (el docente no tiene que cargar mails); "lista" restringe a los que él cargue.
   const [acceso, setAcceso] = useState<'abierto' | 'lista'>('abierto');
+  // Verificación de mail con código (OTP) y, opcionalmente, dominio al que tienen que pertenecer los mails.
+  const [verificarEmail, setVerificarEmail] = useState(false);
+  const [dominioPermitido, setDominioPermitido] = useState('');
   // Con acceso abierto la lista es opcional: se muestra solo si el docente quiere cargarla igual.
   const [cargarLista, setCargarLista] = useState(false);
   const [comisionSeleccionada, setComisionSeleccionada] = useState('');
@@ -199,6 +202,8 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
         fechaInicio: fechaLocalAIso(fechaInicio),
         fechaFin: fechaLocalAIso(fechaFin),
         accesoAbierto: acceso === 'abierto',
+        verificarEmail,
+        dominioPermitido: dominioPermitido.trim() || undefined,
       });
       if (cantidad === null) cantidad = cantidadDe((comisiones ?? []).find((c) => c.id === comisionId));
       setPublicado({ link: resultado.urlAcceso ?? null, examenComisionId: resultado.id, cantidadAlumnos: cantidad, accesoAbierto: acceso === 'abierto' });
@@ -261,6 +266,33 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
               </span>
             </label>
           </fieldset>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontWeight: 600 }}>
+              <input type="checkbox" checked={verificarEmail} onChange={(e) => setVerificarEmail(e.target.checked)} style={{ marginTop: 4 }} />
+              <span>
+                Pedir un código de 6 dígitos que llega al mail del alumno
+                <small className="muted" style={{ display: 'block', fontWeight: 400 }}>
+                  Comprueba que el alumno tiene acceso a ese mail y cierra el examen a una sola sesión a la vez. Manda un mail por alumno (el plan
+                  gratuito de Resend permite 100 por día).
+                </small>
+              </span>
+            </label>
+            {verificarEmail && acceso === 'abierto' && (
+              <div className="field" style={{ marginTop: 10 }}>
+                <label htmlFor="dominio">Solo mails de este dominio (opcional)</label>
+                <input
+                  id="dominio"
+                  value={dominioPermitido}
+                  placeholder="alumnos.tuuniversidad.edu.ar"
+                  onChange={(e) => setDominioPermitido(e.target.value)}
+                  maxLength={100}
+                />
+                <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                  Evita que alguien rinda con un mail descartable o con varios mails. Dejalo vacío para aceptar cualquiera.
+                </p>
+              </div>
+            )}
+          </div>
           <p className="muted" style={{ marginBottom: 14 }}>
             {acceso === 'abierto'
               ? 'Su nota les llega por mail al email que escriban al entrar. Se identifican solo con ese mail: un mismo mail rinde una sola vez.'

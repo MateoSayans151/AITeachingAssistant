@@ -243,8 +243,20 @@ test('antiCheatParaAlumno: null si está apagado o si no quedó ningún control 
   assert.equal(antiCheatParaAlumno(datos({ antiCheatOn: false })), null);
   assert.equal(antiCheatParaAlumno(datos({ antiCheatOn: false, acPantalla: true, acPestana: true, acPegado: true })), null);
   assert.equal(antiCheatParaAlumno(datos({ antiCheatOn: true, acPantalla: false, acPestana: false, acPegado: false })), null);
-  assert.deepEqual(antiCheatParaAlumno(datos({ antiCheatOn: true })), { pantallaCompleta: true, cambioPestana: true, pegado: true });
-  assert.deepEqual(antiCheatParaAlumno(datos({ antiCheatOn: true, acPantalla: false, acPestana: false })), { pantallaCompleta: false, cambioPestana: false, pegado: true });
+  assert.deepEqual(antiCheatParaAlumno(datos({ antiCheatOn: true })), { pantallaCompleta: true, cambioPestana: true, pegado: true, pantallaCompartida: false });
+  assert.deepEqual(antiCheatParaAlumno(datos({ antiCheatOn: true, acPantalla: false, acPestana: false })), {
+    pantallaCompleta: false,
+    cambioPestana: false,
+    pegado: true,
+    pantallaCompartida: false,
+  });
+  // La pantalla compartida sola cuenta como control (igual que antiCheatActivo del servidor).
+  assert.deepEqual(antiCheatParaAlumno(datos({ antiCheatOn: true, acPantalla: false, acPestana: false, acPegado: false, acCaptura: true })), {
+    pantallaCompleta: false,
+    cambioPestana: false,
+    pegado: false,
+    pantallaCompartida: true,
+  });
 });
 
 test('cantidadRespondidas: misma regla que el examen en curso (vacío, null y [] no cuentan; false y 0 sí)', () => {

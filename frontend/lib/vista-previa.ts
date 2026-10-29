@@ -30,6 +30,11 @@ export const TEXTOS_INGRESO_ALUMNO = {
   monitoreoNota:
     'No se graba tu pantalla, tu cámara ni lo que escribís fuera del examen. Estos registros se le muestran a tu docente como información adicional: no bajan tu nota automáticamente.',
   consentimiento: 'Leí el aviso y entiendo qué se monitorea.',
+  monitoreoCaptura:
+    'Tenés que compartir tu pantalla completa. Se guardan capturas de pantalla cada tanto y cada vez que salís de la ventana del examen; solo las ve tu docente.',
+  monitoreoNotaCaptura:
+    'No se graba tu cámara ni lo que escribís fuera del examen. Activá “No molestar” antes de empezar: si te llega una notificación, puede quedar en una captura. Todo esto se le muestra a tu docente como información adicional: no baja tu nota automáticamente.',
+  monitoreoIngreso: 'Se registra desde dónde ingresás al examen (tu IP y tu navegador) y si lo abrís en más de un lugar a la vez.',
 } as const;
 
 /** "Tenés N minutos." (el título del aviso de duración). */
@@ -46,10 +51,10 @@ export function duracionParaAlumno(datos: Pick<DatosForm, 'modalidad' | 'duracio
  * Qué se monitorea, tal como lo normaliza el servidor (`antiCheatActivo`): null si el docente no activó el registro o dejó
  * los tres controles apagados (en ese caso el alumno no ve ningún aviso).
  */
-export function antiCheatParaAlumno(datos: Pick<DatosForm, 'antiCheatOn' | 'acPantalla' | 'acPestana' | 'acPegado'>): AntiCheatConfig | null {
+export function antiCheatParaAlumno(datos: Pick<DatosForm, 'antiCheatOn' | 'acPantalla' | 'acPestana' | 'acPegado' | 'acCaptura'>): AntiCheatConfig | null {
   if (!datos.antiCheatOn) return null;
-  const cfg = { pantallaCompleta: datos.acPantalla, cambioPestana: datos.acPestana, pegado: datos.acPegado };
-  return cfg.pantallaCompleta || cfg.cambioPestana || cfg.pegado ? cfg : null;
+  const cfg = { pantallaCompleta: datos.acPantalla, cambioPestana: datos.acPestana, pegado: datos.acPegado, pantallaCompartida: datos.acCaptura };
+  return cfg.pantallaCompleta || cfg.cambioPestana || cfg.pegado || cfg.pantallaCompartida ? cfg : null;
 }
 
 /** Texto que se muestra en lugar de un enunciado vacío (el servidor nunca entregaría una pregunta sin enunciado). */

@@ -16,12 +16,28 @@ export class ApiError extends Error {
   }
 }
 
+/** Id aleatorio de esta pestaña (dura lo que dura la pestaña: sobrevive a un refresh, no se comparte con otro dispositivo). */
+function clienteId(): string {
+  try {
+    let id = window.sessionStorage.getItem('ata_cliente_id');
+    if (!id) {
+      id = crypto.randomUUID();
+      window.sessionStorage.setItem('ata_cliente_id', id);
+    }
+    return id;
+  } catch {
+    return 'sin-id';
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // Access token de Supabase Auth; supabase-js lo renueva solo cuando vence.
   const token = (await supabase.auth.getSession()).data.session?.access_token;
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
+      // Identifica esta pestaña ante el servidor: si el token del examen aparece en otro dispositivo, queda anotado.
+      ...(path.startsWith('/rendir/') ? { 'X-Cliente-Id': clienteId() } : {}),
       // Con FormData el navegador pone solo el Content-Type (multipart con su boundary).
       ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -281,9 +297,27 @@ export interface AntiCheatConfig {
   pantallaCompleta: boolean;
   cambioPestana: boolean;
   pegado: boolean;
+  /** El alumno comparte su pantalla completa y se guardan capturas. Los exámenes anteriores no lo traen. */
+  pantallaCompartida?: boolean;
 }
 
-export type TipoEventoIntegridad = 'salida_pantalla_completa' | 'cambio_pestana' | 'pegado';
+/** Eventos que reporta el navegador del alumno. */
+export type TipoEventoCliente =
+  | 'salida_pantalla_completa'
+  | 'cambio_pestana'
+  | 'pegado'
+  | 'pantalla_compartida_detenida'
+  | 'superficie_no_permitida'
+  | 'monitor_extendido';
+/** Los únicos eventos del flujo de trabajos prácticos (no tiene pantalla compartida). */
+export type TipoEventoEntrega = 'salida_pantalla_completa' | 'cambio_pestana' | 'pegado';
+/** Todos los eventos: además de los del navegador, los que deduce el servidor. */
+export type TipoEventoIntegridad =
+  | TipoEventoCliente
+  | 'salto_de_texto'
+  | 'cambio_de_origen'
+  | 'captura_omitida'
+  | 'latido_perdido';
 export type EstadoIntento = 'en_curso' | 'entregado' | 'vencido';
 
 export type ModalidadExamen = 'sesion_tiempo' | 'ventana_dias';
@@ -326,6 +360,10 @@ export interface ExamenComision {
   fechaFin: string | null;
   /** true: cualquier alumno con el link puede entrar; false: solo los de la lista de la comisión. */
   accesoAbierto?: boolean;
+  /** true: el alumno tiene que escribir un código de 6 dígitos que le llega al mail. */
+  verificarEmail?: boolean;
+  /** Si está, solo entran mails de ese dominio. */
+  dominioPermitido?: string | null;
   createdAt: string;
   comision?: Comision;
   urlAcceso?: string;
@@ -430,6 +468,10 @@ export interface RespuestaExamen {
     expiraEn: string | null;
     consentimientoEn: string | null;
     eventos: { tipo: TipoEventoIntegridad; ocurridoEn: string; detalle: string | null }[];
+    /** Log de acceso: cada vez que el alumno ingresó al examen. */
+    sesiones?: { iniciadaEn: string; ip: string | null; userAgent: string | null }[];
+    /** Cuántas capturas de pantalla hay guardadas (se ven con `getCapturas`). */
+    capturas?: number;
   } | null;
 }
 
@@ -536,7 +578,7 @@ export const deleteExamen = (id: string) => request<void>(`/examenes/${id}`, { m
 
 export const publicarExamenAComision = (
   examenId: string,
-  data: { comisionId: string; fechaInicio?: string; fechaFin?: string; accesoAbierto?: boolean },
+  data: { comisionId: string; fechaInicio?: string; fechaFin?: string; accesoAbierto?: boolean; verificarEmail?: boolean; dominioPermitido?: string },
 ) => request<ExamenComision>(`/examenes/${examenId}/comisiones`, { method: 'POST', body: JSON.stringify(data) });
 
 // ---- Sugerir criterios con IA (borrador para el docente; la IA propone, el docente edita y decide) ----
@@ -665,10 +707,14 @@ export const reenviarNotificaciones = (examenId: string) =>
 // autoguardado / eventos / entrega con el token del intento que devuelve `iniciar`.
 
 export interface InfoRendir {
-  examen: { titulo: string; consigna: string; modalidad: ModalidadExamen; duracionMinutos: number | null; antiCheat: AntiCheatConfig | null };
+  examen: { titulo: string; consigna: string; modalidad: ModalidadExamen; duracionMinutos: number | null; antiCheat: AntiCheatConfig | null; retencionCapturasDias?: number | null };
   comision: { nombre: string };
   /** true: cualquier alumno con el link puede entrar (se le pide nombre y email); false: solo los que figuran en la lista. */
   accesoAbierto: boolean;
+  /** true: para entrar hay que pedir un código de 6 dígitos que llega al mail. */
+  verificarEmail: boolean;
+  /** Si está, solo entran mails de ese dominio. */
+  dominioPermitido: string | null;
   ventana: { estado: 'abierta' | 'no_abierta' | 'cerrada'; fechaInicio: string | null; fechaFin: string | null };
 }
 
@@ -693,7 +739,11 @@ const conToken = (token: string) => ({ headers: { Authorization: `Bearer ${token
 
 export const getInfoRendir = (slug: string) => request<InfoRendir>(`/rendir/${slug}`);
 
-export const iniciarIntento = (slug: string, data: { alumnoEmail: string; alumnoNombre?: string; consentimiento?: boolean }) =>
+/** Pide el código que llega al mail. Responde siempre lo mismo, esté o no el mail en la lista. */
+export const solicitarCodigo = (slug: string, alumnoEmail: string) =>
+  request<{ enviado: boolean }>(`/rendir/${slug}/codigo`, { method: 'POST', body: JSON.stringify({ alumnoEmail }) });
+
+export const iniciarIntento = (slug: string, data: { alumnoEmail: string; alumnoNombre?: string; consentimiento?: boolean; codigo?: string }) =>
   request<EstadoIntentoRendir & { token: string }>(`/rendir/${slug}/iniciar`, { method: 'POST', body: JSON.stringify(data) });
 
 export const getIntento = (slug: string, token: string) =>
@@ -706,7 +756,23 @@ export const guardarBorrador = (slug: string, token: string, respuestas: Record<
     ...conToken(token),
   });
 
-export const registrarEvento = (slug: string, token: string, tipo: TipoEventoIntegridad, detalle?: string) =>
+export interface RespuestaLatido {
+  /** Código corto que la página tiene que mostrar: tiene que verse en las capturas. */
+  marca: string | null;
+  /** Si no es null, el servidor pide una captura de pantalla ahora (hay que mandarla con este id). */
+  capturaPedida: { id: string } | null;
+  ahora: string;
+}
+
+export const enviarLatido = (slug: string, token: string, data: { foco: boolean; visible: boolean; compartiendo: boolean }) =>
+  request<RespuestaLatido>(`/rendir/${slug}/latido`, { method: 'POST', body: JSON.stringify(data), ...conToken(token) });
+
+export type MotivoCaptura = 'muestreo' | 'cambio_pestana' | 'salida_pantalla_completa' | 'pantalla_compartida_detenida';
+
+export const subirCaptura = (slug: string, token: string, data: { motivo: MotivoCaptura; pedidoId?: string; marca?: string; imagen: string }) =>
+  request<{ registrada: boolean; motivo?: string }>(`/rendir/${slug}/capturas`, { method: 'POST', body: JSON.stringify(data), ...conToken(token) });
+
+export const registrarEvento = (slug: string, token: string, tipo: TipoEventoCliente, detalle?: string) =>
   request<{ registrado: boolean }>(`/rendir/${slug}/eventos`, {
     method: 'POST',
     body: JSON.stringify({ tipo, detalle }),
@@ -753,7 +819,7 @@ export const guardarBorradorEntrega = (slug: string, token: string, texto: strin
     ...conToken(token),
   });
 
-export const registrarEventoEntrega = (slug: string, token: string, tipo: TipoEventoIntegridad) =>
+export const registrarEventoEntrega = (slug: string, token: string, tipo: TipoEventoEntrega) =>
   request<{ registrado: boolean }>(`/entregar/${slug}/eventos`, {
     method: 'POST',
     body: JSON.stringify({ tipo }),
@@ -830,3 +896,36 @@ export const invitarAlumnos = (examenId: string, examenComisionId?: string) =>
   });
 
 export const getEstadoInvitaciones = (examenId: string) => request<EstadoInvitaciones>(`/examenes/${examenId}/invitaciones`);
+
+
+// ---- Capturas de pantalla de un intento (solo el docente dueño del examen) ----
+export interface CapturaIntegridad {
+  id: string;
+  ocurridoEn: string;
+  motivo: MotivoCaptura;
+  marca: string | null;
+  /** false: la marca que dijo mostrar el navegador no coincide con las que emitió el servidor. */
+  marcaValida: boolean;
+  bytes: number;
+  eliminarEn: string;
+}
+
+export const getCapturas = (examenId: string, respuestaId: string) =>
+  request<CapturaIntegridad[]>(`/examenes/${examenId}/respuestas/${respuestaId}/capturas`);
+
+/** La imagen no se puede pedir con un <img src> (necesita el token del docente): se baja con fetch y se muestra como blob. */
+export async function getCapturaImagen(examenId: string, respuestaId: string, capturaId: string): Promise<Blob> {
+  const token = (await supabase.auth.getSession()).data.session?.access_token;
+  const res = await fetch(`${API_URL}/examenes/${examenId}/respuestas/${respuestaId}/capturas/${capturaId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new ApiError(res.status, `Error ${res.status} al bajar la captura`, '');
+  return res.blob();
+}
+
+export const borrarCaptura = (examenId: string, respuestaId: string, capturaId: string) =>
+  request<{ borrada: boolean }>(`/examenes/${examenId}/respuestas/${respuestaId}/capturas/${capturaId}`, { method: 'DELETE' });
+
+export const borrarCapturas = (examenId: string, respuestaId: string) =>
+  request<{ borradas: number }>(`/examenes/${examenId}/respuestas/${respuestaId}/capturas`, { method: 'DELETE' });

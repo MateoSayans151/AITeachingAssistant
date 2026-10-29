@@ -16,6 +16,7 @@ import {
   revisarRespuestaExamen,
 } from '@/lib/api';
 import { RespuestaDelAlumno } from '@/app/components/RespuestaDelAlumno';
+import { CapturasIntento } from '@/app/components/CapturasIntento';
 import { navegacion } from '@/lib/navegacion-respuestas';
 import { formatearNota, plural } from '@/lib/texto';
 
@@ -23,6 +24,13 @@ const TIPO_EVENTO_LABEL: Record<string, string> = {
   salida_pantalla_completa: 'Salió de pantalla completa',
   cambio_pestana: 'Cambió de pestaña o ventana',
   pegado: 'Pegó texto',
+  pantalla_compartida_detenida: 'Dejó de compartir la pantalla',
+  superficie_no_permitida: 'Intentó compartir una ventana o pestaña en vez de la pantalla completa',
+  monitor_extendido: 'Tiene más de un monitor',
+  salto_de_texto: 'Apareció mucho texto de golpe (más rápido de lo que se tipea)',
+  cambio_de_origen: 'El examen se usó desde otro lugar, navegador o pestaña',
+  captura_omitida: 'No envió la captura de pantalla que se le pidió',
+  latido_perdido: 'El navegador dejó de dar señales',
 };
 
 /** De la nota sugerida a la final: qué regla de vara se aplicó y qué decidió el docente. */
@@ -48,7 +56,7 @@ function VaraCard({ explicacion }: { explicacion: ExplicacionVara }) {
 }
 
 /** Señales de integridad del intento: información para el criterio del docente, no afectan la nota. */
-function IntegridadCard({ integridad }: { integridad: NonNullable<RespuestaExamen['integridad']> }) {
+function IntegridadCard({ integridad, examenId, respuestaId }: { integridad: NonNullable<RespuestaExamen['integridad']>; examenId: string; respuestaId: string }) {
   const hora = (iso: string) => new Date(iso).toLocaleString('es-AR');
   const duracionMin =
     integridad.entregadoEn ? Math.round((new Date(integridad.entregadoEn).getTime() - new Date(integridad.inicioEn).getTime()) / 60000) : null;
@@ -76,6 +84,22 @@ function IntegridadCard({ integridad }: { integridad: NonNullable<RespuestaExame
           ))}
         </ul>
       )}
+      {(integridad.sesiones?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <strong>Ingresos al examen ({integridad.sesiones!.length})</strong>
+          <ul style={{ paddingLeft: 20 }}>
+            {integridad.sesiones!.map((x, i) => (
+              <li key={i} className="muted" style={{ wordBreak: 'break-word' }}>
+                {hora(x.iniciadaEn)} — IP {x.ip ?? '?'} · {x.userAgent ?? 'navegador desconocido'}
+              </li>
+            ))}
+          </ul>
+          {integridad.sesiones!.length > 1 && (
+            <p className="muted">Ingresó más de una vez: puede ser un corte de internet o un cambio de equipo. Compará las IP y los navegadores.</p>
+          )}
+        </div>
+      )}
+      {(integridad.capturas ?? 0) > 0 && <CapturasIntento examenId={examenId} respuestaId={respuestaId} cantidad={integridad.capturas!} />}
       <p className="muted" style={{ marginTop: 8 }}>
         Son señales de comportamiento, no una prueba: no detectan, por ejemplo, el uso de un segundo dispositivo. No modifican la nota.
       </p>
@@ -318,7 +342,7 @@ export default function DetalleRespuestaExamenPage() {
 
       {/* Sin monitoreo y sin señales no hay nada que contarle al docente: se muestra solo si el examen las registraba. */}
       {respuesta.integridad && (respuesta.integridad.eventos.length > 0 || respuesta.integridad.consentimientoEn) && (
-        <IntegridadCard integridad={respuesta.integridad} />
+        <IntegridadCard integridad={respuesta.integridad} examenId={params.id} respuestaId={params.respuestaId} />
       )}
 
       {respuesta.respuestasPorPregunta.map((rp, i) => {

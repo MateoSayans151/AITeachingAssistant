@@ -89,6 +89,7 @@ export function armarMailInvitacion(datos: DatosMailInvitacion): MailArmado {
         ...(cfg.pantallaCompleta ? ['cada vez que salís de la pantalla completa'] : []),
         ...(cfg.cambioPestana ? ['cada vez que cambiás de pestaña o de ventana'] : []),
         ...(cfg.pegado ? ['cuando pegás texto en una respuesta'] : []),
+        ...(cfg.pantallaCompartida ? ['capturas de tu pantalla (te vamos a pedir que la compartas completa)'] : []),
       ]
     : [];
   const aviso =

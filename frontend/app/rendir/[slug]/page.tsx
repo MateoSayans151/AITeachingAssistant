@@ -2,8 +2,8 @@
 
 // Página pública para que el alumno rinda un examen por link.
 //   1. Ve los datos generales (sin preguntas) y, si el examen tiene anti-cheat, QUÉ se monitorea.
-//   2. Se identifica con su email y acepta el aviso: recién ahí el servidor
-//      arranca su reloj y le entrega las preguntas.
+//   2. Acepta el aviso y, si el examen lo pide, comparte su pantalla completa. Se identifica con su email y, si la publicación
+//      verifica el mail, escribe el código de 6 dígitos que le llega: recién ahí el servidor arranca su reloj y le entrega las preguntas.
 //   3. Rinde con autoguardado (ver ExamenEnCurso). Si recarga la página retoma donde estaba
 //      y con el mismo vencimiento: cerrar la pestaña no da más tiempo.
 //   4. Entrega y se le avisa que la nota le llega por mail cuando el docente la revisa y la publica
@@ -11,7 +11,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ApiError, EstadoIntentoRendir, InfoRendir, getInfoRendir, getIntento, iniciarIntento } from '@/lib/api';
+import { ApiError, EstadoIntentoRendir, InfoRendir, getInfoRendir, getIntento, iniciarIntento, solicitarCodigo } from '@/lib/api';
+import { ErrorCompartirPantalla, MENSAJES_COMPARTIR, compartirPantalla, compartirPantallaSoportada, detenerPantalla, pantallaActiva } from '@/lib/captura-pantalla';
 import { entrarPantallaCompleta, pantallaCompletaSoportada, salirDePantallaCompleta } from '@/lib/pantalla-completa';
 import { avisoDuracionTitulo } from '@/lib/vista-previa';
 import { sugerirCorreccionDominio } from '@/lib/alumnos';
@@ -58,6 +59,15 @@ export default function RendirExamenPage() {
   const [consentimiento, setConsentimiento] = useState(false);
   const [iniciando, setIniciando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Verificación de mail: primero se pide el código ('email') y después se lo escribe ('codigo').
+  const [fase, setFase] = useState<'email' | 'codigo'>('email');
+  const [codigo, setCodigo] = useState('');
+  const [avisoCodigo, setAvisoCodigo] = useState<string | null>(null);
+  // Pantalla compartida (solo si el examen la pide). Se pide antes de identificarse y queda viva mientras dure el examen.
+  const [pantalla, setPantalla] = useState<MediaStream | null>(null);
+  const [errorPantalla, setErrorPantalla] = useState<string | null>(null);
+  const [compartirOk, setCompartirOk] = useState<boolean | null>(null);
+  useEffect(() => setCompartirOk(compartirPantallaSoportada()), []);
 
   useEffect(() => {
     let vivo = true;
@@ -91,9 +101,39 @@ export default function RendirExamenPage() {
     };
   }, [slug]);
 
+  async function compartir() {
+    setErrorPantalla(null);
+    try {
+      detenerPantalla(pantalla);
+      setPantalla(await compartirPantalla());
+    } catch (err) {
+      setPantalla(null);
+      setErrorPantalla(MENSAJES_COMPARTIR[err instanceof ErrorCompartirPantalla ? err.motivo : 'error']);
+    }
+  }
+
+  async function pedirCodigo() {
+    if (!info) return;
+    setIniciando(true);
+    setError(null);
+    setAvisoCodigo(null);
+    try {
+      await solicitarCodigo(slug, alumnoEmail.trim());
+      setFase('codigo');
+      setCodigo('');
+      setAvisoCodigo('Si tu mail puede rendir este examen, te mandamos un código de 6 dígitos. Puede tardar un minuto en llegar: revisá también el spam.');
+    } catch (err) {
+      setError(mensajeDeError(err));
+    } finally {
+      setIniciando(false);
+    }
+  }
+
   async function handleComenzar(e: React.FormEvent) {
     e.preventDefault();
     if (!info) return;
+    // Con verificación de mail el primer paso es pedir el código; el examen empieza recién con el segundo.
+    if (info.verificarEmail && fase === 'email') return pedirCodigo();
     setIniciando(true);
     setError(null);
 
@@ -107,6 +147,7 @@ export default function RendirExamenPage() {
         alumnoEmail: alumnoEmail.trim(),
         alumnoNombre: info.accesoAbierto ? alumnoNombre.trim() : undefined,
         consentimiento: info.examen.antiCheat ? consentimiento : undefined,
+        codigo: info.verificarEmail ? codigo.trim() : undefined,
       });
       window.sessionStorage.setItem(claveToken(slug), r.token);
       window.sessionStorage.setItem(claveEmail(slug), alumnoEmail.trim());
@@ -120,10 +161,21 @@ export default function RendirExamenPage() {
     }
   }
 
+  // El servidor cerró esta sesión porque el alumno ingresó desde otro lugar: vuelve a pedir un código.
+  function alReemplazar() {
+    window.sessionStorage.removeItem(claveToken(slug));
+    setSesion(null);
+    setFase('email');
+    setCodigo('');
+    setError(null);
+  }
+
   function alTerminar(como: 'entregado' | 'vencido') {
     window.sessionStorage.removeItem(claveToken(slug));
     window.sessionStorage.removeItem(claveEmail(slug));
     salirDePantallaCompleta();
+    detenerPantalla(pantalla);
+    setPantalla(null);
     setSesion(null);
     setTerminado(como);
   }
@@ -164,7 +216,18 @@ export default function RendirExamenPage() {
   }
 
   if (sesion) {
-    return <ExamenEnCurso slug={slug} token={sesion.token} inicial={sesion.estado} titulo={info.examen.titulo} consigna={info.examen.consigna} alTerminar={alTerminar} />;
+    return (
+      <ExamenEnCurso
+        slug={slug}
+        token={sesion.token}
+        inicial={sesion.estado}
+        titulo={info.examen.titulo}
+        consigna={info.examen.consigna}
+        alTerminar={alTerminar}
+        alReemplazar={alReemplazar}
+        pantallaInicial={pantalla}
+      />
+    );
   }
 
   const { examen, comision, ventana } = info;
@@ -215,10 +278,19 @@ export default function RendirExamenPage() {
                 )}
                 {cfg.cambioPestana && <li>Se registra cada vez que cambiás de pestaña o de ventana.</li>}
                 {cfg.pegado && <li>Se registra cuando pegás texto en una respuesta.</li>}
+                {cfg.pantallaCompartida && (
+                  <li>
+                    Tenés que compartir tu pantalla completa. Se guardan capturas de pantalla cada tanto y cada vez que salís de la ventana del examen;
+                    solo las ve tu docente.
+                    {info.examen.retencionCapturasDias ? ` Se borran automáticamente a los ${info.examen.retencionCapturasDias} días.` : ''}
+                  </li>
+                )}
+                <li>Se registra desde dónde ingresás al examen (tu IP y tu navegador) y si lo abrís en más de un lugar a la vez.</li>
               </ul>
               <p className="muted" style={{ marginBottom: 12 }}>
-                No se graba tu pantalla, tu cámara ni lo que escribís fuera del examen. Estos registros se le muestran a tu docente como
-                información adicional: no bajan tu nota automáticamente.
+                {cfg.pantallaCompartida
+                  ? 'No se graba tu cámara ni lo que escribís fuera del examen. Activá “No molestar” antes de empezar: si te llega una notificación, puede quedar en una captura. Todo esto se le muestra a tu docente como información adicional: no baja tu nota automáticamente.'
+                  : 'No se graba tu pantalla, tu cámara ni lo que escribís fuera del examen. Estos registros se le muestran a tu docente como información adicional: no bajan tu nota automáticamente.'}
               </p>
               <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 <input type="checkbox" checked={consentimiento} onChange={(e) => setConsentimiento(e.target.checked)} style={{ marginTop: 4 }} />
@@ -227,7 +299,35 @@ export default function RendirExamenPage() {
             </div>
           )}
 
+          {cfg?.pantallaCompartida && (
+            <div className="card" style={{ marginBottom: 16 }} role="region" aria-label="Compartir pantalla">
+              <div className="card-title" style={{ marginBottom: 8 }}>
+                Paso 1: compartí tu pantalla completa
+              </div>
+              {compartirOk === false ? (
+                <div className="error-box">{MENSAJES_COMPARTIR.no_soportado}</div>
+              ) : pantallaActiva(pantalla) ? (
+                <p data-testid="pantalla-compartida-ok" style={{ margin: 0 }}>
+                  ✓ Pantalla compartida. No la dejes de compartir hasta entregar el examen.
+                </p>
+              ) : (
+                <>
+                  <p className="muted" style={{ marginBottom: 12 }}>
+                    Cuando el navegador te lo pida, elegí <strong>“Pantalla completa”</strong> (o “Toda la pantalla”), no una ventana ni una pestaña. Cerrá las
+                    otras aplicaciones y desconectá segundos monitores.
+                  </p>
+                  {errorPantalla && <div className="error-box">{errorPantalla}</div>}
+                  <button type="button" className="btn btn-primary" onClick={compartir} disabled={!consentimiento}>
+                    Compartir pantalla completa
+                  </button>
+                  {!consentimiento && <p className="muted" style={{ marginTop: 8 }}>Primero aceptá el aviso de arriba.</p>}
+                </>
+              )}
+            </div>
+          )}
+
           {error && <div className="error-box">{error}</div>}
+          {avisoCodigo && fase === 'codigo' && <div className="card" role="status" style={{ marginBottom: 16 }}>{avisoCodigo}</div>}
 
           <form onSubmit={handleComenzar}>
             {info.accesoAbierto && (
@@ -246,7 +346,21 @@ export default function RendirExamenPage() {
             )}
             <div className="field">
               <label htmlFor="email">{info.accesoAbierto ? 'Tu email' : 'Tu email (el mismo con el que estás en el listado de la comisión)'}</label>
-              <input id="email" type="email" value={alumnoEmail} autoComplete="email" inputMode="email" onChange={(e) => setAlumnoEmail(e.target.value)} required />
+              <input
+                id="email"
+                type="email"
+                value={alumnoEmail}
+                autoComplete="email"
+                inputMode="email"
+                onChange={(e) => setAlumnoEmail(e.target.value)}
+                disabled={fase === 'codigo'}
+                required
+              />
+              {info.dominioPermitido && (
+                <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                  Tenés que usar un mail de <strong>@{info.dominioPermitido}</strong>.
+                </p>
+              )}
               {info.accesoAbierto && (
                 <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
                   Tu nota te llega a este mail: revisá que esté bien escrito. Si ya rendiste con este mismo email, vas a retomar donde quedaste.
@@ -261,8 +375,45 @@ export default function RendirExamenPage() {
                 </p>
               )}
             </div>
-            <button className="btn btn-primary" type="submit" disabled={iniciando || (!!cfg && !consentimiento)}>
-              {iniciando ? 'Ingresando…' : examen.duracionMinutos ? 'Comenzar examen' : 'Ingresar'}
+            {info.verificarEmail && fase === 'codigo' && (
+              <div className="field">
+                <label htmlFor="codigo">Código de 6 dígitos que te llegó por mail</label>
+                <input
+                  id="codigo"
+                  value={codigo}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  pattern="\d{6}"
+                  placeholder="123456"
+                  onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
+                  required
+                />
+                <p style={{ fontSize: 13, marginTop: 6 }}>
+                  ¿No te llegó?{' '}
+                  <button type="button" className="btn btn-ghost" style={{ padding: '2px 8px' }} disabled={iniciando} onClick={pedirCodigo}>
+                    Reenviar código
+                  </button>{' '}
+                  <button type="button" className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={() => { setFase('email'); setError(null); }}>
+                    Cambiar el mail
+                  </button>
+                </p>
+              </div>
+            )}
+            <button
+              className="btn btn-primary"
+              type="submit"
+              disabled={iniciando || (!!cfg && !consentimiento) || (!!cfg?.pantallaCompartida && !pantallaActiva(pantalla)) || (fase === 'codigo' && codigo.length !== 6)}
+            >
+              {iniciando
+                ? info.verificarEmail && fase === 'email'
+                  ? 'Enviando…'
+                  : 'Ingresando…'
+                : info.verificarEmail && fase === 'email'
+                  ? 'Enviarme el código'
+                  : examen.duracionMinutos
+                    ? 'Comenzar examen'
+                    : 'Ingresar'}
             </button>
           </form>
         </>

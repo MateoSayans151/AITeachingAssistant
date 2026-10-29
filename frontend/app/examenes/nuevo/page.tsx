@@ -128,6 +128,7 @@ function NuevoExamenForm() {
           acPantalla: d.antiCheat ? d.antiCheat.pantallaCompleta : prev.acPantalla,
           acPestana: d.antiCheat ? d.antiCheat.cambioPestana : prev.acPestana,
           acPegado: d.antiCheat ? d.antiCheat.pegado : prev.acPegado,
+          acCaptura: d.antiCheat ? d.antiCheat.pantallaCompartida === true : prev.acCaptura,
           distOn: d.distribucion !== null,
           umbralAprobacion: d.distribucion ? d.distribucion.umbralAprobacion : prev.umbralAprobacion,
           aprobadosPct: d.distribucion ? d.distribucion.aprobadosPct : prev.aprobadosPct,
@@ -327,7 +328,9 @@ function NuevoExamenForm() {
         distribucionEsperada: datos.distOn
           ? { umbralAprobacion: Number(datos.umbralAprobacion), aprobadosEsperadosPct: Number(datos.aprobadosPct) }
           : undefined,
-        antiCheat: datos.antiCheatOn ? { pantallaCompleta: datos.acPantalla, cambioPestana: datos.acPestana, pegado: datos.acPegado } : undefined,
+        antiCheat: datos.antiCheatOn
+          ? { pantallaCompleta: datos.acPantalla, cambioPestana: datos.acPestana, pegado: datos.acPegado, pantallaCompartida: datos.acCaptura }
+          : undefined,
         // Red de seguridad: los niveles de cada criterio tienen que tener la forma de la escala (el servidor exige esa cantidad).
         preguntas: reconciliarNiveles(preguntas, datos.niveles).map(construirPregunta),
       });

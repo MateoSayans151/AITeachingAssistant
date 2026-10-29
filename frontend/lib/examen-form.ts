@@ -96,6 +96,8 @@ export interface DatosForm {
   acPantalla: boolean;
   acPestana: boolean;
   acPegado: boolean;
+  /** Pantalla compartida: el alumno comparte la pantalla completa y se guardan capturas. */
+  acCaptura: boolean;
   /** Distribución esperada de aprobados (opcional, en "Opciones avanzadas"). */
   distOn: boolean;
   umbralAprobacion: string;
@@ -121,6 +123,7 @@ export function datosPorDefecto(): DatosForm {
     acPantalla: true,
     acPestana: true,
     acPegado: true,
+    acCaptura: false,
     distOn: false,
     umbralAprobacion: '6',
     aprobadosPct: '60',
@@ -763,7 +766,7 @@ export function hayErrorEnAjustes(d: DatosForm): boolean {
 export function resumenAjustes(d: DatosForm): string {
   const como = d.modalidad === 'sesion_tiempo' ? `sesión de ${d.duracionMinutos.trim() || '?'} min` : 'ventana de varios días';
   const feedback = d.feedbackModo === 'inmediato' ? 'feedback inmediato' : 'feedback manual';
-  const integridad = d.antiCheatOn && (d.acPantalla || d.acPestana || d.acPegado) ? 'con señales de integridad' : 'sin señales de integridad';
+  const integridad = d.antiCheatOn && (d.acPantalla || d.acPestana || d.acPegado || d.acCaptura) ? 'con señales de integridad' : 'sin señales de integridad';
   return `${como} · escala ${d.escalaMin.trim() || '?'} a ${d.escalaMax.trim() || '?'} · ${feedback} · ${integridad}`;
 }
 
@@ -892,7 +895,12 @@ export function examenAFormulario(examen: Examen): ExamenFormDatos {
     escalaMax: numAString(examen.escalaMax),
     feedbackModo: examen.feedbackModo,
     antiCheat: examen.antiCheat
-      ? { pantallaCompleta: examen.antiCheat.pantallaCompleta, cambioPestana: examen.antiCheat.cambioPestana, pegado: examen.antiCheat.pegado }
+      ? {
+          pantallaCompleta: examen.antiCheat.pantallaCompleta,
+          cambioPestana: examen.antiCheat.cambioPestana,
+          pegado: examen.antiCheat.pegado,
+          pantallaCompartida: examen.antiCheat.pantallaCompartida === true,
+        }
       : null,
     distribucion: examen.distribucionEsperada
       ? {

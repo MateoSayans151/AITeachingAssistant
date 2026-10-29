@@ -86,6 +86,9 @@ test('las únicas rutas públicas son las de rendir y entregar (el login es de S
   }
   assert.deepEqual(publicas.sort(), [
     'RendirController.borrador',
+    'RendirController.captura',
+    'RendirController.codigo',
+    'RendirController.latido',
     'RendirController.entregar',
     'RendirController.evento',
     'RendirController.info',
@@ -330,10 +333,17 @@ test('antiCheatActivo: null sin controles; eventoPermitido respeta lo configurad
   assert.equal(antiCheatActivo({ pantallaCompleta: false, cambioPestana: false, pegado: false }), null);
   assert.equal(antiCheatActivo('x'), null);
   const cfg = antiCheatActivo({ pantallaCompleta: true, cambioPestana: false, pegado: true, otro: 1 });
-  assert.deepEqual(cfg, { pantallaCompleta: true, cambioPestana: false, pegado: true });
+  assert.deepEqual(cfg, { pantallaCompleta: true, cambioPestana: false, pegado: true, pantallaCompartida: false });
   assert.equal(eventoPermitido(cfg, 'salida_pantalla_completa'), true);
   assert.equal(eventoPermitido(cfg, 'cambio_pestana'), false);
   assert.equal(eventoPermitido(cfg, 'pegado'), true);
   assert.equal(eventoPermitido(cfg, 'inventado'), false);
   assert.equal(eventoPermitido(null, 'pegado'), false);
+  // La pantalla compartida sola ya cuenta como monitoreo, y habilita solo sus propios eventos.
+  const solo = antiCheatActivo({ pantallaCompleta: false, cambioPestana: false, pegado: false, pantallaCompartida: true });
+  assert.deepEqual(solo, { pantallaCompleta: false, cambioPestana: false, pegado: false, pantallaCompartida: true });
+  for (const t of ['pantalla_compartida_detenida', 'superficie_no_permitida', 'monitor_extendido']) assert.equal(eventoPermitido(solo, t), true);
+  assert.equal(eventoPermitido(cfg, 'monitor_extendido'), false);
+  // Lo que deduce el servidor nunca lo puede mandar el cliente.
+  for (const t of ['salto_de_texto', 'cambio_de_origen', 'captura_omitida', 'latido_perdido']) assert.equal(eventoPermitido(solo, t), false);
 });
