@@ -7,7 +7,7 @@
 
 import { TIPOS_AUTOCORREGIBLES } from './api';
 import type { TipoPregunta } from './api';
-import { criterioVacio, datosPorDefecto, nivelesPorDefecto, preguntaVacia } from './examen-form';
+import { TITULO_POR_DEFECTO, criterioVacio, datosPorDefecto, nivelesPorDefecto, preguntaVacia } from './examen-form';
 import type { CriterioForm, DatosForm, NivelForm, PreguntaForm } from './examen-form';
 
 export const VERSION_BORRADOR = 1;
@@ -101,6 +101,7 @@ function preguntaValida(v: unknown, niveles: NivelForm[]): PreguntaForm | null {
     tipo: v.tipo as TipoPregunta,
     enunciado: texto(v.enunciado, ''),
     puntajeMaximo: texto(v.puntajeMaximo, ''),
+    ...(typeof v.puntosFijos === 'boolean' ? { puntosFijos: v.puntosFijos } : {}),
     criterios: criterios.length > 0 || TIPOS_AUTOCORREGIBLES.includes(v.tipo as TipoPregunta) ? criterios : base.criterios,
     opcionesChoice: opciones.length > 0 ? opciones : base.opcionesChoice,
     vfCorrecta: v.vfCorrecta === 'false' ? 'false' : v.vfCorrecta === 'true' ? 'true' : '',
@@ -154,13 +155,13 @@ export function leerBorrador(crudo: string | null | undefined): Borrador | null 
     version: VERSION_BORRADOR,
     guardadoEn: typeof v.guardadoEn === 'number' && Number.isFinite(v.guardadoEn) ? v.guardadoEn : 0,
     datos,
-    preguntas: preguntas.length > 0 ? preguntas : [preguntaVacia(niveles)],
+    preguntas,
   };
 }
 
 /** ¿Hay algo escrito que valga la pena guardar? (un formulario recién abierto no se guarda ni pisa un borrador anterior). */
 export function borradorTieneContenido(datos: DatosForm, preguntas: PreguntaForm[]): boolean {
-  if (datos.titulo.trim() || datos.consigna.trim() || datos.cursoNuevoNombre.trim()) return true;
+  if ((datos.titulo.trim() && datos.titulo.trim() !== TITULO_POR_DEFECTO) || datos.consigna.trim() || datos.cursoNuevoNombre.trim()) return true;
   return preguntas.some(
     (q) =>
       q.enunciado.trim() !== '' ||

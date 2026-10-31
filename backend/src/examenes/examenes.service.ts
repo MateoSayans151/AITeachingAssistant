@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { isUUID } from 'class-validator';
+import { conCriterioGeneral } from './criterio-general.util';
+import { AccesoService } from '../acceso/acceso.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
@@ -22,19 +24,16 @@ export class ExamenesService {
     private readonly notificaciones: NotificacionesService,
   ) {}
 
-  create(dto: CreateExamenDto) {
-    // Regla de negocio (no expresable con decorators porque depende del tipo de pregunta):
-    // las preguntas cerradas necesitan `opciones` (con la clave correcta) y las abiertas
-    // necesitan `criterios` (matriz de niveles). Nunca las dos, nunca ninguna.
+  create(dto: CreateExamenDto, creadoPorId?: string) {
+    // Regla de negocio (no expresable con decorators porque depende del tipo de pregunta): las preguntas cerradas necesitan
+    // `opciones` (con la clave correcta). Las abiertas pueden traer `criterios` (matriz de niveles) o no: sin criterios se guardan
+    // con un único criterio general que vale todos sus puntos (ver criterio-general.util.ts).
     for (const [i, p] of dto.preguntas.entries()) {
-      const esAutocorregible = TIPOS_AUTOCORREGIBLES.includes(p.tipo);
-      if (esAutocorregible && !p.opciones) {
+      if (TIPOS_AUTOCORREGIBLES.includes(p.tipo) && !p.opciones) {
         throw new BadRequestException(`La pregunta ${i + 1} (${p.tipo}) necesita "opciones" con la clave correcta`);
       }
-      if (!esAutocorregible && (!p.criterios || p.criterios.length === 0)) {
-        throw new BadRequestException(`La pregunta ${i + 1} (${p.tipo}) necesita al menos un criterio de rúbrica`);
-      }
     }
+    dto.preguntas = conCriterioGeneral(dto.preguntas);
 
     if (dto.escalaMin >= dto.escalaMax) throw new BadRequestException('La escala mínima tiene que ser menor que la máxima');
     const dist = dto.distribucionEsperada;
@@ -64,6 +63,7 @@ export class ExamenesService {
     return this.prisma.examen.create({
       data: {
         cursoId: dto.cursoId,
+        creadoPorId,
         titulo: dto.titulo,
         consigna: dto.consigna,
         modalidad: dto.modalidad,
@@ -105,16 +105,16 @@ export class ExamenesService {
     const examenes = await this.prisma.examen.findMany({
       where: { cursoId },
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { preguntas: true, respuestas: true } } },
+      include: { _count: { select: { preguntas: true, respuestas: true } }, creadoPor: { select: { id: true, nombre: true } } },
     });
     const resumenes = await resumenesDeExamenes(this.prisma, examenes.map((e) => e.id));
     return examenes.map((e) => ({ ...e, resumenRespuestas: resumenes.get(e.id) ?? RESUMEN_VACIO }));
   }
 
-  /** Los exámenes del docente que tienen respuestas por revisar o sin corregir: lo que muestra la home en "Para revisar". */
+  /** Los exámenes de los cursos del docente (los suyos y los que comparte con su equipo) que tienen respuestas por revisar o sin corregir: lo que muestra la home en "Para revisar". */
   async porRevisarDelDocente(docenteId: string) {
     const examenes = await this.prisma.examen.findMany({
-      where: { curso: { docenteId } },
+      where: { curso: AccesoService.delEquipo(docenteId) },
       select: { id: true, titulo: true, cursoId: true, curso: { select: { nombre: true } } },
     });
     return examenesPorRevisar(examenes, await resumenesDeExamenes(this.prisma, examenes.map((e) => e.id)));
@@ -126,6 +126,7 @@ export class ExamenesService {
       include: {
         preguntas: { orderBy: { orden: 'asc' }, include: { criterios: { orderBy: { orden: 'asc' } } } },
         comisiones: { include: { comision: true } },
+        creadoPor: { select: { id: true, nombre: true } },
         // Cuántos alumnos empezaron o entregaron: la pantalla lo usa para saber si el examen se puede borrar.
         _count: { select: { respuestas: true, intentos: true } },
       },
@@ -154,6 +155,14 @@ export class ExamenesService {
       if (respuestas > 0 || intentos > 0) throw new ConflictException(MENSAJE_EXAMEN_CON_ALUMNOS);
       await tx.examen.delete({ where: { id } });
     });
+  }
+
+  /** Cambia el título del examen. Devuelve solo lo que cambió (id y título). */
+  async renombrar(id: string, titulo: string) {
+    if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
+    const { count } = await this.prisma.examen.updateMany({ where: { id }, data: { titulo } });
+    if (count === 0) throw new NotFoundException(`Examen ${id} no encontrado`);
+    return { id, titulo };
   }
 
   async publicarAComision(examenId: string, dto: PublicarComisionDto) {

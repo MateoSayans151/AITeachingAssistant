@@ -15,81 +15,12 @@ create table if not exists docentes (
   created_at timestamptz not null default now()
 );
 
--- Trabajo práctico: consigna + metadata. La rúbrica vive en criterios_rubrica.
-create table if not exists trabajos_practicos (
-  id uuid primary key default gen_random_uuid(),
-  docente_id uuid not null references docentes(id) on delete cascade,
-  titulo text not null,
-  consigna text not null,
-  materia text,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_trabajos_practicos_docente on trabajos_practicos(docente_id);
-
--- Criterio de rúbrica: cada fila es un criterio evaluable dentro de un TP
-create table if not exists criterios_rubrica (
-  id uuid primary key default gen_random_uuid(),
-  trabajo_practico_id uuid not null references trabajos_practicos(id) on delete cascade,
-  nombre text not null,
-  descripcion text not null,
-  puntaje_maximo numeric not null check (puntaje_maximo > 0),
-  orden int not null default 0
-);
-
-create index if not exists idx_criterios_rubrica_tp on criterios_rubrica(trabajo_practico_id);
-
--- Entrega: el trabajo de un alumno para un TP dado
+-- Estados que comparte la corrección de las respuestas de examen (respuestas_examen.estado y estado_revision).
 create type estado_entrega as enum ('pendiente_correccion', 'corregido', 'revisado');
-
-create table if not exists entregas (
-  id uuid primary key default gen_random_uuid(),
-  trabajo_practico_id uuid not null references trabajos_practicos(id) on delete cascade,
-  alumno_nombre text not null,
-  alumno_email text,
-  texto_trabajo text not null,
-  estado estado_entrega not null default 'pendiente_correccion',
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_entregas_tp on entregas(trabajo_practico_id);
-create index if not exists idx_entregas_estado on entregas(estado);
-
--- Corrección: lo que devuelve la IA por entrega, más lo que el docente confirma/edita
 create type estado_revision as enum ('pendiente', 'aceptada', 'editada');
-
-create table if not exists correcciones (
-  id uuid primary key default gen_random_uuid(),
-  entrega_id uuid not null unique references entregas(id) on delete cascade,
-  modelo_ia text not null,
-  nota_por_criterio jsonb not null, -- [{ criterioId, nombre, notaSugerida, comentario }]
-  nota_total_sugerida numeric not null,
-  feedback_sugerido text not null,
-  nota_total_final numeric,
-  feedback_final text,
-  estado_revision estado_revision not null default 'pendiente',
-  revisado_en timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_correcciones_estado on correcciones(estado_revision);
-
--- Resumen agregado del curso para un TP: qué criterios/conceptos generaron más dificultad
-create table if not exists resumenes_curso (
-  id uuid primary key default gen_random_uuid(),
-  trabajo_practico_id uuid not null references trabajos_practicos(id) on delete cascade,
-  contenido text not null, -- markdown con el análisis agregado
-  cantidad_entregas_analizadas int not null,
-  modelo_ia text not null,
-  generado_en timestamptz not null default now()
-);
-
-create index if not exists idx_resumenes_tp on resumenes_curso(trabajo_practico_id);
 
 -- ============================================================
 -- Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara de ajuste.
--- Todo lo de acá abajo es aditivo y convive con el flujo de arriba
--- (trabajos_practicos/entregas/correcciones) sin tocarlo.
 -- ============================================================
 
 create type tipo_pregunta as enum (
@@ -103,13 +34,39 @@ create type estado_examen as enum ('borrador', 'publicado', 'cerrado');
 
 create table if not exists cursos (
   id uuid primary key default gen_random_uuid(),
-  docente_id uuid not null references docentes(id) on delete cascade,
+  -- Quien lo creó (el docente de referencia). El acceso se decide por curso_docentes, no por esta columna.
+  docente_id uuid not null references docentes(id) on delete restrict,
   nombre text not null,
   materia text,
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_cursos_docente on cursos(docente_id);
+
+-- Equipo del curso: varios docentes, todos con los mismos permisos.
+-- (Idéntico a supabase/migrations/20261031_cursos_con_varios_docentes.sql)
+create table if not exists curso_docentes (
+  curso_id uuid not null references cursos(id) on delete cascade,
+  docente_id uuid not null references docentes(id) on delete cascade,
+  agregado_por uuid,
+  created_at timestamptz not null default now(),
+  primary key (curso_id, docente_id)
+);
+create index if not exists idx_curso_docentes_docente on curso_docentes(docente_id);
+
+-- Invitación a un docente que todavía no tiene cuenta: apenas entra con ese email confirmado se suma al equipo.
+create table if not exists curso_invitaciones (
+  id uuid primary key default gen_random_uuid(),
+  curso_id uuid not null references cursos(id) on delete cascade,
+  email text not null, -- en minúscula
+  invitado_por uuid references docentes(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (curso_id, email)
+);
+create index if not exists idx_curso_invitaciones_email on curso_invitaciones(email);
+
+-- Quién armó cada examen (los anteriores quedan en null).
+-- (el alter va más abajo, cuando la tabla examenes ya existe)
 
 -- Material de cátedra: apuntes/bibliografía en texto plano que el docente carga por
 -- curso (no por examen puntual) y que la IA usa como referencia extra al corregir las
@@ -374,42 +331,6 @@ create index if not exists idx_fallos_acceso_ocurrido on fallos_acceso(ocurrido_
 alter table docentes add column if not exists auth_user_id uuid unique;
 
 -- ---------------------------------------------------------------------------
--- Link de entrega de trabajos prácticos para alumnos.
--- (Idéntico a supabase/migrations/20261003_tp_link_alumnos.sql)
--- ---------------------------------------------------------------------------
--- Link para que los alumnos entreguen un trabajo práctico por su cuenta: modo seguro y ventana de tiempo u horario fijo.
--- Aditivo e idempotente: los trabajos prácticos anteriores quedan sin link (slug_acceso null).
-alter table trabajos_practicos add column if not exists slug_acceso text unique;
-alter table trabajos_practicos add column if not exists modo_seguro boolean not null default false;
-alter table trabajos_practicos add column if not exists duracion_minutos int; -- ventana de tiempo; null = horario fijo
-alter table trabajos_practicos add column if not exists fecha_inicio timestamptz; -- horario fijo
-alter table trabajos_practicos add column if not exists fecha_fin timestamptz; -- horario fijo (vencimiento)
-
--- Un alumno entregando desde el link (reutiliza el tipo estado_intento de la Fase 1).
-create table if not exists intentos_entrega (
-  id uuid primary key default gen_random_uuid(),
-  trabajo_practico_id uuid not null references trabajos_practicos(id) on delete cascade,
-  alumno_nombre text not null,
-  alumno_email text not null, -- en minúscula
-  inicio_en timestamptz not null default now(),
-  expira_en timestamptz not null,
-  estado estado_intento not null default 'en_curso',
-  borrador text not null default '',
-  borrador_actualizado_en timestamptz,
-  consentimiento_en timestamptz,
-  -- señales de integridad del modo seguro (contadores)
-  salidas_pantalla int not null default 0,
-  cambios_pestana int not null default 0,
-  pegados int not null default 0,
-  entregado_en timestamptz,
-  -- null si venció sin escribir nada: no se manda a corregir un texto vacío
-  entrega_id uuid unique references entregas(id) on delete set null,
-  created_at timestamptz not null default now(),
-  unique (trabajo_practico_id, alumno_email)
-);
-create index if not exists idx_intentos_entrega_estado_expira on intentos_entrega(estado, expira_en);
-
--- ---------------------------------------------------------------------------
 -- Notificación del resultado por mail al alumno.
 -- (Idéntico a supabase/migrations/20261004_notificacion_resultado.sql)
 -- ---------------------------------------------------------------------------
@@ -476,3 +397,13 @@ end $$;
 
 -- Verificación (tiene que devolver 0 filas):
 --   select tablename from pg_tables where schemaname = 'public' and not rowsecurity;
+
+-- ---------------------------------------------------------------------------
+-- Cursos con varios docentes: autoría de los exámenes y alta del equipo.
+-- (Idéntico a supabase/migrations/20261031_cursos_con_varios_docentes.sql)
+-- ---------------------------------------------------------------------------
+alter table examenes add column if not exists creado_por uuid references docentes(id) on delete set null;
+create index if not exists idx_examenes_creado_por on examenes(creado_por);
+insert into curso_docentes (curso_id, docente_id)
+select id, docente_id from cursos
+on conflict do nothing;

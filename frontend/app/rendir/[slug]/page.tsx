@@ -9,6 +9,7 @@
 //   4. Entrega y se le avisa que la nota le llega por mail cuando el docente la revisa y la publica
 //      (acá no hay pantalla con la nota).
 
+import { Cargando } from '@/app/components/Cargando';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ApiError, EstadoIntentoRendir, InfoRendir, getInfoRendir, getIntento, iniciarIntento, solicitarCodigo } from '@/lib/api';
@@ -183,7 +184,7 @@ export default function RendirExamenPage() {
   if (cargando) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="pagina" />
       </div>
     );
   }
@@ -254,7 +255,7 @@ export default function RendirExamenPage() {
           {examen.duracionMinutos && (
             <div className="card" style={{ marginBottom: 16 }}>
               <strong>{avisoDuracionTitulo(examen.duracionMinutos)}</strong>
-              <p className="muted" style={{ marginTop: 6 }}>
+              <p className="muted" style={{ marginTop: 8 }}>
                 El tiempo empieza a correr cuando tocás “Comenzar” y no se detiene aunque cierres la pestaña. Lo que escribas se guarda
                 solo; si se termina el tiempo, se entrega lo último guardado.
               </p>
@@ -367,7 +368,7 @@ export default function RendirExamenPage() {
                 </p>
               )}
               {sugerenciaEmail && (
-                <p style={{ fontSize: 13, marginTop: 6 }}>
+                <p style={{ fontSize: 13, marginTop: 8 }}>
                   ¿Quisiste decir <strong>{sugerenciaEmail}</strong>?{' '}
                   <button type="button" className="btn btn-ghost" style={{ padding: '2px 8px' }} onClick={() => setAlumnoEmail(sugerenciaEmail)}>
                     Corregir
@@ -389,7 +390,7 @@ export default function RendirExamenPage() {
                   onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
                   required
                 />
-                <p style={{ fontSize: 13, marginTop: 6 }}>
+                <p style={{ fontSize: 13, marginTop: 8 }}>
                   ¿No te llegó?{' '}
                   <button type="button" className="btn btn-ghost" style={{ padding: '2px 8px' }} disabled={iniciando} onClick={pedirCodigo}>
                     Reenviar código

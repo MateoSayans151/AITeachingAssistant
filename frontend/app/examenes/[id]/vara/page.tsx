@@ -1,5 +1,7 @@
 'use client';
 
+import { TabsExamen } from '@/app/components/TabsExamen';
+import { Cargando } from '@/app/components/Cargando';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -169,7 +171,7 @@ export default function AjustarVaraPage() {
   if (!examen) {
     return (
       <div className="page">
-        {error ? <div className="error-box">{error}</div> : <p className="muted">Cargando…</p>}
+        {error ? <div className="error-box">{error}</div> : <Cargando />}
       </div>
     );
   }
@@ -182,8 +184,17 @@ export default function AjustarVaraPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">{examen.titulo}</div>
-        <h1>Ajustar vara</h1>
+        <Link href={`/cursos/${examen.cursoId}`} className="volver">
+          ← Volver al curso
+        </Link>
+        <div className="eyebrow">Examen</div>
+        <h1>{examen.titulo}</h1>
+      </header>
+
+      <TabsExamen examenId={examen.id} activa="vara" />
+
+      <header className="page-header">
+        <h2 style={{ fontSize: 'var(--text-lg)' }}>Ajustar vara</h2>
         <p>
           Definí una regla y mirá qué pasaría antes de aplicarla. La vara solo toca las respuestas que todavía no revisaste;
           la nota sugerida por la IA nunca se modifica y la nota final la definís vos al aceptar o editar cada respuesta.

@@ -23,16 +23,18 @@ export const MIN_NIVELES = 3;
 export const MAX_NIVELES = 7;
 export const CANT_NIVELES_POR_DEFECTO = 5;
 
-// Escala de rojo a verde sobre la que se interpola el color de cada nivel. Con 5 niveles cada uno cae justo en un ancla.
-const COLORES_ANCLA = ['#c0392b', '#c8511b', '#c9a227', '#3b4fb0', '#1a7f4e'];
+// Rampa de UN solo tono (de gris claro a tinta) sobre la que se interpola el color de cada nivel: lo más oscuro es lo mejor.
+// No usa rojo/verde (se confunden con error/éxito y no se distinguen con daltonismo): el nivel siempre se lee por su nombre y su
+// porcentaje, el color solo acompaña. Con 5 niveles cada uno cae justo en un ancla.
+const COLORES_ANCLA = ['#e0e0e0', '#bdbdbd', '#8c8c8c', '#555555', '#222222'];
 
 const aCanales = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const aHex = (canales: number[]): string => `#${canales.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
 
 /**
- * Color del nivel `indice` (base 0) de una escala de `total` niveles: va de rojo (el primero) a verde (el último), interpolado
- * entre los colores ancla. El docente no lo elige: se calcula siempre por posición. Con 5 niveles da exactamente los 5 colores
- * ancla (`#c0392b, #c8511b, #c9a227, #3b4fb0, #1a7f4e`).
+ * Color del nivel `indice` (base 0) de una escala de `total` niveles: va del más claro (el primero) al más oscuro (el último),
+ * interpolado entre los colores ancla. El docente no lo elige: se calcula siempre por posición. Con 5 niveles da exactamente
+ * los 5 colores ancla (`#e0e0e0, #bdbdbd, #8c8c8c, #555555, #222222`).
  */
 export function colorDeNivel(indice: number, total: number): string {
   const ultimaAncla = COLORES_ANCLA.length - 1;
@@ -98,7 +100,7 @@ export interface DatosForm {
   acPegado: boolean;
   /** Pantalla compartida: el alumno comparte la pantalla completa y se guardan capturas. */
   acCaptura: boolean;
-  /** Distribución esperada de aprobados (opcional, en "Opciones avanzadas"). */
+  /** Distribución esperada de aprobados (opcional, en "Cómo corrige la IA"). */
   distOn: boolean;
   umbralAprobacion: string;
   aprobadosPct: string;
@@ -107,6 +109,9 @@ export interface DatosForm {
 
 /** Las instrucciones son opcionales para el docente, pero el servidor pide un texto: si no escribió nada, se manda esta. */
 export const CONSIGNA_POR_DEFECTO = 'Respondé todas las preguntas.';
+
+/** Nombre con el que arranca un examen nuevo (como «Formulario sin título» en Google Forms): se edita directo en el encabezado de la página. */
+export const TITULO_POR_DEFECTO = 'Examen sin título';
 
 export function datosPorDefecto(): DatosForm {
   return {
@@ -131,7 +136,7 @@ export function datosPorDefecto(): DatosForm {
   };
 }
 
-// Un criterio es una fila como en los trabajos prácticos: qué se evalúa, qué se espera y cuánto pesa dentro de la pregunta.
+// Un criterio es una fila: qué se evalúa, qué se espera y cuánto pesa dentro de la pregunta.
 // Describir cada uno de los niveles de la escala es opcional (el editor lo muestra plegado).
 export interface CriterioForm {
   matrizOrigenId?: string;
@@ -165,6 +170,11 @@ export interface PreguntaForm {
   enunciado: string;
   /** Puntos de la pregunta, para TODOS los tipos (en las abiertas se reparten entre los criterios según su peso). */
   puntajeMaximo: string;
+  /**
+   * true si el docente fijó los puntos a mano; false si los reparte el sistema (la pregunta absorbe lo que queda del total). Sin
+   * este dato (borradores y exámenes viejos) cuenta como fija cuando ya trae puntos: así nunca se le pisa lo que cargó.
+   */
+  puntosFijos?: boolean;
   criterios: CriterioForm[];
   opcionesChoice: OpcionChoiceForm[];
   /** '' = el docente todavía no eligió: la respuesta correcta nunca se pre-elige (si no, es fácil publicar con la clave invertida). */
@@ -190,6 +200,7 @@ export function preguntaVacia(niveles: NivelForm[]): PreguntaForm {
     tipo: 'opcion_multiple',
     enunciado: '',
     puntajeMaximo: '',
+    puntosFijos: false,
     criterios: [criterioVacio(niveles)],
     opcionesChoice: Array.from({ length: OPCIONES_INICIALES }, (_, i) => ({ id: idDeOpcion(i), texto: '', correcta: false })),
     vfCorrecta: '',
@@ -353,8 +364,7 @@ export function validarPregunta(q: PreguntaForm, indice: number): string[] {
   }
 
   if (!(Number(q.puntajeMaximo) > 0)) e.push(`${n}: falta el puntaje de la pregunta.`);
-  const completos = q.criterios.filter((c) => c.nombre.trim() && Number(c.peso) > 0);
-  if (completos.length === 0) e.push(`${n}: agregá al menos un criterio con su nombre y su peso.`);
+  // Los criterios son opcionales: sin ninguno la IA evalúa la respuesta en conjunto. Solo se marca el que se empezó y quedó a medias.
   q.criterios.forEach((c, k) => {
     const algo = c.nombre.trim() || c.descripcion.trim() || c.peso.trim();
     if (!algo) return;
@@ -739,35 +749,46 @@ export function validarDistribucion(d: DatosForm): string[] {
   return e;
 }
 
-/** Errores del paso "Datos" (incluye la escala de niveles y la distribución esperada, que viven en "Opciones avanzadas"). */
-export function validarDatos(d: DatosForm): string[] {
+/** Errores del encabezado y del total (paso «Preguntas»): el título, el curso y cuántos puntos vale el examen. */
+export function validarEncabezado(d: DatosForm): string[] {
   const e: string[] = [];
   if (!d.titulo.trim()) e.push('Falta el título del examen.');
   if (d.cursoElegido === 'nuevo' ? !d.cursoNuevoNombre.trim() : !d.cursoElegido) {
     e.push(d.cursoElegido === 'nuevo' ? 'Falta el nombre del curso nuevo.' : 'Elegí un curso.');
   }
-  if (!esNumero(d.escalaMin) || !esNumero(d.escalaMax)) e.push('La escala necesita un mínimo y un máximo numéricos.');
-  else if (Number(d.escalaMin) >= Number(d.escalaMax)) e.push('La escala mínima tiene que ser menor que la máxima.');
+  if (!esNumero(d.escalaMax) || !(Number(d.escalaMax) > 0)) e.push('Indicá cuántos puntos vale el examen (un número mayor que 0).');
+  return e;
+}
+
+/** Errores del paso «Ajustes»: la nota mínima, la duración de la sesión, la escala de niveles y la distribución esperada. */
+export function validarAjustes(d: DatosForm): string[] {
+  const e: string[] = [];
+  if (esNumero(d.escalaMax) && Number(d.escalaMax) > 0) {
+    if (!esNumero(d.escalaMin)) e.push('La nota mínima tiene que ser un número (casi siempre 0).');
+    else if (Number(d.escalaMin) >= Number(d.escalaMax)) e.push('La nota mínima tiene que ser menor que los puntos del examen.');
+  }
   if (d.modalidad === 'sesion_tiempo' && !(Number(d.duracionMinutos) >= 1)) e.push('La duración tiene que ser de al menos 1 minuto.');
   e.push(...validarNiveles(d.niveles), ...validarDistribucion(d));
   return e;
 }
 
-// ---------------------------------------------------------------- "Cómo se rinde": ajustes plegables del primer paso
+/** Errores de todos los datos del examen (encabezado + ajustes). */
+export function validarDatos(d: DatosForm): string[] {
+  return [...validarEncabezado(d), ...validarAjustes(d)];
+}
 
-/** true si algún ajuste de "Cómo se rinde" (escala, duración de la sesión) tiene un error: hay que abrir el bloque para mostrarlo. */
+// ---------------------------------------------------------------- "Cómo se rinde": ajustes plegables del examen
+
+/** true si algún ajuste de "Cómo se rinde" (la duración de la sesión) tiene un error: hay que abrir el bloque para mostrarlo. */
 export function hayErrorEnAjustes(d: DatosForm): boolean {
-  if (!esNumero(d.escalaMin) || !esNumero(d.escalaMax)) return true;
-  if (Number(d.escalaMin) >= Number(d.escalaMax)) return true;
   return d.modalidad === 'sesion_tiempo' && !(Number(d.duracionMinutos) >= 1);
 }
 
-/** Resumen de una línea de los ajustes, para mostrar con el bloque plegado ("ventana de varios días · escala 0 a 10 · …"). */
+/** Resumen de una línea de "Cómo se rinde", para mostrar con el bloque plegado ("ventana de varios días · feedback manual"). El control de integridad tiene su propia sección, siempre visible. */
 export function resumenAjustes(d: DatosForm): string {
   const como = d.modalidad === 'sesion_tiempo' ? `sesión de ${d.duracionMinutos.trim() || '?'} min` : 'ventana de varios días';
   const feedback = d.feedbackModo === 'inmediato' ? 'feedback inmediato' : 'feedback manual';
-  const integridad = d.antiCheatOn && (d.acPantalla || d.acPestana || d.acPegado || d.acCaptura) ? 'con señales de integridad' : 'sin señales de integridad';
-  return `${como} · escala ${d.escalaMin.trim() || '?'} a ${d.escalaMax.trim() || '?'} · ${feedback} · ${integridad}`;
+  return `${como} · ${feedback}`;
 }
 
 // ---------------------------------------------------------------- mapeo inverso: examen existente -> formulario
@@ -845,12 +866,20 @@ function aplicarOpciones(base: PreguntaForm, tipo: TipoPregunta, opciones: unkno
   return p;
 }
 
+/**
+ * Nombre del criterio general que el servidor le pone a una pregunta abierta que no trae criterios (ver
+ * backend/src/examenes/criterio-general.util.ts: si cambia allá hay que cambiarlo acá). Al duplicar un examen no se copia como si lo
+ * hubiera cargado el docente: la pregunta vuelve a quedar "sin criterios".
+ */
+export const NOMBRE_CRITERIO_GENERAL = 'Respuesta en general';
+
 function preguntaAFormulario(q: Pregunta, niveles: NivelForm[]): PreguntaForm {
   const base: PreguntaForm = { ...preguntaVacia(niveles), tipo: q.tipo, enunciado: q.enunciado };
   if (TIPOS_AUTOCORREGIBLES.includes(q.tipo)) {
     return aplicarOpciones({ ...base, puntajeMaximo: numAString(q.puntajeMaximo) }, q.tipo, q.opciones);
   }
-  const criterios = [...(q.criterios ?? [])]
+  const soloGeneral = (q.criterios ?? []).length === 1 && q.criterios![0].nombre === NOMBRE_CRITERIO_GENERAL;
+  const criterios = [...(soloGeneral ? [] : q.criterios ?? [])]
     .sort((a, b) => a.orden - b.orden)
     .map((c): CriterioForm => {
       const nd = [...(Array.isArray(c.nivelesDescripcion) ? c.nivelesDescripcion : [])].sort((a, b) => a.orden - b.orden);

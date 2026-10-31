@@ -77,7 +77,7 @@ export default function NuevaComisionPage() {
           {alumnos.map((a, i) => (
             <div
               key={i}
-              style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, marginBottom: 10 }}
+              style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, marginBottom: 12 }}
             >
               <input
                 placeholder="Nombre"

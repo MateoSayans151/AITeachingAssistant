@@ -46,14 +46,15 @@ function assertConsistente(niveles: NivelForm[], mensaje = '') {
 // ---------------------------------------------------------------------------
 // 1. Colores automáticos
 // ---------------------------------------------------------------------------
-const COLORES_5 = ['#c0392b', '#c8511b', '#c9a227', '#3b4fb0', '#1a7f4e'];
+// Rampa de un solo tono: de gris claro (el nivel más bajo) a tinta (el más alto). Sin rojo/verde: se confunden con error/éxito.
+const COLORES_5 = ['#e0e0e0', '#bdbdbd', '#8c8c8c', '#555555', '#222222'];
 
-test('colorDeNivel: con 5 niveles da EXACTAMENTE los 5 colores de siempre', () => {
+test('colorDeNivel: con 5 niveles da EXACTAMENTE los 5 colores de la rampa', () => {
   assert.deepEqual([0, 1, 2, 3, 4].map((i) => colorDeNivel(i, 5)), COLORES_5);
   assert.deepEqual(nivelesPorDefecto().map((n) => n.colorHex), COLORES_5);
 });
 
-test('colorDeNivel: para N de 3 a 7 el primero es rojo, el último verde, y cada color es un hex válido y distinto', () => {
+test('colorDeNivel: para N de 3 a 7 el primero es el más claro, el último el más oscuro, y cada color es un hex válido y distinto', () => {
   for (let n = MIN_NIVELES; n <= MAX_NIVELES; n += 1) {
     const colores = Array.from({ length: n }, (_, i) => colorDeNivel(i, n));
     assert.equal(colores[0], COLORES_5[0], `primero de ${n}`);
@@ -61,10 +62,10 @@ test('colorDeNivel: para N de 3 a 7 el primero es rojo, el último verde, y cada
     assert.ok(colores.every((c) => /^#[0-9a-f]{6}$/.test(c)), `hex válidos de ${n}: ${colores.join(',')}`);
     assert.equal(new Set(colores).size, n, `colores distintos de ${n}`);
   }
-  // Con 3 niveles: rojo, el color del medio de la escala y verde.
-  assert.deepEqual([0, 1, 2].map((i) => colorDeNivel(i, 3)), ['#c0392b', '#c9a227', '#1a7f4e']);
+  // Con 3 niveles: el más claro, el del medio de la rampa y el más oscuro.
+  assert.deepEqual([0, 1, 2].map((i) => colorDeNivel(i, 3)), ['#e0e0e0', '#8c8c8c', '#222222']);
   // Con 7 niveles pasa por los 5 colores ancla (posiciones 0, 3 y 6 del 7 caen en las anclas 0, 2 y 4) e interpola el resto.
-  assert.deepEqual([0, 3, 6].map((i) => colorDeNivel(i, 7)), ['#c0392b', '#c9a227', '#1a7f4e']);
+  assert.deepEqual([0, 3, 6].map((i) => colorDeNivel(i, 7)), ['#e0e0e0', '#8c8c8c', '#222222']);
 });
 
 test('colorDeNivel: es una función pura y se acota ante índices o totales raros', () => {

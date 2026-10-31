@@ -1,19 +1,27 @@
 'use client';
 
-// Wizard de "Nuevo examen". Este archivo es el orquestador: guarda el estado (`datos`, `preguntas`, paso, errores), valida paso
-// a paso, navega entre pasos, crea el examen y precarga el formulario cuando se duplica uno (?desde=<examenId>). Cada paso se
-// dibuja en su componente: PasoDatos, PasoPreguntas (con PreguntaCard y RubricaEditor) y PasoPublicar (autocontenido).
+// Asistente de "Nuevo examen" en TRES pasos: Preguntas (el curso, las preguntas y cuánto vale cada una), Ajustes (control de
+// integridad, instrucciones, cómo se rinde y cómo corrige la IA: casi siempre alcanzan los valores por defecto, por eso van
+// DESPUÉS y no mezclados con las preguntas) y Publicar (el link para los alumnos, una vez creado el examen). El título se edita
+// en el encabezado de la página en todos los pasos. Este archivo es el orquestador: guarda el estado (`datos`, `preguntas`, paso,
+// errores), valida cada paso, crea el examen al final de Ajustes y precarga el formulario cuando se duplica uno (?desde=<examenId>).
+// Se dibuja con PasoDatos (partes 'encabezado', 'integridad' y 'ajustes'), PasoPreguntas (con PreguntaCard y RubricaEditor) y PasoPublicar.
 //
 // Además guarda un borrador en el navegador mientras se arma el examen (ver lib/borrador-examen.ts): si se cierra la pestaña, al
-// volver se ofrece continuar donde se dejó. El examen se crea en el servidor recién al final del paso 2.
+// volver se ofrece continuar donde se dejó. El examen se crea en el servidor recién al apretar "Crear examen".
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { ApiError, createCurso, createExamen, getExamen, listCursos, listMatricesRubrica } from '@/lib/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Cargando } from '@/app/components/Cargando';
+import { useConfirmar } from '@/app/components/Confirmar';
+import { SinSesion } from '@/app/components/SinSesion';
+import { TituloEditable } from '@/app/components/TituloEditable';
+import { ApiError, createExamen, getExamen, listCursos, listMatricesRubrica, renombrarExamen } from '@/lib/api';
 import type { Curso, MatrizRubrica } from '@/lib/api';
 import { useSesion } from '@/lib/auth';
 import {
   CONSIGNA_POR_DEFECTO,
+  TITULO_POR_DEFECTO,
   construirPregunta,
   datosPorDefecto,
   esNumero,
@@ -22,12 +30,12 @@ import {
   hayErrorEnAjustes,
   mensajesDelServidor,
   nivelesPorDefecto,
-  preguntaVacia,
   reconciliarNiveles,
   redondearPuntos,
   totalCoincideConEscala,
   totalDelExamen,
-  validarDatos,
+  validarAjustes,
+  validarEncabezado,
   validarDistribucion,
   validarNiveles,
   validarPregunta,
@@ -41,15 +49,17 @@ import { PasoPreguntas } from './PasoPreguntas';
 import { PasoPublicar } from './PasoPublicar';
 import { VistaPreviaButton } from './VistaPreviaAlumno';
 
-// La escala de niveles y la distribución esperada ya no son pasos: viven en "Opciones avanzadas" del primer paso, porque
-// los valores por defecto sirven para la mayoría de los casos y no tiene sentido obligar a pasar por ahí.
-const PASOS = ['Datos', 'Preguntas', 'Publicar'];
-const PASO_PREGUNTAS = 1;
+// Curso y título eran un paso entero para dos campos: ahora son el encabezado de la pantalla de armado. La escala de niveles y la
+// distribución esperada viven en "Cómo corrige la IA" (plegado), porque los valores por defecto sirven para la mayoría de los casos.
+const PASOS = ['Preguntas', 'Ajustes', 'Publicar'];
+const hayCursoReal = (id: string) => id !== '' && id !== 'nuevo';
+const PASO_PREGUNTAS = 0;
+const PASO_AJUSTES = 1;
 const PASO_PUBLICAR = 2;
 
 export default function NuevoExamenPage() {
   return (
-    <Suspense fallback={<div className="page"><p className="muted">Cargando…</p></div>}>
+    <Suspense fallback={<div className="page"><Cargando variante="asistente" etiqueta="Cargando el asistente de examen…" /></div>}>
       <NuevoExamenForm />
     </Suspense>
   );
@@ -57,22 +67,28 @@ export default function NuevoExamenPage() {
 
 function NuevoExamenForm() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const cursoIdParam = searchParams.get('cursoId') ?? '';
   const desdeParam = searchParams.get('desde') ?? ''; // id de un examen para duplicar
   const { docente, cargando } = useSesion();
+  const confirmar = useConfirmar();
 
-  const [paso, setPaso] = useState(0);
-  const [errores, setErrores] = useState<string[]>([]);
+  const [paso, setPaso] = useState(PASO_PREGUNTAS);
+  // Los errores se guardan separados: los de las preguntas se le pasan a <PasoPreguntas/> (despliega y lleva el foco a la tarjeta
+  // que nombran) y no tienen que dispararse cuando el docente corrige un dato del encabezado.
+  const [erroresDatos, setErroresDatos] = useState<string[]>([]);
+  const [erroresPreguntas, setErroresPreguntas] = useState<string[]>([]);
+  const [errorServidor, setErrorServidor] = useState<string[]>([]);
   const cajaErrores = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
 
   // Todo el formulario: `datos` (paso 1) y `preguntas` (paso 2). Son objetos planos, fáciles de serializar.
-  const [datos, setDatos] = useState<DatosForm>(() => ({ ...datosPorDefecto(), cursoElegido: cursoIdParam }));
-  const [preguntas, setPreguntas] = useState<PreguntaForm[]>(() => [preguntaVacia(nivelesPorDefecto())]);
+  const [datos, setDatos] = useState<DatosForm>(() => ({ ...datosPorDefecto(), titulo: TITULO_POR_DEFECTO, cursoElegido: cursoIdParam }));
+  const [preguntas, setPreguntas] = useState<PreguntaForm[]>([]);
   const [cursos, setCursos] = useState<Curso[] | null>(null);
   const [matrices, setMatrices] = useState<MatrizRubrica[]>([]);
 
-  // "Cómo se rinde" y "Opciones avanzadas" del paso 1 (plegados por defecto). Viven acá para que un error de validación pueda abrirlos.
+  // "Cómo se rinde" y "Cómo corrige la IA" de los ajustes (plegados por defecto). Viven acá para que un error de validación pueda abrirlos.
   const [ajustesAbierto, setAjustesAbierto] = useState(false);
   const [avanzadoAbierto, setAvanzadoAbierto] = useState(false);
 
@@ -91,19 +107,17 @@ function NuevoExamenForm() {
   const [examenCreadoId, setExamenCreadoId] = useState<string | null>(null);
   const [cursoDelExamenId, setCursoDelExamenId] = useState('');
 
+  // Un examen se arma desde la página de su curso: sin curso (ni examen para duplicar) no hay nada que hacer acá, se vuelve al inicio.
+  useEffect(() => {
+    if (docente && !cursoIdParam && !desdeParam) router.replace('/');
+  }, [docente, cursoIdParam, desdeParam, router]);
+
   useEffect(() => {
     if (!docente) return;
     listMatricesRubrica().then(setMatrices).catch(() => setMatrices([]));
     listCursos()
-      .then((cs) => {
-        setCursos(cs);
-        // Sin curso indicado: el primero de la lista, o crear uno si todavía no hay ninguno.
-        setDatos((prev) => ({ ...prev, cursoElegido: prev.cursoElegido || (cs.length > 0 ? cs[0].id : 'nuevo') }));
-      })
-      .catch(() => {
-        setCursos([]);
-        setDatos((prev) => ({ ...prev, cursoElegido: prev.cursoElegido || 'nuevo' }));
-      });
+      .then(setCursos)
+      .catch(() => setCursos([]));
   }, [docente]);
 
   useEffect(() => {
@@ -188,24 +202,29 @@ function NuevoExamenForm() {
     return () => clearTimeout(t);
   }, [datos, preguntas, docente, examenCreadoId, borradorPendiente, cargandoDesde]);
 
+  // Al cambiar de paso se vuelve arriba: si no, el paso nuevo aparece scrolleado a la altura del botón que se apretó.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [paso]);
+
   if (cargando) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="asistente" etiqueta="Cargando…" />
       </div>
     );
   }
   if (!docente) {
     return (
       <div className="page">
-        <p className="muted">Identificate primero desde el inicio.</p>
+        <SinSesion />
       </div>
     );
   }
   if (cargandoDesde) {
     return (
       <div className="page">
-        <p className="muted">Cargando el examen que querés duplicar…</p>
+        <Cargando variante="asistente" etiqueta="Cargando el examen que querés duplicar…" />
       </div>
     );
   }
@@ -223,43 +242,50 @@ function NuevoExamenForm() {
       setPreguntas((prev) => reconciliarNiveles(prev, nuevos, anteriores));
     }
     patchDatos(patch);
-    // Con errores a la vista, la lista se actualiza mientras el docente corrige: los que ya resolvió desaparecen (antes quedaban
-    // en pantalla hasta apretar "Siguiente" otra vez, y parecía que lo cargado no valía).
-    if (errores.length > 0 && paso === 0) setErrores(validarDatos({ ...datos, ...patch }));
+    // Con errores del encabezado o los ajustes a la vista, la lista se actualiza mientras el docente corrige: los que ya resolvió desaparecen.
+    if (erroresDatos.length > 0) setErroresDatos(paso === PASO_PREGUNTAS ? validarEncabezado({ ...datos, ...patch }) : validarAjustes({ ...datos, ...patch }));
   };
 
-  // ---------------------------------------------------------------- validación (paso a paso, con mensajes concretos)
-  function validarPaso(p: number): string[] {
-    if (p === 0) return validarDatos(datos);
-    const e: string[] = [];
-    if (p === PASO_PREGUNTAS) {
-      preguntas.forEach((q, i) => e.push(...validarPregunta(q, i)));
-      // La nota es la suma de puntos y la escala no se normaliza: el total de las preguntas tiene que ser la escala máxima.
-      const total = totalDelExamen(preguntas);
-      if (esNumero(datos.escalaMax) && !totalCoincideConEscala(total, Number(datos.escalaMax))) {
-        const puedeCambiarEscala = !esNumero(datos.escalaMin) || total > Number(datos.escalaMin);
-        e.push(
-          `El total de puntos de las preguntas (${formatearPuntos(total)}) tiene que ser igual a la escala máxima (${formatearPuntos(Number(datos.escalaMax))}). ` +
-            `Ajustá los puntajes de las preguntas${puedeCambiarEscala ? ` o cambiá la escala máxima a ${formatearPuntos(total)}` : ''}.`,
-        );
-      }
+  // ---------------------------------------------------------------- validación (con mensajes concretos)
+  /** Errores del paso «Preguntas»: el encabezado (título, curso, total) y, por separado, las preguntas con sus puntos. */
+  function validarPasoPreguntas(): { datos: string[]; preguntas: string[] } {
+    const ep: string[] = [];
+    if (preguntas.length === 0) ep.push('Agregá al menos una pregunta.');
+    preguntas.forEach((q, i) => ep.push(...validarPregunta(q, i)));
+    // La nota es la suma de puntos y no se normaliza: lo que suman las preguntas tiene que ser lo que vale el examen.
+    const total = totalDelExamen(preguntas);
+    if (preguntas.length > 0 && esNumero(datos.escalaMax) && !totalCoincideConEscala(total, Number(datos.escalaMax))) {
+      const puedeCambiarTotal = !esNumero(datos.escalaMin) || total > Number(datos.escalaMin);
+      ep.push(
+        `Las preguntas suman ${formatearPuntos(total)} puntos y el examen vale ${formatearPuntos(Number(datos.escalaMax))}. ` +
+          `Ajustá los puntos de alguna pregunta${puedeCambiarTotal ? ` o hacé que el examen valga ${formatearPuntos(total)}` : ''}.`,
+      );
     }
-    return e;
+    return { datos: validarEncabezado(datos), preguntas: ep };
   }
 
-  /** Un error de un bloque plegado ("Cómo se rinde", "Opciones avanzadas") no se ve: se abre para que el motivo quede a la vista. */
+  /** Un error de un bloque plegado ("Cómo se rinde", "Cómo corrige la IA") no se ve: se abre para que el motivo quede a la vista. */
   const hayErrorAvanzado = () => validarNiveles(datos.niveles).length > 0 || validarDistribucion(datos).length > 0;
   const abrirBloquesConError = () => {
     if (hayErrorAvanzado()) setAvanzadoAbierto(true);
     if (hayErrorEnAjustes(datos)) setAjustesAbierto(true);
   };
 
-  function continuarBorrador() {
+  /** Hay algo escrito en el formulario (sin contar el borrador pendiente): continuar con el borrador lo reemplazaría. */
+  const hayAlgoEscrito = borradorTieneContenido(datos, preguntas);
+
+  async function continuarBorrador() {
     const b = borradorPendiente;
     if (!b) return;
-    // Si el curso del borrador ya no existe, se vuelve al primero de la lista (o a crear uno).
-    const cursoExiste = b.datos.cursoElegido === 'nuevo' || cursos === null || cursos.some((c) => c.id === b.datos.cursoElegido);
-    setDatos({ ...b.datos, cursoElegido: cursoExiste ? b.datos.cursoElegido : (cursos?.[0]?.id ?? 'nuevo') });
+    // Lo que se escribió desde que se entró se pierde al restaurar: se avisa antes (antes se pisaba sin decir nada).
+    if (hayAlgoEscrito && !(await confirmar({ mensaje: 'Lo que escribiste desde que entraste se reemplaza por el borrador guardado.', textoConfirmar: 'Usar el borrador' }))) return;
+    // El examen se arma dentro de un curso: un borrador de OTRO curso no se vuelca acá (cambiaría el curso sin que se note), se abre en el suyo.
+    const cursoDelBorradorId = b.datos.cursoElegido;
+    if (hayCursoReal(cursoDelBorradorId) && cursoDelBorradorId !== datos.cursoElegido) {
+      router.push(`/examenes/nuevo?cursoId=${cursoDelBorradorId}`);
+      return;
+    }
+    setDatos({ ...b.datos, titulo: b.datos.titulo.trim() || TITULO_POR_DEFECTO, cursoElegido: datos.cursoElegido });
     setPreguntas(b.preguntas);
     setBorradorPendiente(null);
   }
@@ -273,48 +299,55 @@ function NuevoExamenForm() {
     setBorradorPendiente(null);
   }
 
-  /** Lleva la vista hasta el cuadro de errores: con el formulario largo, si no, quedaba fuera de pantalla y "Siguiente" parecía no hacer nada. */
+  /** Lleva la vista hasta el cuadro de errores: con el formulario largo, si no, quedaba fuera de pantalla y el botón parecía no hacer nada. */
   function mostrarErrores() {
     setTimeout(() => cajaErrores.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
   }
 
-  function irASiguiente() {
-    const e = validarPaso(paso);
-    setErrores(e);
-    if (e.length > 0 && paso === 0) abrirBloquesConError();
-    if (e.length > 0) mostrarErrores();
-    if (e.length === 0) setPaso(paso + 1);
+  /** De «Preguntas» a «Ajustes»: se revisa solo lo de este paso, y todo lo que falta se muestra de una vez. */
+  function irAAjustes() {
+    const e = validarPasoPreguntas();
+    setErroresDatos(e.datos);
+    setErroresPreguntas(e.preguntas);
+    setErrorServidor([]);
+    if (e.datos.length > 0 || e.preguntas.length > 0) {
+      mostrarErrores();
+      return;
+    }
+    setPaso(PASO_AJUSTES);
   }
 
+  /** Volver a un paso anterior (antes de crear el examen): no se pierde nada de lo cargado. */
   function irAPaso(i: number) {
     if (examenCreadoId || i >= paso) return; // con el examen ya creado no se vuelve a editar
-    setErrores([]);
+    setErroresDatos([]);
+    setErroresPreguntas([]);
+    setErrorServidor([]);
     setPaso(i);
   }
 
   async function handleCrearExamen() {
-    // Se revisa todo junto: si algo de un paso anterior quedó mal, se vuelve ahí con el motivo.
-    for (const p of [0, PASO_PREGUNTAS]) {
-      const e = validarPaso(p);
-      if (e.length > 0) {
-        setErrores(e);
-        if (p === 0) abrirBloquesConError();
-        setPaso(p);
-        mostrarErrores();
-        return;
-      }
+    setErrorServidor([]);
+    // Por las dudas se vuelve a revisar el paso de preguntas (se puede llegar acá y haber cambiado algo atrás).
+    const ep = validarPasoPreguntas();
+    if (ep.datos.length > 0 || ep.preguntas.length > 0) {
+      setErroresDatos(ep.datos);
+      setErroresPreguntas(ep.preguntas);
+      setPaso(PASO_PREGUNTAS);
+      mostrarErrores();
+      return;
     }
-    setErrores([]);
+    const ea = validarAjustes(datos);
+    setErroresDatos(ea);
+    setErroresPreguntas([]);
+    if (ea.length > 0) {
+      abrirBloquesConError();
+      mostrarErrores();
+      return;
+    }
     setLoading(true);
     try {
-      let cursoId = datos.cursoElegido;
-      if (datos.cursoElegido === 'nuevo') {
-        const nuevo = await createCurso({ nombre: datos.cursoNuevoNombre.trim() });
-        cursoId = nuevo.id;
-        // Si lo que sigue falla, un reintento no tiene que crear otro curso igual.
-        setCursos((prev) => [...(prev ?? []), nuevo]);
-        patchDatos({ cursoElegido: nuevo.id });
-      }
+      const cursoId = datos.cursoElegido;
       const examen = await createExamen({
         cursoId,
         titulo: datos.titulo.trim(),
@@ -344,25 +377,46 @@ function NuevoExamenForm() {
       setPaso(PASO_PUBLICAR);
     } catch (err) {
       const detalle = mensajesDelServidor(err);
-      setErrores([
-        'No se pudo crear el examen. Tus datos siguen acá: corregí lo que se indica y probá de nuevo.',
+      setErrorServidor([
+        'No pudimos crear el examen. Tus datos siguen acá: corregí lo que se indica y probá de nuevo.',
         ...detalle.slice(0, 5).map((d) => `Detalle: ${d}`),
       ]);
-      setPaso(PASO_PREGUNTAS);
+      mostrarErrores();
     } finally {
       setLoading(false);
     }
   }
 
+  // Los mensajes del cuadro se recalculan en cada render mientras haya errores a la vista: lo que el docente ya resolvió desaparece solo
+  // (`erroresPreguntas` queda como lo devolvió el último intento: es lo que le dice a <PasoPreguntas/> qué tarjetas abrir, y si cambiara
+  // en cada tecla le robaría el foco al docente).
+  const datosVivos = erroresDatos.length > 0 ? (paso === PASO_PREGUNTAS ? validarEncabezado(datos) : validarAjustes(datos)) : [];
+  const preguntasVivas = erroresPreguntas.length > 0 ? validarPasoPreguntas().preguntas : [];
+  const mensajes = [...datosVivos, ...preguntasVivas];
+  const cursoDelBorrador = borradorPendiente ? cursos?.find((c) => c.id === borradorPendiente.datos.cursoElegido)?.nombre : undefined;
+  const borradorDeOtroCurso = Boolean(borradorPendiente && hayCursoReal(borradorPendiente.datos.cursoElegido) && borradorPendiente.datos.cursoElegido !== datos.cursoElegido);
+  const totalPuntos = totalDelExamen(preguntas);
+  const maxPuntos = esNumero(datos.escalaMax) ? Number(datos.escalaMax) : null;
+  const puntosRepartidos = maxPuntos !== null && totalCoincideConEscala(totalPuntos, maxPuntos);
+
   return (
-    <div className="page">
+    <div className="page page-asistente">
       <header className="page-header">
         <div className="eyebrow">Nuevo examen</div>
-        <h1>{datos.titulo || 'Configurar examen'}</h1>
+        <div className="page-header-fila">
+          <TituloEditable
+            valor={datos.titulo}
+            onCambiar={(titulo) => patchDatos({ titulo })}
+            onConfirmar={examenCreadoId ? (titulo) => renombrarExamen(examenCreadoId, titulo) : undefined}
+          />
+          <span className="estado-guardado" aria-live="polite" title="Se guarda en este navegador mientras armás el examen">
+            {guardadoEn !== null && !borradorPendiente && !examenCreadoId ? '✓ Borrador guardado en este navegador' : ''}
+          </span>
+        </div>
       </header>
 
       {duplicandoTitulo !== null && (
-        <div className="card" style={{ marginBottom: 20 }}>
+        <div className="aviso-info">
           Estás duplicando «{duplicandoTitulo}». Revisá y ajustá lo que quieras: se crea como un examen nuevo y el original no cambia.
         </div>
       )}
@@ -371,68 +425,51 @@ function NuevoExamenForm() {
           {errorDesde}
         </div>
       )}
-      {borradorPendiente && (
-        <div className="card" role="region" aria-label="Borrador sin terminar" style={{ marginBottom: 20 }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
-            Tenés un examen sin terminar
+      {borradorPendiente && !examenCreadoId && (
+        <div className="aviso-borrador" role="region" aria-label="Borrador sin terminar">
+          <div>
+            <strong>Tenés un examen sin terminar:</strong> «{borradorPendiente.datos.titulo.trim() || 'Sin título'}»
+            {cursoDelBorrador ? ` (${cursoDelBorrador})` : ''} · {borradorPendiente.preguntas.length} {borradorPendiente.preguntas.length === 1 ? 'pregunta' : 'preguntas'} · guardado{' '}
+            {haceCuanto(borradorPendiente.guardadoEn)}
+            {hayAlgoEscrito && <p className="muted">Mientras decidís, lo que escribís ahora no se guarda.</p>}
           </div>
-          <p className="muted" style={{ marginBottom: 12 }}>
-            «{borradorPendiente.datos.titulo.trim() || 'Sin título'}» · {borradorPendiente.preguntas.length}{' '}
-            {borradorPendiente.preguntas.length === 1 ? 'pregunta' : 'preguntas'} · guardado {haceCuanto(borradorPendiente.guardadoEn)}. Lo
-            guardamos en este navegador mientras lo armabas.
-          </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary" onClick={continuarBorrador}>
-              Continuar donde lo dejé
+          <div className="aviso-borrador-acciones">
+            <button type="button" className="btn btn-secondary" onClick={continuarBorrador}>
+              {borradorDeOtroCurso ? 'Ir a ese examen' : 'Continuar con ese'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={descartarBorrador}>
-              Descartar y empezar de cero
+            <button type="button" className="btn btn-ghost" onClick={descartarBorrador}>
+              Descartar
             </button>
           </div>
         </div>
       )}
 
-      <div className="stepper">
-        {PASOS.map((label, i) => {
-          const estado = i < paso ? 'done' : i === paso ? 'current' : 'pending';
-          const volverPosible = !examenCreadoId && i < paso;
-          return (
-            <div
-              className="step"
-              key={label}
-              data-state={estado}
-              aria-current={estado === 'current' ? 'step' : undefined}
-              role={volverPosible ? 'button' : undefined}
-              tabIndex={volverPosible ? 0 : undefined}
-              onClick={volverPosible ? () => irAPaso(i) : undefined}
-              onKeyDown={
-                volverPosible
-                  ? (ev) => {
-                      if (ev.key === 'Enter' || ev.key === ' ') {
-                        ev.preventDefault();
-                        irAPaso(i);
-                      }
-                    }
-                  : undefined
-              }
-              title={volverPosible ? 'Volver a este paso' : undefined}
-            >
-              <span className="step-num">{estado === 'done' ? `✓ ${i + 1}` : i + 1}</span>
-              <span className="step-label">{label}</span>
-            </div>
-          );
-        })}
-      </div>
+      <p className="paso-sub">
+        {paso === PASO_PREGUNTAS && 'Armá las preguntas del examen: escribilas vos, partí de uno anterior o pedile borradores a la IA.'}
+        {paso === PASO_AJUSTES && 'Casi siempre alcanzan los valores por defecto: tocá solo lo que necesites.'}
+        {paso === PASO_PUBLICAR && 'Tu examen está creado. Elegí quiénes lo rinden y mandales el link.'}
+      </p>
 
-      {errores.length > 0 && (
+      {paso !== PASO_PUBLICAR && (mensajes.length > 0 || errorServidor.length > 0) && (
         <div className="error-box" role="alert" ref={cajaErrores}>
-          {errores.length === 1 ? (
-            errores[0]
+          {errorServidor.length > 0 ? (
+            <>
+              {errorServidor[0]}
+              {errorServidor.length > 1 && (
+                <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+                  {errorServidor.slice(1).map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : mensajes.length === 1 ? (
+            mensajes[0]
           ) : (
             <>
-              {errores[0]}
+              Faltan algunas cosas para poder crear el examen:
               <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                {errores.slice(1).map((m, i) => (
+                {mensajes.map((m, i) => (
                   <li key={i}>{m}</li>
                 ))}
               </ul>
@@ -441,33 +478,61 @@ function NuevoExamenForm() {
         </div>
       )}
 
-      {paso === 0 && (
-        <PasoDatos
-          datos={datos}
-          onChange={cambiarDatos}
-          cursos={cursos}
-          ajustesAbierto={ajustesAbierto}
-          onToggleAjustes={() => setAjustesAbierto((v) => !v)}
-          avanzadoAbierto={avanzadoAbierto}
-          onToggleAvanzado={() => setAvanzadoAbierto((v) => !v)}
-        />
+      {paso === PASO_PREGUNTAS && (
+        <>
+          <PasoDatos
+            parte="encabezado"
+            datos={datos}
+            onChange={cambiarDatos}
+            cursos={cursos}
+            ajustesAbierto={ajustesAbierto}
+            onToggleAjustes={() => setAjustesAbierto((v) => !v)}
+            avanzadoAbierto={avanzadoAbierto}
+            onToggleAvanzado={() => setAvanzadoAbierto((v) => !v)}
+          />
+
+          <PasoPreguntas
+            preguntas={preguntas}
+            onChange={setPreguntas}
+            niveles={datos.niveles}
+            matrices={matrices}
+            escalaMin={datos.escalaMin}
+            escalaMax={datos.escalaMax}
+            errores={erroresDatos.length > 0 ? undefined : erroresPreguntas}
+            cursoId={datos.cursoElegido}
+            onMatrizCreada={(m) => setMatrices((prev) => [m, ...prev.filter((x) => x.id !== m.id)])}
+            onCambiarTotal={(valor) => patchDatos({ escalaMax: valor })}
+            onUsarComoEscala={(total) => {
+              patchDatos({ escalaMax: String(redondearPuntos(total)) });
+              setErroresPreguntas([]);
+            }}
+          />
+        </>
       )}
 
-      {paso === PASO_PREGUNTAS && (
-        <PasoPreguntas
-          preguntas={preguntas}
-          onChange={setPreguntas}
-          niveles={datos.niveles}
-          matrices={matrices}
-          escalaMin={datos.escalaMin}
-          escalaMax={datos.escalaMax}
-          errores={errores}
-          onMatrizCreada={(m) => setMatrices((prev) => [m, ...prev.filter((x) => x.id !== m.id)])}
-          onUsarComoEscala={(total) => {
-            patchDatos({ escalaMax: String(redondearPuntos(total)) });
-            setErrores([]);
-          }}
-        />
+      {paso === PASO_AJUSTES && (
+        <>
+          <PasoDatos
+            parte="integridad"
+            datos={datos}
+            onChange={cambiarDatos}
+            cursos={cursos}
+            ajustesAbierto={ajustesAbierto}
+            onToggleAjustes={() => setAjustesAbierto((v) => !v)}
+            avanzadoAbierto={avanzadoAbierto}
+            onToggleAvanzado={() => setAvanzadoAbierto((v) => !v)}
+          />
+          <PasoDatos
+            parte="ajustes"
+            datos={datos}
+            onChange={cambiarDatos}
+            cursos={cursos}
+            ajustesAbierto={ajustesAbierto}
+            onToggleAjustes={() => setAjustesAbierto((v) => !v)}
+            avanzadoAbierto={avanzadoAbierto}
+            onToggleAvanzado={() => setAvanzadoAbierto((v) => !v)}
+          />
+        </>
       )}
 
       {paso === PASO_PUBLICAR && examenCreadoId && (
@@ -479,26 +544,57 @@ function NuevoExamenForm() {
         />
       )}
 
-      {paso < PASO_PUBLICAR && (
-        <div style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          {paso > 0 && (
-            <button type="button" className="btn btn-secondary" onClick={() => irAPaso(paso - 1)} disabled={loading}>
-              Atrás
-            </button>
-          )}
-          {paso < PASO_PREGUNTAS ? (
-            <button type="button" className="btn btn-primary" onClick={irASiguiente}>
-              Siguiente
-            </button>
-          ) : (
-            <button type="button" className="btn btn-primary" onClick={handleCrearExamen} disabled={loading}>
-              {loading ? 'Guardando…' : 'Guardar y continuar'}
-            </button>
-          )}
-          <VistaPreviaButton datos={datos} preguntas={preguntas} />
-          <span className="muted" aria-live="polite" style={{ fontSize: 13 }}>
-            {guardadoEn !== null && !borradorPendiente ? 'Borrador guardado en este navegador ✓' : ''}
-          </span>
+      {paso !== PASO_PUBLICAR && (
+        <div className="pie-asistente">
+          <nav className="progreso" aria-label="Pasos del examen">
+            {PASOS.map((label, i) => {
+              const estado = i < paso ? 'done' : i === paso ? 'current' : 'pending';
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  className="progreso-seg"
+                  data-state={estado}
+                  aria-current={estado === 'current' ? 'step' : undefined}
+                  aria-label={`Paso ${i + 1} de ${PASOS.length}: ${label}${estado === 'done' ? ' (volver a este paso)' : ''}`}
+                  title={label}
+                  disabled={estado !== 'done' || loading}
+                  onClick={() => irAPaso(i)}
+                />
+              );
+            })}
+          </nav>
+          <div className="pie-asistente-fila">
+            <div className="pie-asistente-info">
+              <strong>
+                Paso {paso + 1} de {PASOS.length} · {PASOS[paso]}
+              </strong>
+              <span className="muted">
+                {paso === PASO_PREGUNTAS
+                  ? preguntas.length === 0
+                    ? 'Todavía no agregaste preguntas'
+                    : `${preguntas.length} ${preguntas.length === 1 ? 'pregunta' : 'preguntas'} · ${formatearPuntos(totalPuntos)}${maxPuntos !== null ? ` de ${formatearPuntos(maxPuntos)}` : ''} pts${puntosRepartidos ? ' ✓' : ''}`
+                  : 'Ningún alumno ve nada hasta que publiques.'}
+              </span>
+            </div>
+            <div className="pie-asistente-acciones">
+              {paso === PASO_AJUSTES && (
+                <button type="button" className="btn btn-ghost" onClick={() => irAPaso(PASO_PREGUNTAS)} disabled={loading}>
+                  Atrás
+                </button>
+              )}
+              {preguntas.length > 0 && <VistaPreviaButton datos={datos} preguntas={preguntas} />}
+              {paso === PASO_PREGUNTAS ? (
+                <button type="button" className="btn btn-primary" onClick={irAAjustes}>
+                  Siguiente
+                </button>
+              ) : (
+                <button type="button" className="btn btn-primary" onClick={handleCrearExamen} disabled={loading}>
+                  {loading ? 'Creando el examen…' : 'Crear examen'}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@
 // Ninguna función muta lo que recibe: devuelven listas y preguntas nuevas (los componentes se las pasan al estado del padre).
 
 import { TIPOS_AUTOCORREGIBLES } from './api';
-import { formatearPuntos, puntajeEfectivoDe, validarPregunta } from './examen-form';
+import { formatearPuntos, puntajeEfectivoDe, redondearPuntos, validarPregunta } from './examen-form';
 import type { PreguntaForm } from './examen-form';
 
 export const esPreguntaAbierta = (p: PreguntaForm): boolean => !TIPOS_AUTOCORREGIBLES.includes(p.tipo);
@@ -95,9 +95,42 @@ export function repartirPuntos(cantidad: number, total: number): string[] {
   return Array.from({ length: cantidad }, (_, i) => String((i === cantidad - 1 ? ultima : base) / 100));
 }
 
-/** ¿Alguna pregunta ya tiene puntos cargados (aunque sea 0)? Repartir los pisaría. */
-export function hayPuntosCargados(lista: PreguntaForm[]): boolean {
-  return lista.some((q) => q.puntajeMaximo.trim() !== '');
+/** ¿La pregunta tiene los puntos fijados por el docente? Sin el dato (borradores y exámenes viejos), cuenta como fija si ya trae puntos. */
+export const esFija = (p: PreguntaForm): boolean => p.puntosFijos ?? p.puntajeMaximo.trim() !== '';
+
+/** ¿Alguna pregunta tiene puntos que el docente fijó a mano? Volver al reparto automático los pisaría. */
+export function hayPuntosFijados(lista: PreguntaForm[]): boolean {
+  return lista.some(esFija);
+}
+
+/**
+ * Mantiene el total de la lista en `total`: las preguntas con puntos fijados por el docente no se tocan y las demás se reparten en
+ * partes iguales lo que queda (`repartirPuntos`: el resto del redondeo lo absorbe la última). Si lo fijado ya alcanza o supera el
+ * total, las automáticas quedan SIN puntos (vacías): el cartel del paso dice cuántos sobran. Devuelve la MISMA lista si no hay nada
+ * que cambiar (así se puede llamar en cada cambio sin provocar un bucle).
+ */
+export function balancearPuntos(lista: PreguntaForm[], total: number): PreguntaForm[] {
+  if (!Number.isFinite(total) || total <= 0) return lista;
+  const libres = lista.map((q, i) => (esFija(q) ? -1 : i)).filter((i) => i >= 0);
+  if (libres.length === 0) return lista;
+  const fijado = lista.reduce((s, q) => (esFija(q) ? s + puntajeEfectivoDe(q) : s), 0);
+  const resto = redondearPuntos(total - fijado);
+  const reparto = resto > 0 ? repartirPuntos(libres.length, resto) : libres.map(() => '');
+  let cambio = false;
+  const siguiente = lista.map((q, i) => {
+    const k = libres.indexOf(i);
+    if (k < 0) return q;
+    const valor = reparto[k] ?? '';
+    if (q.puntajeMaximo === valor && q.puntosFijos === false) return q;
+    cambio = true;
+    return { ...q, puntajeMaximo: valor, puntosFijos: false };
+  });
+  return cambio ? siguiente : lista;
+}
+
+/** Suelta los puntos fijados de todas las preguntas: vuelven al reparto automático (el balanceo les pone el valor). */
+export function soltarPuntos(lista: PreguntaForm[]): PreguntaForm[] {
+  return lista.map((q) => ({ ...q, puntosFijos: false }));
 }
 
 // ---------------------------------------------------------------- rúbrica de una pregunta abierta -> otras

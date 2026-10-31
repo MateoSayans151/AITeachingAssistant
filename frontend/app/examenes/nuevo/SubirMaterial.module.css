@@ -1,0 +1,146 @@
+/* Subir material de cátedra desde el asistente (SubirMaterial.tsx): zona para arrastrar varios archivos y la lista con el estado de cada uno. */
+
+.raiz {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.intro {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.zona {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  text-align: center;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.zona:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.arrastrando {
+  border-color: var(--color-text);
+  background: var(--color-neutral-100);
+}
+
+.zonaTexto {
+  font-weight: 600;
+}
+
+.elegir {
+  cursor: pointer;
+}
+
+.deshabilitado {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.ayuda {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.rechazados {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-error-soft);
+  color: var(--color-error);
+  font-size: var(--text-sm);
+}
+
+.lista {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  font-size: var(--text-sm);
+}
+
+.nombre {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tamano {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.estado {
+  color: var(--color-text-secondary);
+}
+
+.fila[data-estado='listo'] .estado {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.fila[data-estado='error'] {
+  border-color: color-mix(in srgb, var(--color-error) 45%, var(--color-border));
+}
+
+.fila[data-estado='error'] .estado {
+  color: var(--color-error);
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.quitar {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.quitar:hover {
+  background: var(--color-neutral-200);
+  color: var(--color-text);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.resumen {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { TopNav } from './components/TopNav';
+import { SideNav } from './components/SideNav';
 import { ConfirmarProvider } from './components/Confirmar';
 
 export const metadata: Metadata = {
@@ -13,8 +13,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body>
         <ConfirmarProvider>
-          <TopNav />
-          {children}
+          <div className="app-shell">
+            <SideNav />
+            <main className="app-main">{children}</main>
+          </div>
         </ConfirmarProvider>
       </body>
     </html>

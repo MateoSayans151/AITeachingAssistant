@@ -1,0 +1,375 @@
+/* Estilos propios del panel "Sugerir preguntas con IA" (PanelSugerirPreguntas.tsx). El resto sale de las clases globales de globals.css. */
+
+.panel {
+  margin-bottom: var(--space-4);
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cabecera:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.titulo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.subtitulo {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  font-weight: 400;
+  font-family: var(--font-body);
+}
+
+.cuerpo {
+  margin-top: var(--space-6);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.grupo {
+  display: block;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+/* Etiqueta de un grupo (legend o label): siempre 8 px arriba del control, en color de texto (no de marca). */
+.grupoTitulo {
+  display: block;
+  margin-bottom: var(--space-2);
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ayuda {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip:hover {
+  border-color: var(--color-border-strong);
+}
+
+/* Lo elegido se marca en tinta (neutro), no con el color de la marca: el acento queda para la acción principal de la pantalla. */
+.chip:has(input:checked) {
+  background: var(--color-bg);
+  border-color: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-text);
+  font-weight: 600;
+}
+
+.chip:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* El checkbox real queda en el DOM (teclado y lectores de pantalla) pero no se ve: el chip entero hace de control. */
+.chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+}
+
+.campo {
+  display: grid;
+  gap: 0; /* la etiqueta (.grupoTitulo) trae su propio margen de 8 px */
+  min-width: 0;
+}
+
+.campoAncho {
+  composes: campo;
+  flex: 1 1 280px;
+}
+
+.input {
+  min-height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  min-width: 0;
+}
+
+.input:hover {
+  border-color: var(--color-border-strong);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.segmentos {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-raised);
+}
+
+.segmento {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  border-right: 1px solid var(--color-border);
+}
+
+.segmento:last-child {
+  border-right: 0;
+}
+
+.segmento input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmento:has(input:checked) {
+  background: var(--color-bg);
+  box-shadow: inset 0 0 0 2px var(--color-text);
+  font-weight: 600;
+}
+
+.segmento:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.aviso {
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+}
+
+.avisoError {
+  composes: aviso;
+  background: var(--color-error-soft);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.avisoAtencion {
+  composes: aviso;
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.sug {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.sugAgregada {
+  composes: sug;
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+  padding: var(--space-3) var(--space-4);
+}
+
+.sugCabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fuente {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.sinFuente {
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.enunciado {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.clave {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.opcion {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.opcionCorrecta {
+  composes: opcion;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.marca {
+  flex: 0 0 auto;
+  width: 1.2em;
+  text-align: center;
+}
+
+.explicacion {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.explicacion summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.verificar {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  cursor: pointer;
+}
+
+.verificar input {
+  margin-top: 2px;
+}
+
+.botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.resumenAgregada {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 14px;
+}
+
+.soloLectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .fila {
+    gap: var(--space-3);
+  }
+  .botones > button {
+    flex: 1 1 auto;
+  }
+}
+
+.enlace {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

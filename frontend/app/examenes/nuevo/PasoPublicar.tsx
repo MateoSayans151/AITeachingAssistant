@@ -16,6 +16,7 @@
 //     onPublicado?     se llama una vez cuando el link quedó generado, con el link y la cantidad de alumnos (null si no se sabe).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { createComision, getEstadoInvitaciones, invitarAlumnos, listComisionesPorCurso, publicarExamenAComision } from '@/lib/api';
@@ -246,7 +247,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
 
       {!publicado && (
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 6 }}>
+          <div className="card-title" style={{ marginBottom: 8 }}>
             ¿Quiénes lo rinden?
           </div>
           <fieldset className={styles.accesos}>
@@ -266,7 +267,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
               </span>
             </label>
           </fieldset>
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontWeight: 600 }}>
               <input type="checkbox" checked={verificarEmail} onChange={(e) => setVerificarEmail(e.target.checked)} style={{ marginTop: 4 }} />
               <span>
@@ -278,7 +279,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
               </span>
             </label>
             {verificarEmail && acceso === 'abierto' && (
-              <div className="field" style={{ marginTop: 10 }}>
+              <div className="field" style={{ marginTop: 12 }}>
                 <label htmlFor="dominio">Solo mails de este dominio (opcional)</label>
                 <input
                   id="dominio"
@@ -293,7 +294,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
               </div>
             )}
           </div>
-          <p className="muted" style={{ marginBottom: 14 }}>
+          <p className="muted" style={{ marginBottom: 16 }}>
             {acceso === 'abierto'
               ? 'Su nota les llega por mail al email que escriban al entrar. Se identifican solo con ese mail: un mismo mail rinde una sola vez.'
               : 'Cada alumno entra al link con el email con el que figura en la lista, y su nota le llega por mail a esa misma dirección: un email mal cargado pierde la nota de ese alumno. Cargalos tal cual los usan (no distingue mayúsculas).'}
@@ -333,7 +334,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
                 <input id="nombreComision" value={nombreComision} onChange={(e) => setNombreEscrito(e.target.value)} placeholder="Ej: Comisión A" />
               </div>
               {!mostrarLista && (
-                <p style={{ marginBottom: 14 }}>
+                <p style={{ marginBottom: 16 }}>
                   <button type="button" className="btn btn-ghost" onClick={() => setCargarLista(true)}>
                     Tengo una lista y quiero cargarla igual (opcional)
                   </button>
@@ -357,7 +358,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
                       {problemas.length > 0 && (
                         <>
                           {' · '}
-                          <strong style={{ color: 'var(--color-accent-800)' }}>
+                          <strong style={{ color: 'var(--color-text)' }}>
                             {problemas.length === 1 ? 'Se ignora 1 línea con problemas' : `Se ignoran ${problemas.length} líneas con problemas`}
                           </strong>
                         </>
@@ -470,7 +471,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
           )}
 
           <div className={styles.seccion}>
-            <h3 style={{ marginBottom: 10 }}>¿Cuándo?</h3>
+            <h3 style={{ marginBottom: 12 }}>¿Cuándo?</h3>
             <div className={styles.fechas}>
               <div className="field">
                 <label htmlFor="fechaInicio">Se habilita (opcional)</label>
@@ -536,7 +537,7 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
 
   return (
     <div className="card">
-      <div className="card-title" style={{ marginBottom: 6 }}>
+      <div className="card-title" style={{ marginBottom: 8 }}>
         Listo: el examen está publicado
       </div>
       <p className="muted">
@@ -554,17 +555,19 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
         <h3>Mandá este link a tus alumnos</h3>
         {link ? (
           <>
-            <p className={styles.linkBox} style={{ marginTop: 10 }}>
+            <p className={styles.linkBox} style={{ marginTop: 12 }}>
               {link}
             </p>
-            <div className={styles.fila}>
-              <button type="button" className={`btn btn-primary ${styles.btnGrande}`} onClick={copiar}>
-                {copiado ? '¡Copiado!' : 'Copiar link'}
-              </button>
-              <span className={styles.srOnly} aria-live="polite">
-                {copiado ? 'Link copiado' : ''}
-              </span>
-            </div>
+            {!cantidadAlumnos && (
+              <div className={styles.fila}>
+                <button type="button" className={`btn btn-primary ${styles.btnGrande}`} onClick={copiar}>
+                  {copiado ? '¡Copiado!' : 'Copiar link'}
+                </button>
+              </div>
+            )}
+            <span className={styles.srOnly} aria-live="polite">
+              {copiado ? 'Link copiado' : ''}
+            </span>
             {errorCopia && (
               <p className="muted" style={{ marginTop: 8, fontSize: 13 }} role="alert">
                 No se pudo copiar automáticamente: seleccioná el link y copialo a mano.
@@ -572,13 +575,24 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
             )}
           </>
         ) : (
-          <p className="muted" style={{ marginTop: 6 }}>
+          <p className="muted" style={{ marginTop: 8 }}>
             El examen quedó publicado, pero el servidor no devolvió el link. Entrá al examen para verlo.
           </p>
         )}
 
         {cantidadAlumnos ? (
-          <InvitarPorMail examenId={examenId} examenComisionId={publicado.examenComisionId} cantidadAlumnos={cantidadAlumnos} />
+          <InvitarPorMail
+            examenId={examenId}
+            examenComisionId={publicado.examenComisionId}
+            cantidadAlumnos={cantidadAlumnos}
+            acciones={
+              link ? (
+                <button type="button" className={`btn btn-primary ${styles.btnGrande}`} onClick={copiar}>
+                  {copiado ? '¡Copiado!' : 'Copiar link'}
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <p className="muted" style={{ marginTop: 12 }}>
             Mandalo por WhatsApp, por mail o por el campus: como no cargaste una lista, no hay a quién mandarle el mail desde acá.
@@ -587,7 +601,7 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
       </div>
 
       <div className={styles.seccion}>
-        <p className="muted" style={{ marginBottom: 14 }}>
+        <p className="muted" style={{ marginBottom: 16 }}>
           Las notas se envían por mail a cada alumno cuando las publiques desde Respuestas.
         </p>
         <div className={styles.fila}>
@@ -614,7 +628,18 @@ function Publicado({ examenId, cursoId, publicado }: { examenId: string; cursoId
  * Envío del link por mail a los alumnos de una comisión, con el avance. Lo usa el paso "Publicar" y también la pantalla del examen,
  * para poder mandar o reenviar las invitaciones después (si no, solo se podía en el momento de publicar).
  */
-export function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: { examenId: string; examenComisionId: string; cantidadAlumnos: number | null }) {
+export function InvitarPorMail({
+  examenId,
+  examenComisionId,
+  cantidadAlumnos,
+  acciones,
+}: {
+  examenId: string;
+  examenComisionId: string;
+  cantidadAlumnos: number | null;
+  /** Botones que van en la misma fila que «Enviar por mail» (por ejemplo «Copiar link»): las dos formas de mandar el link, juntas. */
+  acciones?: ReactNode;
+}) {
   const confirmar = useConfirmar();
   const [estado, setEstado] = useState<EstadoInvitaciones | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -711,13 +736,14 @@ export function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: 
   const hayAvance = estado !== null && (estado.total > 0 || estado.enCurso);
 
   return (
-    <div style={{ marginTop: 18 }}>
+    <div style={{ marginTop: 16 }}>
       {estado?.modoPrueba && (
-        <p className={styles.nota} style={{ marginTop: 0, marginBottom: 10 }}>
+        <p className={styles.nota} style={{ marginTop: 0, marginBottom: 12 }}>
           Modo prueba: los mails llegan a <strong>{estado.modoPrueba}</strong>, no a los alumnos.
         </p>
       )}
       <div className={styles.fila}>
+        {acciones}
         <button
           type="button"
           className="btn btn-secondary"
@@ -725,12 +751,12 @@ export function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: 
           disabled={enCurso || sinConfigurar}
           aria-describedby={sinConfigurar ? 'sinMailAyuda' : undefined}
         >
-          {enCurso ? 'Enviando…' : 'Enviar el link por mail a los alumnos'}
+          {enCurso ? 'Enviando…' : 'Enviar por mail a los alumnos'}
         </button>
-        <span className="muted" style={{ fontSize: 13 }}>
-          Cada alumno lo recibe en el email con el que figura en la lista.
-        </span>
       </div>
+      <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 8 }}>
+        Copiá el link para mandarlo por WhatsApp o el campus, o enviáselo por mail: cada alumno lo recibe en el email con el que figura en la lista.
+      </p>
       {sinConfigurar && (
         <p id="sinMailAyuda" className="muted" style={{ marginTop: 8, fontSize: 13 }}>
           Falta configurar el envío de mails en el servidor.
@@ -752,7 +778,7 @@ export function InvitarPorMail({ examenId, examenComisionId, cantidadAlumnos }: 
           </p>
         )}
         {estado?.ultimoError && (
-          <p className={styles.errorEnvio} style={{ marginTop: 6 }}>
+          <p className={styles.errorEnvio} style={{ marginTop: 8 }}>
             Último error: {estado.ultimoError}
           </p>
         )}

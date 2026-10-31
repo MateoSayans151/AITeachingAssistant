@@ -29,7 +29,7 @@
 .barra {
   display: grid;
   grid-template-columns: repeat(var(--cantidad), minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
   margin: var(--space-3) 0 var(--space-2);
 }
 
@@ -38,7 +38,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 10px 10px 12px;
+  padding: 12px 12px 12px;
   background: #fff;
   border: 1px solid var(--color-border);
   border-top-width: 5px;
@@ -46,7 +46,7 @@
 }
 
 .segmentoNombre {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
@@ -61,14 +61,14 @@
 
 .ejemplo {
   margin: 0 0 var(--space-2);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* Editor: una fila por nivel (número, nombre, porcentaje, quitar). */
 .editor {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) 118px auto;
-  gap: 8px 10px;
+  gap: 8px 12px;
   align-items: center;
   max-width: 640px;
   margin-top: var(--space-3);
@@ -79,7 +79,7 @@
 }
 
 .colTitulo {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
@@ -87,8 +87,8 @@
 .orden {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
@@ -99,7 +99,7 @@
 }
 
 .sufijo input {
-  padding-right: 30px;
+  padding-right: 32px;
 }
 
 .sufijo > span {
@@ -137,7 +137,7 @@
   /* Más lugar para el nombre del nivel; el porcentaje son 3 dígitos como mucho. */
   .editor {
     grid-template-columns: 22px minmax(0, 1fr) 84px 38px;
-    gap: 8px 6px;
+    gap: 8px 8px;
   }
 
   .quitar {
@@ -156,5 +156,168 @@
 
   .cantidad {
     width: 100%;
+  }
+}
+
+/* El curso, en una fila corta debajo del título de la página. */
+.encabezado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.encabezado :global(.field) {
+  flex: 0 1 360px;
+  margin-bottom: var(--space-3);
+}
+
+/* Control de integridad: una sección propia y siempre visible, con su interruptor a la vista (antes era un casillero dentro de un bloque plegado). */
+.integridad {
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+}
+
+.integridadCabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+}
+
+.integridadTexto {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.integridadTitulo {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-md);
+}
+
+.integridadOpciones {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.opcionIntegridad {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.opcionIntegridad input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.masInfo {
+  font-size: var(--text-sm);
+}
+
+.masInfo summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.masInfo p {
+  margin-top: var(--space-2);
+}
+
+/* El curso del examen: un dato fijo (con link para volver al curso), no un campo. */
+.cursoFijo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.cursoFijoEtiqueta {
+  color: var(--color-text-secondary);
+}
+
+.cursoFijoNombre {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Qué registrar: tarjetas seleccionables (título, explicación y casillero) en vez de renglones sueltos. */
+.opcionesIntegridad {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.opcionCard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.opcionCard:hover {
+  border-color: var(--color-text);
+}
+
+.opcionCard:has(input:checked) {
+  border-color: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-text);
+  background: var(--color-bg);
+}
+
+.opcionCard:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.opcionTexto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.opcionTitulo {
+  font-weight: 700;
+}
+
+.opcionDesc {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.opcionEtiqueta {
+  margin-left: var(--space-2);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .opcionesIntegridad {
+    grid-template-columns: 1fr;
   }
 }

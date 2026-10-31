@@ -150,7 +150,7 @@ function DialogoVistaPrevia({ datos, preguntas, onCerrar }: VistaPreviaButtonPro
             {minutos !== null && (
               <div className="card" style={{ marginBottom: 16 }}>
                 <strong>{avisoDuracionTitulo(minutos)}</strong>
-                <p className="muted" style={{ marginTop: 6 }}>
+                <p className="muted" style={{ marginTop: 8 }}>
                   {TEXTOS_INGRESO_ALUMNO.duracionDetalle}
                 </p>
               </div>

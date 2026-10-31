@@ -1,5 +1,6 @@
 'use client';
 
+import { SinSesion } from '@/app/components/SinSesion';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NivelDescripcion, createMatrizRubrica } from '@/lib/api';
@@ -186,7 +187,7 @@ export default function NuevaMatrizPage() {
   if (!docente) {
     return (
       <div className="page">
-        <p className="muted">Identificate primero desde el inicio.</p>
+        <SinSesion />
       </div>
     );
   }
@@ -328,7 +329,7 @@ export default function NuevaMatrizPage() {
           );
         })}
 
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 16 }}>
           <button type="button" className="btn btn-secondary" onClick={agregarCriterio}>
             + Agregar criterio
           </button>

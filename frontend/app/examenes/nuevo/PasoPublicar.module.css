@@ -22,10 +22,10 @@
   gap: var(--space-3);
   margin-bottom: var(--space-4);
   padding: 12px var(--space-4);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-accent-100);
-  color: var(--color-accent-800);
+  background: var(--color-surface);
+  color: var(--color-text);
   font-size: 14px;
   line-height: 1.45;
 }
@@ -38,12 +38,12 @@
 /* ---- cuadros de aviso dentro de la tarjeta (no bloqueantes) ---- */
 .nota {
   margin: var(--space-2) 0 0;
-  padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-accent-100);
-  color: var(--color-accent-800);
-  font-size: 13px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -52,8 +52,8 @@
 }
 
 .nota ul {
-  margin: 6px 0 0;
-  padding-left: 18px;
+  margin: 8px 0 0;
+  padding-left: 16px;
   max-height: 120px;
   overflow-y: auto;
 }
@@ -64,7 +64,7 @@
 
 .errorCampo {
   margin: -8px 0 var(--space-3);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-error);
 }
 
@@ -79,8 +79,8 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
-  margin-bottom: 6px;
-  font-size: 13px;
+  margin-bottom: 8px;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
@@ -105,7 +105,7 @@
 }
 
 .tablaScroll .tabla td {
-  padding: 8px 10px;
+  padding: 8px 12px;
   vertical-align: top;
   overflow-wrap: anywhere;
 }
@@ -139,7 +139,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 2px var(--space-2);
-    padding: 10px;
+    padding: 12px;
     border-bottom: 1px solid var(--color-border);
   }
 
@@ -174,7 +174,7 @@
 .btnChico {
   min-height: 32px;
   padding: 4px 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .quitar:hover {
@@ -186,13 +186,13 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 6px;
-  padding: 6px 10px;
+  gap: 4px 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
-  background: var(--color-accent-100);
-  color: var(--color-accent-800);
-  font-size: 13px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
 }
 
 .sugerencia span {
@@ -206,14 +206,14 @@
   flex-wrap: wrap;
   gap: 4px var(--space-3);
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
 /* ---- resumen de lo que se publica ---- */
 .resumen {
   margin: 0 0 var(--space-3);
-  padding: 10px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-neutral-100);
@@ -224,10 +224,9 @@
 .resumen b {
   display: block;
   margin-bottom: 2px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+
   color: var(--color-neutral-700);
 }
 
@@ -254,7 +253,7 @@
 .modos label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 14px;
 }
 
@@ -272,7 +271,7 @@
 
 .linkBox {
   margin: 0 0 var(--space-3);
-  padding: 12px 14px;
+  padding: 12px 16px;
   border: 1px solid color-mix(in srgb, var(--color-success) 45%, transparent);
   border-radius: var(--radius-md);
   background: var(--color-success-soft);
@@ -307,7 +306,7 @@
 
 .errorEnvio {
   margin-top: var(--space-3);
-  padding: 10px 14px;
+  padding: 12px 16px;
   border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
   border-radius: var(--radius-md);
   background: var(--color-error-soft);
@@ -317,7 +316,7 @@
 }
 
 .copiado {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-success);
 }
 
@@ -342,8 +341,8 @@
 }
 
 .acceso[data-elegido='true'] {
-  border-color: var(--color-accent);
-  background: var(--color-accent-100);
+  border-color: var(--color-neutral-900);
+  background: var(--color-bg);
 }
 
 .acceso input {
@@ -358,12 +357,12 @@
   display: block;
   margin-top: 2px;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .acceso em {
   font-style: normal;
-  font-size: 12px;
-  color: var(--color-accent-800);
+  font-size: var(--text-xs);
+  color: var(--color-text);
 }
 

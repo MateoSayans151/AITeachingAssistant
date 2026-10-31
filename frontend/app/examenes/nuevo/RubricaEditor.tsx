@@ -1,9 +1,10 @@
 'use client';
 
 // RubricaEditor: los criterios de UNA pregunta abierta (desarrollo, resolución de problema, demostración, análisis de caso y
-// respuesta corta). Incluye el selector de matrices (siempre visible), "Sugerir criterios con IA", una fila por criterio con
-// el detalle de cada nivel de desempeño en un acordeón plegado, y al pie: guardar los criterios como matriz y (si el padre lo
-// pide) copiar la rúbrica a las demás preguntas abiertas. Los datos viven en la pregunta que le pasan; el estado propio es solo
+// respuesta corta). Son OPCIONALES: la sección arranca plegada y de bajo perfil («Criterios de corrección · opcional»); sin
+// criterios la IA evalúa la respuesta en conjunto contra el enunciado (el servidor le pone un único criterio general). Desplegada
+// tiene "Sugerir con IA", el selector de matrices, una fila por criterio con el detalle de cada nivel de desempeño en un acordeón
+// plegado, y al pie: guardar los criterios como matriz y (si el padre lo pide) copiar la rúbrica a las demás preguntas abiertas. Los datos viven en la pregunta que le pasan; el estado propio es solo
 // de interfaz (qué acordeones están abiertos, el pedido a la IA, el mini formulario de la matriz).
 //
 // Contrato:
@@ -72,6 +73,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   const uid = useId();
   const puntos = puntosPorCriterio(p);
   const hayPuntos = puntajeEfectivoDe(p) > 0;
+  const sumaPesos = p.criterios.reduce((acc, c) => acc + pesoValidoDe(c), 0);
 
   // Los pedidos asíncronos (IA, guardar matriz) terminan después de varios renders: tienen que trabajar con lo último, no con
   // la pregunta ni el onChange de cuando se apretó el botón (el padre arma la lista nueva a partir de la suya de ese render).
@@ -89,6 +91,10 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
     };
   }, []);
 
+  // La sección entera arranca desplegada: los criterios son lo que le dice a la IA cómo corregir como corregirías vos.
+  const [abierta, setAbierta] = useState(true);
+  const idSeccion = `${uid}-criterios`;
+
   // Acordeones abiertos, por posición del criterio (todos plegados al empezar).
   const [abiertos, setAbiertos] = useState<Record<number, boolean>>({});
   const [matrizElegida, setMatrizElegida] = useState('');
@@ -100,9 +106,10 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   const [errorMatriz, setErrorMatriz] = useState<string | null>(null);
   const [matrizGuardada, setMatrizGuardada] = useState<string | null>(null);
 
-  // Si falla la validación del formulario, los detalles a medias se abren para que se vea qué falta.
+  // Si falla la validación del formulario, los detalles a medias se abren para que se vea qué falta (y la sección, si tiene algo cargado).
   useEffect(() => {
     if (!errores || errores.length === 0) return;
+    if (tieneCriteriosCargados(preguntaRef.current)) setAbierta(true);
     setAbiertos((prev) => {
       const sig = { ...prev };
       preguntaRef.current.criterios.forEach((c, i) => {
@@ -136,6 +143,9 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
   }
 
   function agregarCriterio() {
+    // Si lo único que hay son filas en blanco (el wizard arranca con una) no se suma otra: se usa esa.
+    const soloBlancos = p.criterios.length > 0 && !tieneCriteriosCargados(p);
+    if (soloBlancos) return;
     onChange({ ...p, criterios: [...p.criterios, criterioVacio(niveles)] });
   }
 
@@ -186,6 +196,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
       // Los puntos de la pregunta no se tocan: sin puntos todavía, el "= X pts" aparece apenas el docente cargue P.
       const sugeridos = criteriosDeSugerencia(criterios, niveles);
       onChangeRef.current({ ...preguntaRef.current, criterios: sugeridos });
+      setAbierta(true);
       setAbiertos({});
       setMatrizElegida('');
       setIa({ estado: 'borrador', detalleOmitido: sugeridos.some((c) => !c.detallar) });
@@ -224,63 +235,76 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
     }
   }
 
+  const cantidadCriterios = p.criterios.filter((c) => c.nombre.trim()).length;
+  const resumenSeccion = cantidadCriterios > 0 ? `${cantidadCriterios} ${cantidadCriterios === 1 ? 'criterio' : 'criterios'}` : 'Sin criterios: la IA evalúa la respuesta en conjunto';
+
   return (
-    <div>
-      <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
-        <strong>Criterios de corrección:</strong> lo que la IA mira para ponerle nota a la respuesta. Cada criterio tiene un peso: los
-        puntos de la pregunta se reparten en proporción. Lo más rápido es pedirle a la IA que los arme y después ajustarlos.
-      </div>
+    <div className={styles.seccion}>
+      <button type="button" className={styles.encabezado} onClick={() => setAbierta((v) => !v)} aria-expanded={abierta} aria-controls={idSeccion}>
+        <svg className={styles.flecha} width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-abierta={abierta}>
+          <path d="M4 2l4 4-4 4" />
+        </svg>
+        <span className={styles.titulo}>Criterios de corrección</span>
+        {!abierta && <span className={styles.resumen}>· {resumenSeccion}</span>}
+      </button>
 
-      <div className={styles.barra}>
-        {matrices.length === 0 ? (
-          <select className={styles.selector} aria-label="Partir de una matriz existente" disabled value="" onChange={() => {}}>
-            <option value="">Todavía no tenés matrices: guardá la primera con «Guardar estos criterios como matriz»</option>
-          </select>
-        ) : (
-          <select className={styles.selector} aria-label="Partir de una matriz existente" value={matrizElegida} onChange={(e) => elegirMatriz(e.target.value)}>
-            <option value="">Partir de una matriz existente…</option>
-            {matrices.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nombre}
-              </option>
-            ))}
-            <option value={VALOR_MATRIZ_NUEVA}>+ Crear una matriz nueva (se abre en otra pestaña)</option>
-          </select>
-        )}
-        <button
-          type="button"
-          className={`btn ${hayEnunciado && !pensando && !tieneCriteriosCargados(p) ? 'btn-primary' : 'btn-secondary'} ${styles.botonIA}`}
-          onClick={sugerirConIA}
-          disabled={!hayEnunciado || pensando}
-          title={hayEnunciado ? 'La IA propone criterios a partir del enunciado; después los revisás y ajustás' : SIN_ENUNCIADO}
-        >
-          <span className={styles.etiquetaIA} aria-hidden="true">
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M6 0.5l1.3 3.7 3.7 1.3-3.7 1.3L6 10.5 4.7 6.8 1 5.5l3.7-1.3L6 0.5z" />
-            </svg>
-            IA
-          </span>
-          {pensando ? 'Pensando…' : 'Sugerir criterios con IA'}
-        </button>
-      </div>
+      {abierta && (
+        <div id={idSeccion} className={styles.cuerpo}>
+          <p className={styles.pista}>
+            {cantidadCriterios === 0
+              ? 'Decile a la IA qué mirar al corregir: pedile una propuesta a partir del enunciado o escribí los tuyos. Sin criterios evalúa la respuesta en conjunto, sin seguir tu forma de corregir.'
+              : 'El peso dice qué tan importante es cada criterio: los puntos de la pregunta se reparten en esa proporción.'}
+          </p>
 
-      {pensando && (
-        <div className={styles.avisoIA} role="status">
-          La IA está leyendo el enunciado y armando los criterios. Puede tardar hasta 30 segundos: no cierres esta pregunta mientras tanto. Si se demora,
-          también podés cargarlos a mano.
-        </div>
-      )}
-      {ia.estado === 'borrador' && (
-        <div className={styles.avisoIA} role="status">
-          Borrador sugerido por la IA: revisalo y ajustalo antes de usarlo.
-          {ia.detalleOmitido && ' No se incluyó el detalle por nivel porque no coincide con la escala de niveles de tu examen.'}
-        </div>
-      )}
-      {ia.estado === 'error' && (
-        <div className="error-box" role="alert">
-          {ia.mensaje}
-        </div>
-      )}
+          <div className={styles.barra}>
+            <button
+              type="button"
+              className={`btn btn-secondary ${styles.accionIA}`}
+              onClick={sugerirConIA}
+              disabled={!hayEnunciado || pensando}
+              title={hayEnunciado ? 'La IA propone criterios a partir del enunciado; después los revisás y ajustás' : SIN_ENUNCIADO}
+            >
+              <span className={styles.etiquetaIA} aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
+                  <path d="M6 0.5l1.3 3.7 3.7 1.3-3.7 1.3L6 10.5 4.7 6.8 1 5.5l3.7-1.3L6 0.5z" />
+                </svg>
+                IA
+              </span>
+              {pensando ? 'Pensando…' : 'Sugerir criterios'}
+            </button>
+            {matrices.length === 0 ? (
+              <select className={styles.selector} aria-label="Partir de una matriz existente" disabled value="" onChange={() => {}}>
+                <option value="">Todavía no tenés matrices guardadas</option>
+              </select>
+            ) : (
+              <select className={styles.selector} aria-label="Partir de una matriz existente" value={matrizElegida} onChange={(e) => elegirMatriz(e.target.value)}>
+                <option value="">Partir de una matriz…</option>
+                {matrices.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+                <option value={VALOR_MATRIZ_NUEVA}>+ Crear una matriz nueva (se abre en otra pestaña)</option>
+              </select>
+            )}
+          </div>
+
+          {pensando && (
+            <div className={styles.avisoIA} role="status">
+              La IA está leyendo el enunciado y armando los criterios. Puede tardar hasta 30 segundos: no cierres esta pregunta mientras tanto.
+            </div>
+          )}
+          {ia.estado === 'borrador' && (
+            <div className={styles.avisoIA} role="status">
+              Borrador sugerido por la IA: revisalo y ajustalo antes de usarlo.
+              {ia.detalleOmitido && ' No se incluyó el detalle por nivel porque no coincide con la escala de niveles de tu examen.'}
+            </div>
+          )}
+          {ia.estado === 'error' && (
+            <div className="error-box" role="alert">
+              {ia.mensaje}
+            </div>
+          )}
 
       {p.criterios.map((c, ci) => {
         const idDetalle = `${uid}-detalle-${ci}`;
@@ -290,9 +314,11 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         const sinPuntos = conPeso && puntos[ci] <= 0; // con tan pocos puntos, este criterio se redondea a 0
         return (
           <div key={ci} style={{ marginBottom: 12 }}>
-            <div className="criterio-row" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr) 90px 100px auto', alignItems: 'start', marginBottom: 0 }}>
+            {/* Dos líneas: arriba el nombre, el peso y lo que vale; abajo, qué se espera (el texto largo necesita todo el ancho). */}
+            <div className="criterio-row" style={{ gridTemplateColumns: 'minmax(0, 1fr) 96px auto 40px', alignItems: 'center', marginBottom: 0 }}>
               <input placeholder="Criterio (ej: Claridad del argumento)" value={c.nombre} onChange={(e) => actualizarCriterio(ci, 'nombre', e.target.value)} />
               <AutoTextarea
+                style={{ gridColumn: '1 / -1', gridRow: 2 }}
                 rows={1}
                 placeholder="Qué se espera para cumplirlo"
                 aria-label={`Qué se espera en el criterio ${ci + 1}`}
@@ -304,7 +330,8 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
                 min="0"
                 step="any"
                 placeholder="Peso"
-                aria-label={`Peso del criterio ${ci + 1}`}
+                aria-label={`Peso del criterio ${ci + 1} (qué tan importante es)`}
+                title="Qué tan importante es este criterio dentro de la pregunta"
                 value={c.peso}
                 onChange={(e) => actualizarCriterio(ci, 'peso', e.target.value)}
               />
@@ -313,10 +340,11 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
                 style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}
                 title={sinPuntos ? 'Con tan pocos puntos este criterio se redondea a 0: subí los puntos de la pregunta o quitá criterios.' : undefined}
               >
-                = {conPeso ? formatearPuntos(puntos[ci]) : '—'} pts
+                {pesoValidoDe(c) > 0 && sumaPesos > 0 ? `${Math.round((pesoValidoDe(c) / sumaPesos) * 100)} %` : '—'}
+                {conPeso ? ` · ${formatearPuntos(puntos[ci])} pts` : ''}
               </span>
-              <button type="button" className="btn btn-secondary" onClick={() => quitarCriterio(ci)} disabled={p.criterios.length === 1}>
-                Quitar
+              <button type="button" className={`btn-icon ${styles.quitar}`} onClick={() => quitarCriterio(ci)} aria-label={`Quitar el criterio ${ci + 1}`} title="Quitar criterio">
+                ×
               </button>
             </div>
 
@@ -330,7 +358,7 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
               </button>
             </div>
             {abierto && (
-              <div id={idDetalle} style={{ marginTop: 6 }}>
+              <div id={idDetalle} style={{ marginTop: 8 }}>
                 {c.niveles.map((n, ni) => (
                   <div key={ni} className="nivel-row">
                     <div className="nivel-label">
@@ -351,32 +379,27 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
         );
       })}
 
-      <div className={styles.pie}>
-        <button type="button" className="btn btn-secondary" onClick={agregarCriterio}>
-          + Agregar criterio
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={abrirFormMatriz}
-          disabled={criteriosMatriz.length === 0 || formAbierto}
-          title={criteriosMatriz.length === 0 ? SIN_CRITERIOS_LISTOS : 'Guardar esta rúbrica para reutilizarla en otras preguntas y exámenes'}
-        >
-          Guardar estos criterios como matriz
-        </button>
-        {onAplicarATodas && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onAplicarATodas}
-            disabled={!p.criterios.some((c) => c.nombre.trim())}
-            title={p.criterios.some((c) => c.nombre.trim()) ? undefined : 'Cargá al menos un criterio para copiarlo'}
-          >
-            Usar esta rúbrica en todas las preguntas abiertas
-          </button>
-        )}
-      </div>
-      {onAplicarATodas && <div className={styles.ayudaPie}>Se copian los criterios; los puntos de cada pregunta no cambian.</div>}
+          <div className={styles.pie}>
+            <button type="button" className={styles.accionTexto} onClick={agregarCriterio} disabled={p.criterios.length > 0 && !tieneCriteriosCargados(p)}>
+              + Agregar criterio
+            </button>
+            {cantidadCriterios > 0 && (
+              <button
+                type="button"
+                className={styles.accionTexto}
+                onClick={abrirFormMatriz}
+                disabled={criteriosMatriz.length === 0 || formAbierto}
+                title={criteriosMatriz.length === 0 ? SIN_CRITERIOS_LISTOS : 'Guardar esta rúbrica para reutilizarla en otras preguntas y exámenes'}
+              >
+                Guardar como matriz
+              </button>
+            )}
+            {onAplicarATodas && cantidadCriterios > 0 && (
+              <button type="button" className={styles.accionTexto} onClick={onAplicarATodas} title="Se copian los criterios; los puntos de cada pregunta no cambian">
+                Usar en todas las preguntas abiertas
+              </button>
+            )}
+          </div>
 
       {formAbierto && (
         <div className={styles.formMatriz} role="group" aria-label="Guardar estos criterios como matriz">
@@ -424,6 +447,8 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
       {matrizGuardada && (
         <div className={styles.avisoOk} role="status">
           <strong>Matriz guardada</strong> · «{matrizGuardada}».{onMatrizCreada ? ' Ya podés usarla desde el selector de cualquier pregunta.' : ''}
+        </div>
+      )}
         </div>
       )}
     </div>

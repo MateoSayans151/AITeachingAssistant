@@ -1,45 +1,54 @@
 'use client';
 
-// PasoPreguntas: el paso 2 del wizard. Recuadro con el total de puntos (pegado arriba mientras se scrollea, tiene que ser
-// igual a la escala máxima) y el botón para repartir los puntos en partes iguales, la lista de <PreguntaCard/> (plegables,
-// que se pueden subir, bajar y duplicar) y el menú "+ Agregar pregunta" con los tipos en dos grupos. No guarda la lista: el
-// estado de las preguntas (incluido si cada una está plegada) vive en el padre. Solo tiene estado de interfaz: el menú
-// abierto y los avisos de lo que acaba de pasar.
+// PasoPreguntas: las preguntas del examen. Sin preguntas muestra un estado vacío con las tres formas de empezar (sugerencias de
+// la IA, escribir una, duplicar un examen anterior). Con preguntas: la barra "El examen vale N puntos" (pegada arriba mientras se
+// scrollea), el panel de sugerencias de la IA (plegado), la lista de <PreguntaCard/> (plegables) y el menú "+ Agregar pregunta".
+//
+// Los puntos tienen UN solo modelo: el examen vale N y el sistema reparte N entre las preguntas en partes iguales; la que el
+// docente edita a mano queda "fija" y las demás absorben la diferencia (`balancearPuntos`). Nunca se bloquea por puntos sin
+// repartir: se muestra cuántos faltan o sobran. No guarda la lista: el estado de las preguntas (incluido si cada una está
+// plegada) vive en el padre. Solo tiene estado de interfaz: el menú abierto y los avisos de lo que acaba de pasar.
 //
 // Contrato:
-//   PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMin, escalaMax, onUsarComoEscala, onMatrizCreada, errores })
+//   PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMin, escalaMax, onCambiarTotal, onUsarComoEscala, onMatrizCreada, errores })
 //     preguntas          PreguntaForm[] (el estado vive en el padre).
 //     onChange(next)     se llama con la lista completa ya modificada (pregunta editada, agregada, quitada, movida, duplicada,
 //                        plegada, con los puntos repartidos o con una rúbrica copiada).
 //     niveles            escala de niveles del examen (`datos.niveles`): para armar preguntas y criterios nuevos.
 //     matrices           matrices de rúbrica del docente.
 //     escalaMin/Max      `datos.escalaMin` / `datos.escalaMax` tal cual (strings del formulario): el total se compara con la máxima.
-//     onUsarComoEscala(total)  el docente apretó "Usar X como escala máxima"; el padre pone `escalaMax = String(total)`.
+//     onCambiarTotal(valor)    el docente cambió "El examen vale N puntos"; el padre pone `escalaMax = valor` (el reparto se rehace acá).
+//     onUsarComoEscala(total)  el docente apretó "Que el examen valga X"; el padre pone `escalaMax = String(total)`.
 //   Opcionales:
 //     onMatrizCreada(m)  se pasa tal cual a cada <RubricaEditor/> (vía <PreguntaCard/>): se llamó al guardar una rúbrica como matriz;
 //                        el padre agrega `m` a `matrices`.
+//     cursoId            curso elegido en el encabezado del examen ('' o 'nuevo' si todavía no hay uno): lo usa <PanelSugerirPreguntas/> para traer el material.
 //     errores            los mensajes de validación que muestra el padre ("Pregunta 3: falta el enunciado."). Cada vez que cambia el
 //                        arreglo (OJO: por identidad, el padre tiene que pasar el mismo arreglo mientras no cambien) se despliegan las
 //                        tarjetas que nombran y el foco y el scroll van a la primera; esas tarjetas muestran qué les falta.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
+import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
 import type { MatrizRubrica, TipoPregunta } from '@/lib/api';
 import { esNumero, formatearPuntos, preguntaVacia, redondearPuntos, totalCoincideConEscala, totalDelExamen, validarPregunta } from '@/lib/examen-form';
 import type { NivelForm, PreguntaForm } from '@/lib/examen-form';
 import {
   agregarPreguntaPlegando,
+  balancearPuntos,
   copiarRubricaA,
   desplegarPreguntas,
   duplicarPregunta,
   esPreguntaAbierta,
-  hayPuntosCargados,
+  hayPuntosFijados,
   indicesConError,
   moverPregunta,
-  repartirPuntos,
+  soltarPuntos,
   tieneCriteriosCargados,
 } from '@/lib/examen-preguntas';
+import { agregarSugerida } from '@/lib/sugerir-preguntas';
+import { PanelSugerirPreguntas } from './PanelSugerirPreguntas';
 import { PreguntaCard, TIPOS_GRUPOS, TIPOS_LABEL } from './PreguntaCard';
 import s from './PreguntaCard.module.css';
 
@@ -50,39 +59,48 @@ export interface PasoPreguntasProps {
   matrices: MatrizRubrica[];
   escalaMin: string;
   escalaMax: string;
+  onCambiarTotal: (valor: string) => void;
   onUsarComoEscala: (total: number) => void;
   onMatrizCreada?: (m: MatrizRubrica) => void;
+  cursoId?: string;
   errores?: string[];
 }
 
 /** A dónde llevar el foco cuando la lista ya se redibujó con el cambio (la tarjeta nueva todavía no existía al pedirlo). */
 interface FocoPendiente {
   indice: number;
-  /** 'tarjeta': la tarjeta entera; 'enunciado': su enunciado (para escribir enseguida); 'mover': el botón que se acaba de usar. */
-  que: 'tarjeta' | 'enunciado' | 'mover';
-  /** Con 'mover': el botón preferido ('subir' | 'bajar'); si quedó deshabilitado (llegó a un extremo), el otro. */
-  boton?: 'subir' | 'bajar';
+  /** 'tarjeta': la tarjeta entera; 'enunciado': su enunciado (para escribir enseguida). */
+  que: 'tarjeta' | 'enunciado';
   /** 'start': la tarjeta arriba de todo (pregunta nueva o con errores); 'nearest': solo si no se ve. */
   bloque: 'start' | 'nearest';
 }
 
-export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMin, escalaMax, onUsarComoEscala, onMatrizCreada, errores }: PasoPreguntasProps) {
+export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMin, escalaMax, onCambiarTotal, onUsarComoEscala, onMatrizCreada, cursoId = '', errores }: PasoPreguntasProps) {
   const confirmar = useConfirmar();
   const raiz = useRef<HTMLDivElement>(null);
   const foco = useRef<FocoPendiente | null>(null);
-  const [aviso, setAviso] = useState(''); // visible un rato: lo que hizo "Repartir" o "usar esta rúbrica en todas"
+  // La lista más reciente: agregar una sugerencia abierta espera la rúbrica de la IA y, mientras, el docente pudo seguir editando.
+  const preguntasRef = useRef(preguntas);
+  preguntasRef.current = preguntas;
+  const [aviso, setAviso] = useState(''); // visible un rato: lo que hizo "Volver al reparto automático" o "usar esta rúbrica en todas"
   const [anuncio, setAnuncio] = useState(''); // solo para lectores de pantalla: pregunta agregada, movida, duplicada
 
-  // Total a la vista mientras se arman las preguntas: tiene que ser igual a la escala máxima.
+  // El total a la vista: el examen vale `max` puntos y el reparto automático lo mantiene.
   const total = totalDelExamen(preguntas);
   const max = esNumero(escalaMax) ? Number(escalaMax) : null;
   const coincide = max !== null && totalCoincideConEscala(total, max);
-  const diferencia = max !== null ? redondearPuntos(max - total) : 0; // > 0: faltan puntos; < 0: sobran
-  const puedeUsarComoEscala = max !== null && !coincide && (!esNumero(escalaMin) || total > Number(escalaMin));
+  const diferencia = max !== null ? redondearPuntos(max - total) : 0; // > 0: faltan asignar; < 0: sobran
+  const puedeUsarComoEscala = max !== null && !coincide && total > 0 && (!esNumero(escalaMin) || total > Number(escalaMin));
+  const conPuntosFijados = hayPuntosFijados(preguntas);
+  const hayCursoReal = cursoId !== '' && cursoId !== 'nuevo';
 
-  // Repartir la escala máxima en partes iguales: solo con una escala válida (> 0), con preguntas y si a cada una le toca algo.
-  const reparto = max !== null && max > 0 ? repartirPuntos(preguntas.length, max) : [];
-  const puedeRepartir = reparto.length > 0 && reparto.every((x) => Number(x) > 0);
+  // Reparto automático: después de CUALQUIER cambio (pregunta agregada, quitada, duplicada, total nuevo, borrador restaurado…) las
+  // preguntas sin puntos fijados se reparten lo que queda. Es idempotente: si ya está repartido no devuelve otra lista.
+  useEffect(() => {
+    if (max === null) return;
+    const balanceada = balancearPuntos(preguntas, max);
+    if (balanceada !== preguntas) onChange(balanceada);
+  }, [preguntas, max]);
 
   // Qué tarjetas nombran los errores del padre: se despliegan y muestran qué les falta mientras sigan incompletas.
   const marcadas = new Set(errores ? indicesConError(errores) : []);
@@ -92,14 +110,7 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
     if (!tarjeta) return;
     let destino: HTMLElement | null = tarjeta;
     if (f.que === 'enunciado') destino = tarjeta.querySelector<HTMLElement>('[data-campo="enunciado"]') ?? tarjeta;
-    if (f.que === 'mover') {
-      const otro = f.boton === 'subir' ? 'bajar' : 'subir';
-      destino =
-        tarjeta.querySelector<HTMLElement>(`[data-accion="${f.boton}"]:not(:disabled)`) ??
-        tarjeta.querySelector<HTMLElement>(`[data-accion="${otro}"]:not(:disabled)`) ??
-        tarjeta;
-    }
-    // Sin scroll propio del foco: el scroll lo hace la tarjeta (con su margen, para que no la tape el recuadro del total).
+    // Sin scroll propio del foco: el scroll lo hace la tarjeta (con su margen, para que no la tape la barra del total).
     destino.focus({ preventScroll: true });
     tarjeta.scrollIntoView({ block: f.bloque });
   }
@@ -141,10 +152,31 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
     setAnuncio(`Pregunta ${preguntas.length + 1} agregada: ${TIPOS_LABEL[tipo]}.`);
   }
 
+  /** Agrega una pregunta sugerida por la IA (plegada, para no mover al docente de lugar) y devuelve en qué posición quedó. */
+  function agregarDeSugerencia(nueva: PreguntaForm): number {
+    const { lista, indice } = agregarSugerida(preguntasRef.current, nueva);
+    onChange(lista);
+    setAnuncio(`Pregunta ${indice + 1} agregada desde las sugerencias de la IA: ${TIPOS_LABEL[nueva.tipo]}.`);
+    return indice;
+  }
+
+  /** «Ver en la lista» de una sugerencia ya agregada: despliega esa pregunta y lleva el foco ahí. */
+  function editarDeSugerencia(indice: number) {
+    if (indice < 0 || indice >= preguntasRef.current.length) return;
+    foco.current = { indice, que: 'enunciado', bloque: 'start' };
+    onChange(desplegarPreguntas(preguntasRef.current, [indice]));
+    // Si ya estaba desplegada `onChange` no cambia nada y no hay redibujado que espere: se enfoca directo.
+    if (!preguntasRef.current[indice].plegada) {
+      const pendiente = foco.current;
+      foco.current = null;
+      if (pendiente) enfocar(pendiente);
+    }
+  }
+
   function mover(indice: number, delta: -1 | 1) {
     const destino = indice + delta;
     if (destino < 0 || destino >= preguntas.length) return;
-    foco.current = { indice: destino, que: 'mover', boton: delta < 0 ? 'subir' : 'bajar', bloque: 'nearest' };
+    foco.current = { indice: destino, que: 'tarjeta', bloque: 'nearest' };
     onChange(moverPregunta(preguntas, indice, delta));
     setAnuncio(`Pregunta ${indice + 1} movida a la posición ${destino + 1} de ${preguntas.length}.`);
   }
@@ -155,12 +187,19 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
     setAnuncio(`Pregunta ${indice + 1} duplicada: la copia es la pregunta ${indice + 2}.`);
   }
 
-  async function repartirEnPartesIguales() {
-    if (!puedeRepartir || max === null) return;
-    if (hayPuntosCargados(preguntas) && !(await confirmar({ mensaje: 'Esto reemplaza los puntos que cargaste.', textoConfirmar: 'Repartir' }))) return;
-    onChange(preguntas.map((p, i) => ({ ...p, puntajeMaximo: reparto[i] })));
-    const partes = reparto.map((x) => formatearPuntos(Number(x)));
-    setAviso(`Repartimos ${formatearPuntos(max)} pts entre ${preguntas.length} ${preguntas.length === 1 ? 'pregunta' : 'preguntas'}: ${partes.join(' / ')}.`);
+  /** Quitar una pregunta: si ya tiene enunciado se pide confirmar (con una en blanco no hay nada que perder). */
+  async function quitar(indice: number) {
+    const q = preguntasRef.current[indice];
+    if (!q) return;
+    if (q.enunciado.trim() && !(await confirmar({ mensaje: `Se quita la pregunta ${indice + 1} con todo lo que escribiste.`, textoConfirmar: 'Quitar' }))) return;
+    onChange(preguntasRef.current.filter((_, i) => i !== indice));
+    setAnuncio(`Pregunta ${indice + 1} quitada.`);
+  }
+
+  async function volverAlRepartoAutomatico() {
+    if (!(await confirmar({ mensaje: 'Los puntos que ajustaste a mano se reemplazan por un reparto en partes iguales.', textoConfirmar: 'Repartir' }))) return;
+    onChange(soltarPuntos(preguntas));
+    setAviso(`Repartimos ${max !== null ? `${formatearPuntos(max)} pts ` : ''}en partes iguales entre ${preguntas.length} ${preguntas.length === 1 ? 'pregunta' : 'preguntas'}.`);
   }
 
   /** "Usar esta rúbrica en todas las preguntas abiertas": copia los criterios de la pregunta `origen` a las demás abiertas (cada una conserva sus puntos). */
@@ -178,53 +217,52 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
     setAviso(`Copiamos la rúbrica de la pregunta ${origen + 1} a ${cantidad} ${cantidad === 1 ? 'pregunta abierta' : 'preguntas abiertas'}; cada una conserva sus puntos.`);
   }
 
+  const estadoTotal = coincide ? 'ok' : diferencia > 0 ? 'falta' : 'sobra';
+
   return (
-    <div ref={raiz}>
-      <div
-        className="card"
-        role="status"
-        style={{
-          position: 'sticky',
-          top: 60, // debajo de la barra superior (que también es sticky)
-          zIndex: 25,
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-          marginBottom: 16,
-          borderColor: coincide ? 'var(--color-success)' : 'var(--color-accent)',
-          color: coincide ? 'var(--color-success)' : 'var(--color-accent-800)',
-        }}
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-          <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
-            Total del examen: {formatearPuntos(total)}
-            {max !== null && ` de ${formatearPuntos(max)}`} pts
-          </strong>
-          {max !== null && (
-            <span className={`badge ${coincide ? 'badge-revisado' : 'badge-pendiente'}`}>
-              {coincide ? 'OK' : diferencia > 0 ? `Faltan ${formatearPuntos(diferencia)} pts` : `Sobran ${formatearPuntos(-diferencia)} pts`}
-            </span>
-          )}
+    <div ref={raiz} className={s.raiz}>
+      {preguntas.length > 0 && (
+        <div className={s.barraTotal} role="status" data-estado={max === null ? 'falta' : estadoTotal}>
+          <div className={s.totalCampo}>
+            <label htmlFor="total-examen">El examen vale</label>
+            <input
+              id="total-examen"
+              className={s.totalInput}
+              type="number"
+              min="1"
+              step="any"
+              value={escalaMax}
+              onChange={(e) => {
+                onCambiarTotal(e.target.value);
+                const nuevo = e.target.value.trim() !== '' && Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : null;
+                if (nuevo !== null && nuevo > 0) onChange(balancearPuntos(preguntas, nuevo));
+              }}
+            />
+            <span>puntos</span>
+          </div>
+          <div className={s.totalEstado}>
+            {max === null
+              ? 'Indicá cuántos puntos vale el examen.'
+              : coincide
+                ? `✓ Los ${formatearPuntos(max)} puntos están repartidos${conPuntosFijados ? '' : ' en partes iguales'}`
+                : diferencia > 0
+                  ? `${formatearPuntos(diferencia)} pts sin asignar de ${formatearPuntos(max)}`
+                  : `Sobran ${formatearPuntos(-diferencia)} pts sobre los ${formatearPuntos(max)}`}
+          </div>
+          <div className={s.accionesTotal}>
+            {conPuntosFijados && (
+              <button type="button" className={`btn btn-ghost ${s.btnTotal}`} onClick={volverAlRepartoAutomatico} title="Vuelve a repartir los puntos en partes iguales entre todas las preguntas">
+                Repartir en partes iguales
+              </button>
+            )}
+            {puedeUsarComoEscala && (
+              <button type="button" className={`btn btn-secondary ${s.btnTotal}`} onClick={() => onUsarComoEscala(redondearPuntos(total))}>
+                Que el examen valga {formatearPuntos(total)}
+              </button>
+            )}
+          </div>
         </div>
-        <div className={s.accionesTotal}>
-          <button
-            type="button"
-            className={`btn btn-secondary ${s.btnTotal}`}
-            onClick={repartirEnPartesIguales}
-            disabled={!puedeRepartir}
-            title="Pone los mismos puntos en cada pregunta para que el total sea la escala máxima"
-          >
-            {max !== null && max > 0 ? `Repartir ${formatearPuntos(max)} pts en partes iguales` : 'Repartir en partes iguales'}
-          </button>
-          {puedeUsarComoEscala && (
-            <button type="button" className={`btn btn-secondary ${s.btnTotal}`} onClick={() => onUsarComoEscala(redondearPuntos(total))}>
-              Usar {formatearPuntos(total)} como escala máxima
-            </button>
-          )}
-        </div>
-      </div>
+      )}
       <div className={s.aviso} aria-live="polite">
         {aviso}
       </div>
@@ -232,13 +270,36 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
         {anuncio}
       </div>
 
+      {preguntas.length === 0 && (
+        <div className={s.vacio}>
+          <h2 className={s.vacioTitulo}>¿Cómo querés empezar?</h2>
+          <p className="muted">Todo lo que genere la IA lo revisás vos antes de agregarlo al examen.</p>
+          <div className={s.vacioFila}>
+            <MenuAgregarPregunta onElegir={agregar} etiqueta="Escribir una pregunta" primario />
+            {hayCursoReal && (
+              <Link href={`/cursos/${cursoId}`} className="btn btn-ghost">
+                Duplicar un examen anterior
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      <PanelSugerirPreguntas
+        cursoId={cursoId}
+        preguntas={preguntas}
+        niveles={niveles}
+        onAgregar={agregarDeSugerencia}
+        onEditar={editarDeSugerencia}
+      />
+
       {preguntas.map((p, pi) => (
         <PreguntaCard
           key={pi}
           indice={pi}
           pregunta={p}
           onChange={(nueva) => onChange(preguntas.map((x, i) => (i === pi ? nueva : x)))}
-          onQuitar={() => onChange(preguntas.filter((_, i) => i !== pi))}
+          onQuitar={() => quitar(pi)}
           cantidadPreguntas={preguntas.length}
           niveles={niveles}
           matrices={matrices}
@@ -253,7 +314,7 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
         />
       ))}
 
-      <MenuAgregarPregunta onElegir={agregar} />
+      {preguntas.length > 0 && <MenuAgregarPregunta onElegir={agregar} />}
     </div>
   );
 }
@@ -266,7 +327,7 @@ const MENU_ALTO_IDEAL = 560;
  * uno con su descripción. Teclado: al abrir el foco va al primer ítem; flechas, Inicio y Fin se mueven entre ítems; Esc cierra y
  * devuelve el foco al botón; Tab cierra y sigue con el elemento que viene después del botón. Un click afuera también cierra.
  */
-function MenuAgregarPregunta({ onElegir }: { onElegir: (tipo: TipoPregunta) => void }) {
+function MenuAgregarPregunta({ onElegir, etiqueta = '+ Agregar pregunta', primario = false }: { onElegir: (tipo: TipoPregunta) => void; etiqueta?: string; primario?: boolean }) {
   const [abierto, setAbierto] = useState(false);
   const [lugar, setLugar] = useState<{ arriba: boolean; alto: number }>({ arriba: false, alto: 560 });
   const contenedor = useRef<HTMLDivElement>(null);
@@ -275,11 +336,10 @@ function MenuAgregarPregunta({ onElegir }: { onElegir: (tipo: TipoPregunta) => v
   const idMenu = useId();
 
   function abrir() {
-    // El botón está al final de la lista: el menú se abre del lado que tenga más lugar (sin quedar debajo de la barra superior
-    // pegada) y, si no entra entero, se queda con ese alto y se scrollea por dentro.
+    // El botón está al final de la lista: el menú se abre del lado que tenga más lugar (sin quedar debajo de la barra de puntos pegada) y, si no entra entero, se queda con ese alto y se scrollea por dentro.
     const r = boton.current?.getBoundingClientRect();
     if (r) {
-      const barra = document.querySelector('.topnav')?.getBoundingClientRect().bottom ?? 0;
+      const barra = 0; // sin barra superior (el menú es lateral)
       const abajo = window.innerHeight - r.bottom - 14;
       const arriba = r.top - Math.max(barra, 0) - 14;
       const hacerArriba = abajo < MENU_ALTO_IDEAL && arriba > abajo;
@@ -337,7 +397,7 @@ function MenuAgregarPregunta({ onElegir }: { onElegir: (tipo: TipoPregunta) => v
       <button
         ref={boton}
         type="button"
-        className="btn btn-secondary"
+        className={`btn ${primario ? 'btn-primary' : 'btn-secondary'}`}
         aria-haspopup="menu"
         aria-expanded={abierto}
         aria-controls={abierto ? idMenu : undefined}
@@ -349,7 +409,7 @@ function MenuAgregarPregunta({ onElegir }: { onElegir: (tipo: TipoPregunta) => v
           }
         }}
       >
-        + Agregar pregunta
+        {etiqueta}
       </button>
       {abierto && (
         <div ref={menu} id={idMenu} role="menu" aria-label="Tipo de pregunta para agregar" className={`${s.menu}${lugar.arriba ? ` ${s.menuArriba}` : ''}`} style={{ maxHeight: lugar.alto }} onKeyDown={alTeclear}>

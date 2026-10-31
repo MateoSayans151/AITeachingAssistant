@@ -1,5 +1,8 @@
 'use client';
 
+import { TabsExamen } from '@/app/components/TabsExamen';
+import { TituloEditable } from '@/app/components/TituloEditable';
+import { Cargando } from '@/app/components/Cargando';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -16,6 +19,7 @@ import {
   getExamen,
   listComisionesPorCurso,
   publicarExamenAComision,
+  renombrarExamen,
 } from '@/lib/api';
 import { fechaLocalAIso } from '@/lib/fechas';
 
@@ -55,6 +59,7 @@ export default function ExamenDetallePage() {
   const [dominioPermitido, setDominioPermitido] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
+  const [programar, setProgramar] = useState(false); // «Programar cuándo se abre y cuándo cierra»: apagado, las fechas no se piden
   const [loading, setLoading] = useState(false);
   const [eliminando, setEliminando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +88,7 @@ export default function ExamenDetallePage() {
   if (!examen) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="pagina" />
       </div>
     );
   }
@@ -138,11 +143,17 @@ export default function ExamenDetallePage() {
     }
   }
 
+  const origen = typeof window !== 'undefined' ? window.location.origin : '';
+  const hayPublicadas = (examen.comisiones ?? []).length > 0;
+
   return (
-    <div className="page">
+    <div className="page page-examen">
       <header className="page-header">
+        <Link href={`/cursos/${examen.cursoId}`} className="volver">
+          ← Volver al curso
+        </Link>
         <div className="eyebrow">Examen</div>
-        <h1>{examen.titulo}</h1>
+        <TituloEditable valor={examen.titulo} onCambiar={(titulo) => setExamen((e) => (e ? { ...e, titulo } : e))} onConfirmar={(titulo) => renombrarExamen(examen.id, titulo)} />
         <p>{examen.consigna}</p>
         {examen.antiCheat && (
           <p className="muted">
@@ -155,138 +166,166 @@ export default function ExamenDetallePage() {
         )}
       </header>
 
-      {error && <div className="error-box">{error}</div>}
-
-      <div style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Link href={`/examenes/${examen.id}/respuestas`} className="btn btn-primary">
-            Ver respuestas
-          </Link>
-          <Link
-            href={`/examenes/${examen.id}/vara`}
-            className="btn btn-secondary"
-            title="Subir o bajar las notas sugeridas por la IA con una regla, por ejemplo que apruebe el 60 % de los alumnos"
-          >
-            Ajustar vara
-          </Link>
+      <div className="examen-barra">
+        <TabsExamen examenId={examen.id} activa="examen" cantidadRespuestas={examen._count?.respuestas ?? 0} />
+        <div className="examen-barra-acciones">
           <Link href={`/examenes/nuevo?desde=${examen.id}`} className="btn btn-secondary">
             Duplicar y editar
           </Link>
           <button
             type="button"
-            className="btn btn-secondary"
-            style={{ color: 'var(--color-error)', borderColor: 'color-mix(in srgb, var(--color-error) 55%, transparent)' }}
+            className="btn btn-ghost btn-peligro"
             onClick={handleEliminar}
             disabled={conAlumnos || eliminando}
-            title={conAlumnos ? 'Ya hay alumnos que empezaron o entregaron' : undefined}
+            title={conAlumnos ? 'No se puede borrar: ya hay alumnos que empezaron o entregaron.' : 'Borra el examen y todo lo que tiene'}
           >
             {eliminando ? 'Eliminando…' : 'Eliminar examen'}
           </button>
         </div>
-        <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>
-          <strong>Ajustar vara:</strong> si la IA corrigió más estricto o más flojo de lo que esperabas, subí o bajá las notas sugeridas de todos con una
-          regla (por ejemplo, que aprueben el 60 %). Las respuestas que ya revisaste no cambian.
-        </p>
-        {conAlumnos && (
-          <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>
-            No se puede borrar: ya hay alumnos que empezaron o entregaron.
-          </p>
-        )}
-        {errorEliminar && (
-          <div className="error-box" style={{ marginTop: 12, marginBottom: 0 }}>
-            {errorEliminar}
-          </div>
-        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-title" style={{ marginBottom: 12 }}>
-          Preguntas ({examen.preguntas?.length ?? 0})
-        </div>
-        {examen.preguntas?.map((p, i) => (
-          <div key={p.id} style={{ marginBottom: 8 }}>
-            <strong>
-              {i + 1}. {p.enunciado}
-            </strong>{' '}
-            <span className="muted">— {fmtPts(puntajeEfectivo(p))} pts</span>
-          </div>
-        ))}
-        <div style={{ marginTop: 12 }}>
-          <strong>
+      {error && <div className="error-box">{error}</div>}
+      {errorEliminar && <div className="error-box">{errorEliminar}</div>}
+
+      <div className="examen-columnas">
+        <section className="card" aria-labelledby="titulo-preguntas">
+          <h2 id="titulo-preguntas" className="card-title" style={{ marginBottom: 'var(--space-4)' }}>
+            Preguntas ({examen.preguntas?.length ?? 0})
+          </h2>
+          <ol className="lista-preguntas">
+            {examen.preguntas?.map((p) => (
+              <li key={p.id}>
+                <span>{p.enunciado}</span>
+                <span className="muted lista-preguntas-pts">{fmtPts(puntajeEfectivo(p))} pts</span>
+              </li>
+            ))}
+          </ol>
+          <div className="lista-preguntas-total">
             Total: {fmtPts(puntajeTotal)} de {fmtPts(Number(examen.escalaMax))} pts
-          </strong>
-        </div>
-      </div>
+          </div>
+        </section>
 
-      <div className="card">
-        <div className="card-title" style={{ marginBottom: 12 }}>
-          Comisiones publicadas
-        </div>
+        <section className="card" aria-labelledby="titulo-publicacion">
+          <h2 id="titulo-publicacion" className="card-title" style={{ marginBottom: 'var(--space-4)' }}>
+            Publicación
+          </h2>
 
-        {(examen.comisiones ?? []).length === 0 && <div className="muted">Todavía no publicaste este examen a ninguna comisión.</div>}
+          {!hayPublicadas && <p className="muted">Todavía no publicaste este examen a ninguna comisión: elegí una abajo para generar el link.</p>}
 
-        {examen.comisiones?.map((ec) => (
-          <div key={ec.id} style={{ marginBottom: 12 }}>
-            <strong>{ec.comision?.nombre}</strong>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0' }}>
-              <span className="muted" style={{ fontSize: 13, wordBreak: 'break-all' }}>
-                {typeof window !== 'undefined' ? `${window.location.origin}/rendir/${ec.slugAcceso}` : ec.slugAcceso}
-              </span>
-              {typeof window !== 'undefined' && <CopiarLinkButton url={`${window.location.origin}/rendir/${ec.slugAcceso}`} />}
+          {examen.comisiones?.map((ec) => {
+            const url = `${origen}/rendir/${ec.slugAcceso}`;
+            return (
+              <div key={ec.id} className="publicacion">
+                <strong>{ec.comision?.nombre}</strong>
+                <div className="link-publico">{origen ? url : ec.slugAcceso}</div>
+                <div className="muted publicacion-detalle">
+                  {ec.fechaInicio ? `Se habilita ${new Date(ec.fechaInicio).toLocaleString('es-AR')}` : 'Habilitado desde ya'}
+                  {' · '}
+                  {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
+                  {' · '}
+                  {ec.accesoAbierto ? 'entra cualquiera con el link' : 'entran solo los de la lista'}
+                  {ec.verificarEmail ? ` · con código por mail${ec.dominioPermitido ? ` (solo @${ec.dominioPermitido})` : ''}` : ''}
+                </div>
+                <InvitarPorMail
+                  examenId={examen.id}
+                  examenComisionId={ec.id}
+                  cantidadAlumnos={ec.comision?._count?.alumnos ?? null}
+                  acciones={origen ? <CopiarLinkButton url={url} /> : undefined}
+                />
+              </div>
+            );
+          })}
+
+          {linkGenerado && (
+            <div className="error-box" style={{ background: 'var(--color-success-soft)', border: 'none', color: 'var(--color-success)' }}>
+              Link generado: {linkGenerado}
             </div>
-            <div className="muted" style={{ fontSize: 13 }}>
-              {ec.fechaInicio ? `Se habilita ${new Date(ec.fechaInicio).toLocaleString('es-AR')}` : 'Habilitado desde ya'}
-              {' · '}
-              {ec.fechaFin ? `cierra ${new Date(ec.fechaFin).toLocaleString('es-AR')}` : 'sin fecha de cierre'}
-              {' · '}
-              {ec.accesoAbierto ? 'entra cualquiera con el link' : 'entran solo los de la lista'}
-              {ec.verificarEmail ? ` · con código por mail${ec.dominioPermitido ? ` (solo @${ec.dominioPermitido})` : ''}` : ''}
+          )}
+
+          {comisionesDisponibles.length > 0 && (
+            <div className="form-publicar">
+              <h3>{hayPublicadas ? 'Publicar en otra comisión' : 'Publicar en una comisión'}</h3>
+
+              <div className="field">
+                <label htmlFor="pub-comision">Comisión</label>
+                <select id="pub-comision" value={comisionSeleccionada} onChange={(e) => setComisionSeleccionada(e.target.value)}>
+                  <option value="">Elegí una comisión…</option>
+                  {comisionesDisponibles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+                <p className="ayuda-campo">El grupo de alumnos que va a rendir con este link.</p>
+              </div>
+
+              <label className="switch-fila">
+                <span>
+                  <strong>Programar cuándo se abre y cuándo cierra</strong>
+                  <span className="ayuda-campo">{programar ? 'Elegí las fechas; podés dejar una vacía.' : 'Si no, se habilita ahora y no tiene fecha de cierre.'}</span>
+                </span>
+                <span className="switch">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={programar}
+                    onChange={(e) => {
+                      setProgramar(e.target.checked);
+                      if (!e.target.checked) {
+                        setFechaInicio('');
+                        setFechaFin('');
+                      }
+                    }}
+                    aria-label="Programar cuándo se abre y cuándo cierra"
+                  />
+                  <span className="switch-pista" aria-hidden="true" />
+                </span>
+              </label>
+
+              {programar && (
+                <div className="fila-campos">
+                  <div className="field">
+                    <label htmlFor="pub-inicio">Se habilita</label>
+                    <input id="pub-inicio" type="datetime-local" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="pub-fin">Cierra</label>
+                    <input id="pub-fin" type="datetime-local" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+                  </div>
+                </div>
+              )}
+
+              <div className="opciones-tarjetas">
+                <label className="opcion-tarjeta">
+                  <span>
+                    <strong>Solo los alumnos de mi lista</strong>
+                    <span className="ayuda-campo">{soloLista ? 'Entran únicamente los mails que cargaste.' : 'Hoy puede entrar cualquiera que tenga el link.'}</span>
+                  </span>
+                  <input type="checkbox" checked={soloLista} onChange={(e) => setSoloLista(e.target.checked)} />
+                </label>
+                <label className="opcion-tarjeta">
+                  <span>
+                    <strong>Pedir código por mail</strong>
+                    <span className="ayuda-campo">Cada alumno recibe un código de 6 dígitos: comprueba que el mail es suyo.</span>
+                  </span>
+                  <input type="checkbox" checked={verificarEmail} onChange={(e) => setVerificarEmail(e.target.checked)} />
+                </label>
+              </div>
+
+              {verificarEmail && !soloLista && (
+                <div className="field">
+                  <label htmlFor="pub-dominio">Dominio permitido (opcional)</label>
+                  <input id="pub-dominio" placeholder="alumnos.edu.ar" value={dominioPermitido} onChange={(e) => setDominioPermitido(e.target.value)} maxLength={100} />
+                  <p className="ayuda-campo">Si lo completás, solo entran mails de ese dominio.</p>
+                </div>
+              )}
+
+              <button className="btn btn-primary" onClick={handlePublicar} disabled={loading || !comisionSeleccionada}>
+                {loading ? 'Publicando…' : 'Publicar y generar link'}
+              </button>
             </div>
-            <InvitarPorMail examenId={examen.id} examenComisionId={ec.id} cantidadAlumnos={ec.comision?._count?.alumnos ?? null} />
-          </div>
-        ))}
-
-        {linkGenerado && (
-          <div className="error-box" style={{ background: 'var(--color-success-soft)', border: 'none', color: 'var(--color-success)' }}>
-            Link generado: {linkGenerado}
-          </div>
-        )}
-
-        {comisionesDisponibles.length > 0 && (
-          <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <select value={comisionSeleccionada} onChange={(e) => setComisionSeleccionada(e.target.value)}>
-              <option value="">Elegí una comisión…</option>
-              {comisionesDisponibles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-            <input type="datetime-local" aria-label="Se habilita (opcional)" title="Se habilita (opcional)" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
-            <input type="datetime-local" aria-label="Cierra (opcional)" title="Cierra (opcional)" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
-              <input type="checkbox" checked={soloLista} onChange={(e) => setSoloLista(e.target.checked)} />
-              Solo los alumnos de la lista
-            </label>
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 14 }} title="Los alumnos reciben un código de 6 dígitos por mail">
-              <input type="checkbox" checked={verificarEmail} onChange={(e) => setVerificarEmail(e.target.checked)} />
-              Pedir código por mail
-            </label>
-            {verificarEmail && !soloLista && (
-              <input
-                aria-label="Dominio permitido (opcional)"
-                title="Solo mails de este dominio (opcional)"
-                placeholder="dominio permitido, ej. alumnos.edu.ar"
-                value={dominioPermitido}
-                onChange={(e) => setDominioPermitido(e.target.value)}
-                maxLength={100}
-              />
-            )}
-            <button className="btn btn-primary" onClick={handlePublicar} disabled={loading || !comisionSeleccionada}>
-              {loading ? 'Publicando…' : 'Publicar / generar link'}
-            </button>
-          </div>
-        )}
+          )}
+        </section>
       </div>
     </div>
   );

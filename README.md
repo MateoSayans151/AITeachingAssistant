@@ -39,39 +39,30 @@ npm run dev
 
 ## Flujo del MVP
 
-1. El docente carga **consigna + rúbrica** una vez por trabajo práctico (`/trabajos/nuevo`).
-2. Carga las **entregas** de los alumnos en texto (`/trabajos/[id]/entregas/nueva`). Al guardar, el
-   backend arma un prompt (consigna + rúbrica + entrega) y le pide al LLM una salida estructurada
-   (JSON) con nota por criterio, nota total y feedback. La salida se valida en código antes de
-   guardarla (ver [Seguridad: inyección de prompt](#seguridad-inyección-de-prompt)).
-3. El docente **revisa** cada corrección (`/trabajos/[id]/revisar`): puede aceptarla tal cual o editar
-   la nota y el feedback antes de que se considere "final". Nada llega al alumno sin pasar por acá.
-4. Una vez que hay varias entregas corregidas, el docente puede generar un **resumen agregado del
-   curso** (`/trabajos/[id]/resumen`): un segundo prompt que identifica qué criterios o conceptos
-   generaron más dificultad entre los alumnos.
+1. El docente arma un **examen** de un curso (`/examenes/nuevo`): datos, preguntas (con la ayuda de la IA si quiere) y publicación.
+2. Publica un **link** para cada comisión y los alumnos rinden desde ahí (sin cuenta).
+3. Las preguntas que se corrigen solas se corrigen en código; las abiertas las corrige la IA con la rúbrica de la pregunta
+   (salida estructurada, validada en código: ver [Seguridad: inyección de prompt](#seguridad-inyección-de-prompt)).
+4. El docente **revisa** cada respuesta (`/examenes/[id]/respuestas`): puede aceptarla tal cual o editar las notas y el feedback.
+   Nada llega al alumno sin pasar por acá.
 
 No hay OCR ni carga de imágenes/PDF escaneado en este MVP — todo es texto plano, a propósito (ver el
 documento de contexto del proyecto).
 
-### Link para que los alumnos entreguen solos
+### Cursos con varios docentes
 
-Al crear un trabajo práctico se genera siempre un **link** (`/entregar/<slug>`, se ve y se copia en
-`/trabajos/[id]`) para mandárselo a los alumnos. En el formulario se elige solo lo mínimo:
+Un curso lo comparten los docentes de su **equipo** (pestaña «Docentes» en `/cursos/[id]`), todos con **los mismos permisos**: ver el
+curso, armar, editar y corregir exámenes, cargar material, manejar comisiones y sumar o sacar docentes. El acceso se decide por
+pertenencia al equipo (`curso_docentes`, ver `AccesoService`), no por quién creó el curso.
 
-- **Modo seguro** (sí/no): registra cuántas veces el alumno sale de pantalla completa, cambia de pestaña o pega
-  texto. Solo informa (nunca bloquea ni baja la nota); el alumno ve qué se monitorea y lo acepta antes de empezar.
-  Los contadores aparecen junto a cada entrega.
-- **Ventana de tiempo** (N minutos por alumno desde que empieza, hasta 24 h) **u horario fijo** (se abre y vence en
-  las fechas elegidas).
-
-El alumno no tiene cuenta: pone su nombre y su email, la consigna recién aparece al empezar (con el reloj del
-servidor ya corriendo), el texto se autoguarda y, al entregar o vencer el tiempo, se crea una **entrega común**: sigue
-el flujo de arriba (corrección de IA → revisión del docente). Cargar entregas a mano sigue funcionando. Los trabajos
-anteriores a esta función no tienen link.
-
-Limitaciones a propósito: el link es abierto (quien lo tiene puede entregar; la identidad es el email que escribe el
-alumno, un email = una entrega) y una ventana de tiempo no vence nunca como link (cada alumno tiene sus N minutos
-desde que empieza, sea cuando sea). Migración: `supabase/migrations/20261003_tp_link_alumnos.sql`.
+- **Agregar por email.** Si el docente ya tiene cuenta entra en el acto; si no, queda una *invitación* pendiente y entra solo cuando se
+  registre con ese email (confirmado). El email se normaliza (minúsculas, sin espacios) y repetir el alta no duplica nada.
+- **Sacar o salir.** Cualquiera del equipo puede sacar a otro o salir él mismo; el curso no puede quedar sin docentes (409). Si se va
+  quien lo creó, el «docente de referencia» (el que firma los mails a los alumnos, `cursos.docente_id`) pasa al miembro más antiguo.
+- **Autoría.** Cada examen guarda quién lo armó (`examenes.creado_por`) y la lista del curso lo muestra; no cambia los permisos.
+- **Lo que sigue siendo personal:** las matrices de rúbrica. Si alguien duplica el examen de un compañero con criterios que vienen de
+  una matriz ajena, el contenido de los criterios se copia igual y solo se descarta la referencia a la matriz de origen.
+- **Migración:** `20261031_cursos_con_varios_docentes.sql` (los cursos existentes arrancan con su creador como único miembro).
 
 ### Material de cátedra (Cátedra: cursos/exámenes)
 
@@ -88,18 +79,24 @@ la nota — no se evalúa como incorrecto un desarrollo válido solo porque no a
 
 ### Armar y publicar un examen (Cátedra)
 
-**Nuevo examen** (`/examenes/nuevo`) son 3 pasos: *Datos* → *Preguntas* → *Publicar*. Lo obligatorio del primer paso es el curso,
-el título y la consigna; el resto está plegado con un resumen de lo configurado (un error de validación vuelve a abrir el bloque):
+**Nuevo examen** (`/examenes/nuevo`) son 3 pasos: *Preguntas* → *Ajustes* → *Publicar*. El **título** es el encabezado de la página y se edita
+ahí mismo en todos los pasos (arranca como «Examen sin título» y, una vez creado el examen, también se puede cambiar: `PATCH /api/examenes/:id`).
+*Preguntas* tiene el curso (con varios cursos no se elige ninguno por defecto), la barra **«El examen vale N puntos»** y las preguntas. *Ajustes*
+va después a propósito, porque casi siempre alcanzan los valores por defecto: arriba el **control de integridad** (con su interruptor a la vista),
+las instrucciones para los alumnos y dos bloques plegados con un resumen de lo configurado (un error de validación los vuelve a abrir). El botón
+**Crear examen** (al final de *Ajustes*) crea el examen en el servidor y pasa a *Publicar*; recién ahí se manda el link.
 
-- **Cómo se rinde:** ventana de varios días o sesión con tiempo límite, escala de notas, liberación del feedback y señales de integridad.
-- **Opciones avanzadas:** la escala de **niveles de desempeño** (siempre personalizada: de **3 a 7 niveles**, 5 por defecto, con nombre
-  y porcentaje; el color se calcula solo, de rojo a verde) y la distribución esperada de aprobados que precarga la vara.
+- **Cómo se rinde:** ventana de varios días o sesión con tiempo límite y liberación del feedback.
+- **Control de integridad:** señales (pantalla completa, cambio de pestaña, pegado, capturas) que solo se registran; interruptor propio en *Ajustes*.
+- **Cómo corrige la IA:** la escala de **niveles de desempeño** (siempre personalizada: de **3 a 7 niveles**, 5 por defecto, con nombre
+  y porcentaje; el color es una rampa de un solo tono que se calcula sola), la nota mínima de la escala (casi siempre 0) y la distribución
+  esperada de aprobados que precarga la vara.
 - **Borrador automático:** mientras se arma, el formulario se guarda en el navegador (una clave por docente). Si se cierra la
-  pestaña, al volver se ofrece *Continuar donde lo dejé* o *Descartar*. Al crear el examen en el servidor el borrador se borra.
+  pestaña, al volver una franja ofrece *Continuar con ese* o *Descartar*; mientras no se elige, lo nuevo no se guarda y continuar pide confirmar. Al crear el examen en el servidor el borrador se borra.
 - **Preguntas:** 10 tipos, agrupados en *Se corrigen solas* (opción múltiple, casillas, verdadero/falso, numérica, relacionar
   pares) y *Las corrige la IA* (desarrollo, resolución de problema, demostración, análisis de caso, respuesta corta). Cada tarjeta se
   puede plegar, subir/bajar y duplicar. **La nota es la suma de puntos y el total tiene que ser igual a la escala máxima**
-  (el wizard muestra el total y *Repartir X pts en partes iguales*; el servidor lo vuelve a validar).
+  (un solo modelo: el examen vale N puntos y el sistema los reparte en partes iguales; la pregunta cuyos puntos se editan a mano queda fija y las demás absorben la diferencia, con *Volver a automático*; el servidor lo vuelve a validar).
 - **Relacionar pares:** el servidor entrega la columna derecha **mezclada** (con una semilla estable), porque en el orden en que se
   carga cada opción queda alineada con su pareja correcta.
 - **Rúbricas:** una pregunta abierta tiene sus *puntos* y cada criterio un *peso*; los puntos se reparten según el peso. El detalle
@@ -125,7 +122,7 @@ el título y la consigna; el resto está plegado con un resumen de lo configurad
 
 1. Creá un proyecto en [supabase.com](https://supabase.com).
 2. Andá a **SQL Editor** y corré el contenido de [`supabase/schema.sql`](./supabase/schema.sql).
-   Esto crea las 24 tablas del esquema (docentes, trabajos prácticos y sus entregas/correcciones; cursos,
+   Esto crea las tablas del esquema (docentes; cursos con su equipo docente,
    comisiones, alumnos, exámenes, preguntas, respuestas, intentos y eventos de integridad, vara auditable, índice
    RAG del material de cátedra, etc.) y deja la base al día: el archivo ya incluye el contenido de todas las
    migraciones de [`supabase/migrations/`](./supabase/migrations/), la de RLS del paso 3 incluida.
@@ -169,9 +166,11 @@ de cuáles te faltan podés correrlas todas:
 | `20261001_fase2_vara_auditable.sql` | `ajustes_vara`, `ajustes_vara_detalle` y la nota con vara por respuesta |
 | `20261002_endurecimiento_fallos_acceso.sql` | `fallos_acceso`: el freno a los intentos fallidos de código vive en la base |
 | `20261003_supabase_auth.sql` | `docentes.auth_user_id` (login con Supabase Auth) |
-| `20261003_tp_link_alumnos.sql` | Link de entrega de trabajos prácticos (`slug_acceso`, modo seguro, ventana) e `intentos_entrega` |
+| `20261003_tp_link_alumnos.sql` | *(histórica, no hace falta correrla: los trabajos prácticos ya no existen, ver `20261031_quitar_trabajos_practicos.sql`)* |
 | `20261004_rls_todas_las_tablas.sql` | RLS en todas las tablas, sin policies (paso 3) |
 | `20261028_otp_sesion_unica_y_capturas.sql` | Código de acceso por mail (`codigos_acceso`, `examen_comisiones.verificar_email` y `dominio_permitido`), sesión única y origen del intento, latido, `sesiones_intento`, `capturas_integridad` y los eventos nuevos. Todo es opt-in: lo ya publicado no cambia. **Volvé a correr después `20261004_rls_todas_las_tablas.sql`** (recorre las tablas existentes) y creá el bucket privado `capturas` en Supabase Storage |
+| `20261031_cursos_con_varios_docentes.sql` | `curso_docentes` (el equipo de cada curso), `curso_invitaciones`, `examenes.creado_por` y `cursos.docente_id` sin borrado en cascada. Los cursos existentes quedan con su creador como único miembro. **Correrla antes de desplegar el código nuevo**: el acceso a los cursos pasa a leer `curso_docentes` |
+| `20261031_quitar_trabajos_practicos.sql` | **Borra de forma permanente** los trabajos prácticos y todo lo que cuelga de ellos (rúbricas, entregas, correcciones, resúmenes, intentos con link). Exportá lo que quieras conservar antes de correrla |
 | `20261026_acceso_abierto.sql` | `examen_comisiones.acceso_abierto`: el link puede ser abierto (entra cualquiera) o solo para la lista. **Correrla antes de desplegar el código nuevo**: sin la columna, el back falla al leer cualquier link de examen |
 
 > Alternativa: en vez de correr `schema.sql` a mano, podés dejar que Prisma cree las tablas con
@@ -308,9 +307,8 @@ dos autoguardados), **huecos del latido** (más de 60 s sin señales) y el **lat
   `backend/`. Variables de entorno: las mismas de `.env`, más `FRONTEND_ORIGIN` apuntando a la URL de Vercel del
   frontend (para CORS).
   Por qué no serverless: el backend hace trabajo en segundo plano dentro del proceso: la corrección con IA se dispara
-  "fire and forget" al entregar (`respuestas-examen.service.ts`, y lo mismo al entregar un trabajo práctico desde el link),
-  y un `setInterval` cierra los intentos vencidos (`intentos.service.ts` para exámenes, `intentos-tp.service.ts` para
-  trabajos prácticos). En serverless el proceso se congela o se mata apenas se responde el request, así que esas tareas
+  "fire and forget" al entregar (`respuestas-examen.service.ts`),
+  y un `setInterval` cierra los intentos vencidos (`intentos.service.ts`). En serverless el proceso se congela o se mata apenas se responde el request, así que esas tareas
   pueden cortarse a la mitad o no correr nunca.
 - **DB**: ya vive en Supabase, no hace falta deployarla. Antes de abrir el deploy al público, verificá RLS con el `curl`
   del paso 3 de la [sección 1](#1-base-de-datos-supabase).
@@ -431,5 +429,4 @@ corrige a mano", no un problema de seguridad del proyecto.
   instalado), extracción de texto (no hay librería de PDF; un PDF escaneado necesitaría OCR), columnas de archivo y de estado de
   indexación, indexar en segundo plano y por lotes (hoy se piden todos los embeddings a la vez), límites (por ejemplo 10 MB por
   archivo y 20 archivos por curso) y la pantalla de subida con estados *Indexando / Listo / Error*.
-- Notificación al alumno en los trabajos prácticos: para exámenes ya existe (ver [Mails con la nota](#mails-con-la-nota-resend)); falta avisar cuando el docente confirma la corrección de una entrega.
-- Cola de trabajo para la corrección con IA en vez de ejecutarla sincrónicamente al crear la entrega.
+- Cola de trabajo para la corrección con IA en vez de ejecutarla sincrónicamente al entregar el examen.

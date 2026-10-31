@@ -611,7 +611,7 @@ await check('rúbrica: un criterio es nombre + qué se espera + puntos; los 5 ni
   assert.equal((await crear([{ nombre: 'Con niveles', descripcion: 'd', puntajeMaximo: 10, nivelesDescripcion: cinco }])).status, 201, 'los niveles detallados siguen valiendo');
   assert.equal((await crear([{ nombre: 'A medias', descripcion: 'd', puntajeMaximo: 10, nivelesDescripcion: cinco.slice(0, 3) }])).status, 400, 'o son los 5 o ninguno');
   assert.equal((await crear([{ nombre: 'Sin qué se espera', puntajeMaximo: 10 }])).status, 400);
-  assert.equal((await crear([])).status, 400, 'una pregunta abierta necesita al menos un criterio');
+  assert.equal((await crear([])).status, 201, 'una pregunta abierta sin criterios es válida: se guarda con un criterio general');
 });
 
 await check('flujo simple: curso nuevo + comisión con alumnos pegados + publicar, todo con la API que usa el asistente', async () => {

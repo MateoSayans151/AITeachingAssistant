@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
-// Rutas donde un 401 no significa "sesión vencida": /rendir y /entregar son del alumno (no tiene sesión de docente) y
+// Rutas donde un 401 no significa "sesión vencida": /rendir es del alumno (no tiene sesión de docente) y
 // /auth/me es justo donde se descubre que la cuenta no se puede usar (la pantalla de inicio muestra el motivo).
-const RUTAS_PUBLICAS = ['/auth/me', '/rendir/', '/entregar/'];
+const RUTAS_PUBLICAS = ['/auth/me', '/rendir/'];
 
 export class ApiError extends Error {
   constructor(
@@ -72,144 +72,17 @@ export interface Docente {
   email: string;
 }
 
-export interface CriterioRubrica {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  puntajeMaximo: string; // Prisma Decimal -> string en JSON
-  orden: number;
-}
-
-export interface TrabajoPractico {
-  id: string;
-  titulo: string;
-  materia: string | null;
-  consigna: string;
-  createdAt: string;
-  criterios: CriterioRubrica[];
-  _count?: { entregas: number };
-  entregas?: Entrega[];
-  // Link para los alumnos. Los TP anteriores al link no lo tienen (urlAcceso null).
-  urlAcceso?: string | null;
-  modoSeguro: boolean;
-  /** Ventana de tiempo: minutos por alumno. null = horario fijo. */
-  duracionMinutos: number | null;
-  /** Horario fijo: se abre en fechaInicio y vence en fechaFin. */
-  fechaInicio: string | null;
-  fechaFin: string | null;
-}
-
-export type ModalidadLink = 'ventana_tiempo' | 'horario_fijo';
-
+// Estados de una respuesta de examen: la IA la corrige (`estado`) y después la revisa el docente (`estadoRevision`).
 export type EstadoEntrega = 'pendiente_correccion' | 'corregido' | 'revisado';
 export type EstadoRevision = 'pendiente' | 'aceptada' | 'editada';
-
-export interface NotaPorCriterio {
-  criterioId: string;
-  nombre: string;
-  notaSugerida: number;
-  comentario: string;
-}
-
-export interface Correccion {
-  id: string;
-  modeloIa: string;
-  notaPorCriterio: NotaPorCriterio[];
-  notaTotalSugerida: string;
-  feedbackSugerido: string;
-  notaTotalFinal: string | null;
-  feedbackFinal: string | null;
-  estadoRevision: EstadoRevision;
-}
-
-export interface Entrega {
-  id: string;
-  alumnoNombre: string;
-  alumnoEmail: string | null;
-  textoTrabajo: string;
-  estado: EstadoEntrega;
-  createdAt: string;
-  correccion: Correccion | null;
-  /** Solo si el alumno entregó desde el link; trae las señales del modo seguro. */
-  intento?: {
-    inicioEn: string;
-    entregadoEn: string | null;
-    estado: EstadoIntento;
-    salidasPantalla: number;
-    cambiosPestana: number;
-    pegados: number;
-  } | null;
-}
-
-export interface ResumenCurso {
-  id: string;
-  contenido: string;
-  cantidadEntregasAnalizadas: number;
-  modeloIa: string;
-  generadoEn: string;
-}
 
 // ---- Docentes ----
 
 // Quién es el docente de la sesión (el login en sí lo hace Supabase Auth desde el navegador).
 export const getDocenteActual = () => request<Docente>('/auth/me');
 
-// ---- Trabajos prácticos ----
-
-export const listTrabajosPracticos = () => request<TrabajoPractico[]>('/trabajos-practicos');
-
-export const getTrabajoPractico = (id: string) => request<TrabajoPractico>(`/trabajos-practicos/${id}`);
-
-export const createTrabajoPractico = (data: {
-  titulo: string;
-  materia?: string;
-  consigna: string;
-  criterios: { nombre: string; descripcion: string; puntajeMaximo: number }[];
-  // Config del link para los alumnos (siempre se genera): lo que corresponde según la modalidad.
-  modoSeguro: boolean;
-  modalidad: ModalidadLink;
-  duracionMinutos?: number;
-  fechaInicio?: string;
-  fechaFin?: string;
-}) => request<TrabajoPractico>('/trabajos-practicos', { method: 'POST', body: JSON.stringify(data) });
-
-// ---- Entregas ----
-
-export const getEntrega = (id: string) =>
-  request<Entrega & { trabajoPractico: TrabajoPractico }>(`/entregas/${id}`);
-
-export const createEntrega = (data: {
-  trabajoPracticoId: string;
-  alumnoNombre: string;
-  alumnoEmail?: string;
-  textoTrabajo: string;
-}) => request<Entrega>('/entregas', { method: 'POST', body: JSON.stringify(data) });
-
-export const recorregirEntrega = (entregaId: string) =>
-  request<Entrega>(`/entregas/${entregaId}/recorregir`, { method: 'POST' });
-
-// ---- Correcciones ----
-
-export const revisarCorreccion = (
-  entregaId: string,
-  data: { estadoRevision: 'aceptada' | 'editada'; notaTotalFinal?: number; feedbackFinal?: string },
-) =>
-  request<Correccion>(`/entregas/${entregaId}/correccion`, {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
-
-// ---- Resumen de curso ----
-
-export const generarResumenCurso = (trabajoPracticoId: string) =>
-  request<ResumenCurso>(`/trabajos-practicos/${trabajoPracticoId}/resumen-curso`, { method: 'POST' });
-
-export const getUltimoResumenCurso = (trabajoPracticoId: string) =>
-  request<ResumenCurso | null>(`/trabajos-practicos/${trabajoPracticoId}/resumen-curso`);
-
 // ============================================================================
 // Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara.
-// Feature-set nuevo, en paralelo al flujo de arriba (TrabajoPractico/Entrega).
 // ============================================================================
 
 export interface Curso {
@@ -217,7 +90,7 @@ export interface Curso {
   nombre: string;
   materia: string | null;
   createdAt: string;
-  _count?: { comisiones: number; examenes: number };
+  _count?: { comisiones: number; examenes: number; equipo?: number };
   comisiones?: Comision[];
   examenes?: Examen[];
   materiales?: MaterialCurso[];
@@ -309,8 +182,6 @@ export type TipoEventoCliente =
   | 'pantalla_compartida_detenida'
   | 'superficie_no_permitida'
   | 'monitor_extendido';
-/** Los únicos eventos del flujo de trabajos prácticos (no tiene pantalla compartida). */
-export type TipoEventoEntrega = 'salida_pantalla_completa' | 'cambio_pestana' | 'pegado';
 /** Todos los eventos: además de los del navegador, los que deduce el servidor. */
 export type TipoEventoIntegridad =
   | TipoEventoCliente
@@ -410,6 +281,8 @@ export interface Examen {
   estado: EstadoExamen;
   antiCheat: AntiCheatConfig | null;
   createdAt: string;
+  /** Quién lo armó (los exámenes anteriores a los cursos con varios docentes no lo tienen). */
+  creadoPor?: { id: string; nombre: string } | null;
   preguntas?: Pregunta[];
   comisiones?: ExamenComision[];
   /**
@@ -435,6 +308,8 @@ export interface RespuestaPorPreguntaItem {
   notaSugerida: number;
   notaFinal: number | null;
   correcta?: boolean;
+  /** La devolución que dejó el docente sobre esta pregunta al revisar (ausente o null: todavía no la tocó; '': la quitó). */
+  feedbackFinal?: string | null;
   notaPorCriterio?: NotaPorCriterioPregunta[];
 }
 
@@ -483,6 +358,42 @@ export const createCurso = (data: { nombre: string; materia?: string }) =>
 export const listCursos = () => request<Curso[]>('/cursos');
 
 export const getCurso = (id: string) => request<Curso>(`/cursos/${id}`);
+
+// ---- Equipo docente de un curso: todos los docentes del curso tienen los mismos permisos ----
+
+export interface DocenteDelCurso {
+  id: string;
+  nombre: string;
+  email: string;
+  /** Desde cuándo está en el curso. */
+  desde: string;
+}
+
+/** Alguien invitado que todavía no tiene cuenta: apenas se registre con ese email entra al curso. */
+export interface InvitacionDelCurso {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface EquipoDelCurso {
+  docentes: DocenteDelCurso[];
+  invitaciones: InvitacionDelCurso[];
+}
+
+export const getEquipoCurso = (cursoId: string) => request<EquipoDelCurso>(`/cursos/${cursoId}/docentes`);
+
+/** Si el email ya tiene cuenta entra en el acto (`agregado`); si no, queda una invitación (`invitado`). Repetirlo no falla. */
+export const agregarDocenteCurso = (cursoId: string, email: string) =>
+  request<{ estado: 'agregado'; docente: { id: string; nombre: string; email: string } } | { estado: 'invitado'; email: string }>(
+    `/cursos/${cursoId}/docentes`,
+    { method: 'POST', body: JSON.stringify({ email }) },
+  );
+
+/** Saca a un docente del curso (o, si es uno mismo, sale del curso). El curso no puede quedar sin docentes (409). */
+export const quitarDocenteCurso = (cursoId: string, docenteId: string) => request<void>(`/cursos/${cursoId}/docentes/${docenteId}`, { method: 'DELETE' });
+
+export const quitarInvitacionCurso = (cursoId: string, invitacionId: string) => request<void>(`/cursos/${cursoId}/invitaciones/${invitacionId}`, { method: 'DELETE' });
 
 // ---- Comisiones y alumnos ----
 
@@ -576,6 +487,10 @@ export const getExamen = (id: string) => request<Examen>(`/examenes/${id}`);
 /** Borra un examen que nadie empezó ni entregó (si no, 409 con el motivo). Se van con él sus preguntas y los links publicados. */
 export const deleteExamen = (id: string) => request<void>(`/examenes/${id}`, { method: 'DELETE' });
 
+/** Cambia el nombre de un examen ya creado (se puede en cualquier momento, aunque haya alumnos rindiendo). */
+export const renombrarExamen = (id: string, titulo: string) =>
+  request<{ id: string; titulo: string }>(`/examenes/${id}`, { method: 'PATCH', body: JSON.stringify({ titulo }) });
+
 export const publicarExamenAComision = (
   examenId: string,
   data: { comisionId: string; fechaInicio?: string; fechaFin?: string; accesoAbierto?: boolean; verificarEmail?: boolean; dominioPermitido?: string },
@@ -598,6 +513,35 @@ export interface CriterioSugerido {
  */
 export const sugerirCriterios = (data: { enunciado: string; tipo: TipoPregunta; cantidad?: number; cantidadNiveles?: number }) =>
   request<{ criterios: CriterioSugerido[] }>('/examenes/sugerir-criterios', { method: 'POST', body: JSON.stringify(data) });
+
+// ---- Sugerir preguntas con IA (borrador para el docente; la IA propone, el docente verifica, edita y decide) ----
+export type DificultadPregunta = 'facil' | 'media' | 'dificil';
+
+export interface PreguntaSugerida {
+  tipo: TipoPregunta;
+  enunciado: string;
+  /** Solo en las cerradas, con la misma forma que se guarda en el examen (opción múltiple/casillas: [{id, texto, correcta}]; V/F: {correcta}; numérica: {respuestaCorrecta, tolerancia}; pares: {izquierda, derecha, paresCorrectos}). */
+  opciones?: unknown;
+  /** Por qué la respuesta correcta lo es (en las abiertas, qué debería contener una buena respuesta). */
+  explicacion: string;
+  /** De qué parte del material sale; null si no se pudo ubicar. */
+  fuente: { titulo: string; unidad: string | null } | null;
+}
+
+/**
+ * Pide hasta 8 preguntas de los `tipos` indicados, armadas con el material del curso. `temas` son unidades o títulos del material
+ * (o un tema escrito a mano); sin temas se usa todo el material. `existentes` son los enunciados que el examen ya tiene, para que la
+ * IA no los repita. `sinMaterial` viene en true si el curso no tiene material y las preguntas salen solo del tema.
+ */
+export const sugerirPreguntas = (data: {
+  cursoId: string;
+  tipos: TipoPregunta[];
+  cantidad?: number;
+  dificultad?: DificultadPregunta;
+  temas?: string[];
+  foco?: string;
+  existentes?: string[];
+}) => request<{ preguntas: PreguntaSugerida[]; sinMaterial: boolean }>('/examenes/sugerir-preguntas', { method: 'POST', body: JSON.stringify(data) });
 
 // ---- Vara: regla explícita y auditable (nunca pisa la nota sugerida) ----
 export type ModoVara = 'porcentaje' | 'puntos' | 'aprobados_esperados';
@@ -786,53 +730,6 @@ export const entregarIntento = (slug: string, token: string, respuestas?: Record
     ...conToken(token),
   });
 
-// ---- Entregar trabajo práctico (público: el alumno no tiene sesión de docente) ----
-// Flujo: info del link -> iniciar (nombre + email, y aceptar el aviso si hay modo seguro) ->
-// autoguardado / eventos / entrega con el token del intento que devuelve `iniciar`.
-
-export interface InfoEntregar {
-  trabajo: { titulo: string; materia: string | null; modoSeguro: boolean; duracionMinutos: number | null };
-  ventana: { estado: 'abierta' | 'no_abierta' | 'cerrada'; fechaInicio: string | null; fechaFin: string | null };
-}
-
-export interface EstadoIntentoEntregar {
-  /** Hora del servidor: el cliente corrige la diferencia de reloj con esto. */
-  ahora: string;
-  expiraEn: string;
-  borrador: string;
-  modoSeguro: boolean;
-  consigna: string;
-}
-
-export const getInfoEntregar = (slug: string) => request<InfoEntregar>(`/entregar/${slug}`);
-
-export const iniciarEntrega = (slug: string, data: { alumnoNombre: string; alumnoEmail: string; consentimiento?: boolean }) =>
-  request<EstadoIntentoEntregar & { token: string }>(`/entregar/${slug}/iniciar`, { method: 'POST', body: JSON.stringify(data) });
-
-export const getIntentoEntrega = (slug: string, token: string) =>
-  request<EstadoIntentoEntregar>(`/entregar/${slug}/intento`, conToken(token));
-
-export const guardarBorradorEntrega = (slug: string, token: string, texto: string) =>
-  request<{ guardadoEn: string }>(`/entregar/${slug}/borrador`, {
-    method: 'PUT',
-    body: JSON.stringify({ texto }),
-    ...conToken(token),
-  });
-
-export const registrarEventoEntrega = (slug: string, token: string, tipo: TipoEventoEntrega) =>
-  request<{ registrado: boolean }>(`/entregar/${slug}/eventos`, {
-    method: 'POST',
-    body: JSON.stringify({ tipo }),
-    ...conToken(token),
-  });
-
-export const enviarEntrega = (slug: string, token: string, texto?: string) =>
-  request<{ recibida: boolean; enviadoEn: string; aTiempo: boolean }>(`/entregar/${slug}/enviar`, {
-    method: 'POST',
-    body: JSON.stringify({ texto }),
-    ...conToken(token),
-  });
-
 // ---- Respuestas de examen (uso docente) ----
 
 export const listRespuestasPorExamen = (examenId: string) =>
@@ -848,7 +745,7 @@ export const revisarRespuestaExamen = (
     estadoRevision: 'aceptada' | 'editada';
     notaTotalFinal?: number;
     feedbackGeneralFinal?: string;
-    overridesPorPregunta?: { preguntaId: string; notaFinal: number }[];
+    overridesPorPregunta?: { preguntaId: string; notaFinal: number; feedbackFinal?: string }[];
   },
 ) => request<RespuestaExamen>(`/examenes/${examenId}/respuestas/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 

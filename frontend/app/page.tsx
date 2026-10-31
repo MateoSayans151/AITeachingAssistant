@@ -1,5 +1,6 @@
 'use client';
 
+import { Cargando } from '@/app/components/Cargando';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -34,7 +35,7 @@ export default function HomePage() {
   if (cargando) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="pagina" />
       </div>
     );
   }
@@ -43,26 +44,21 @@ export default function HomePage() {
     return <IdentificacionDocente errorSesion={errorSesion} />;
   }
 
+  // Cuántas respuestas esperan al docente en cada curso: se muestra en la card del curso para llegar directo a lo que hay que revisar.
+  const porRevisarDelCurso = new Map<string, number>();
+  for (const e of porRevisar) porRevisarDelCurso.set(e.cursoId, (porRevisarDelCurso.get(e.cursoId) ?? 0) + e.porRevisar);
+
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">AI Teaching Assistant</div>
-        <h1>Hola, {docente.nombre.split(' ')[0]}</h1>
-        <p>Armá un examen, mandales el link a tus alumnos y revisá las respuestas desde acá.</p>
+        <div className="eyebrow">Hola, {docente.nombre.split(' ')[0]}</div>
+        <h1>Tus cursos</h1>
+        <p>Entrá a un curso para armar exámenes, mandarles el link a tus alumnos y revisar sus respuestas.</p>
       </header>
 
-      <div style={{ marginBottom: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Link href="/examenes/nuevo" className="btn btn-primary">
-          + Nuevo examen
-        </Link>
-        <Link href="/cursos/nuevo" className="btn btn-secondary">
-          + Nuevo curso
-        </Link>
-      </div>
-
       {porRevisar.length > 0 && (
-        <section style={{ marginBottom: 32 }} aria-labelledby="para-revisar">
-          <h2 id="para-revisar" style={{ fontSize: 22, marginBottom: 14 }}>
+        <section style={{ marginBottom: 'var(--space-8)' }} aria-labelledby="para-revisar">
+          <h2 id="para-revisar" style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-3)' }}>
             Para revisar
           </h2>
           {porRevisar.map((examen) => (
@@ -78,51 +74,55 @@ export default function HomePage() {
         </section>
       )}
 
-      <section>
-        <h2 style={{ fontSize: 22, marginBottom: 14 }}>Tus cursos</h2>
+      {error && <div className="error-box">{error}</div>}
 
-        {error && <div className="error-box">{error}</div>}
+      {cursos === null && !error && <Cargando variante="cuadricula" />}
 
-        {cursos === null && !error && <p className="muted">Cargando…</p>}
-
-        {cursos?.length === 0 && (
-          <div className="empty-state">
-            Creá tu primer curso o armá un examen: si no tenés curso, el asistente te deja crear uno.
-          </div>
-        )}
-
-        {cursos?.map((curso) => (
-          <Link key={curso.id} href={`/cursos/${curso.id}`} className="card card-link">
-            <div className="card-title">{curso.nombre}</div>
-            <div className="card-meta">
-              {curso.materia ? `${curso.materia} · ` : ''}
-              {plural(curso._count?.comisiones ?? 0, 'comisión', 'comisiones')} · {plural(curso._count?.examenes ?? 0, 'examen', 'exámenes')}
-            </div>
-          </Link>
-        ))}
-      </section>
-
-      <hr className="hr" style={{ margin: '40px 0 24px' }} />
-
-      {/* Flujo simple (sin cursos ni comisiones): queda a mano pero fuera del camino principal. */}
-      <section>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>
-          Trabajos prácticos
-        </div>
-        <p className="muted" style={{ marginBottom: 14, maxWidth: '62ch' }}>
-          Para corregir entregas de una consigna con su rúbrica, sin armar curso ni comisiones.
-        </p>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Link href="/trabajos" className="btn btn-secondary">
-            Ver trabajos prácticos
-          </Link>
-          <Link href="/trabajos/nuevo" className="btn btn-secondary">
-            + Nuevo trabajo práctico
+      {cursos && (
+        <div className="cursos-grid">
+          {cursos.map((curso) => {
+            const pendientes = porRevisarDelCurso.get(curso.id) ?? 0;
+            return (
+              <Link key={curso.id} href={`/cursos/${curso.id}`} className="curso-card">
+                <span className="curso-card-sigla" aria-hidden="true">
+                  {siglaDe(curso.nombre)}
+                </span>
+                <span className="curso-card-cuerpo">
+                  <span className="curso-card-nombre">{curso.nombre}</span>
+                  <span className="curso-card-meta">
+                    {curso.materia ? `${curso.materia} · ` : ''}
+                    {plural(curso._count?.examenes ?? 0, 'examen', 'exámenes')} · {plural(curso._count?.comisiones ?? 0, 'comisión', 'comisiones')}
+                    {(curso._count?.equipo ?? 1) > 1 && ` · ${curso._count?.equipo} docentes`}
+                  </span>
+                </span>
+                {pendientes > 0 && <span className="curso-card-aviso">{plural(pendientes, 'para revisar', 'para revisar')}</span>}
+              </Link>
+            );
+          })}
+          <Link href="/cursos/nuevo" className="curso-card curso-card-nuevo">
+            <span className="curso-card-mas" aria-hidden="true">
+              +
+            </span>
+            <span className="curso-card-nombre">Nuevo curso</span>
+            <span className="curso-card-meta">{cursos.length === 0 ? 'Empezá creando tu primer curso' : 'Sumá otra materia o comisión'}</span>
           </Link>
         </div>
-      </section>
+      )}
     </div>
   );
+}
+
+/**
+ * Las iniciales del curso para el recuadro de la card: si el nombre arranca con una sigla («TI - Prueba…», «QA-Redes») esa sigla; si no, la
+ * inicial de las dos primeras palabras que importan («Redes de Datos» → «RD»); con una sola palabra, sus dos primeras letras.
+ */
+function siglaDe(nombre: string): string {
+  const limpio = nombre.trim();
+  const sigla = /^([\p{Lu}\p{N}]{2,3})(?![\p{L}\p{N}])/u.exec(limpio);
+  if (sigla) return sigla[1];
+  const palabras = limpio.split(/\s+/).filter((p) => /[\p{L}\p{N}]/u.test(p) && p.length > 2);
+  const letras = palabras.length >= 2 ? palabras[0][0] + palabras[1][0] : (palabras[0] ?? limpio).slice(0, 2);
+  return letras.toUpperCase();
 }
 
 type Modo = 'login' | 'registro' | 'recuperar';
@@ -224,7 +224,7 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
         </li>
       </ol>
 
-      <h2 style={{ fontSize: 22, marginBottom: 14 }}>
+      <h2 style={{ fontSize: 22, marginBottom: 16 }}>
         {confirmarEn ? 'Revisá tu mail' : modo === 'login' ? 'Entrá a tu cuenta' : modo === 'registro' ? 'Creá tu cuenta' : 'Recuperá tu contraseña'}
       </h2>
 
@@ -239,7 +239,7 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
 
       {confirmarEn && (
         <div className="card">
-          <p style={{ marginBottom: 10 }}>
+          <p style={{ marginBottom: 12 }}>
             Te mandamos un mail a <strong>{confirmarEn}</strong>. Abrí el link que trae para confirmar tu cuenta: te lleva directo a la app.
           </p>
           <p className="muted" style={{ marginBottom: 16 }}>

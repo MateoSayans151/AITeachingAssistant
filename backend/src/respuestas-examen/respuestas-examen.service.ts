@@ -9,6 +9,7 @@ import { MaterialCursoInput } from '../ai/ai.types';
 import { LimitadorConcurrencia, maxConcurrentesDesdeEnv } from '../ai/limitador-concurrencia.util';
 import { NotificacionesService } from '../mail/notificaciones.service';
 import { debeNotificarse } from './resultado.util';
+import { aplicarRevision } from './revision.util';
 
 type RespuestaPorPregunta = {
   preguntaId: string;
@@ -16,6 +17,8 @@ type RespuestaPorPregunta = {
   notaSugerida: number;
   notaFinal: number | null;
   correcta?: boolean;
+  /** La devolución que dejó el docente sobre esta pregunta al revisar (solo en las que corrige la IA). */
+  feedbackFinal?: string | null;
   notaPorCriterio?: Array<{ criterioId: string; nombre: string; nivelSugerido: number; notaSugerida: number; comentario: string }>;
 };
 
@@ -318,18 +321,7 @@ export class RespuestasExamenService {
       );
     }
 
-    const actuales = respuesta.respuestasPorPregunta as RespuestaPorPregunta[];
-    let respuestasPorPregunta: RespuestaPorPregunta[];
-
-    if (dto.estadoRevision === 'aceptada') {
-      respuestasPorPregunta = actuales.map((r) => ({ ...r, notaFinal: r.notaSugerida }));
-    } else {
-      const overridesPorId = new Map((dto.overridesPorPregunta ?? []).map((o) => [o.preguntaId, o.notaFinal]));
-      respuestasPorPregunta = actuales.map((r) => ({
-        ...r,
-        notaFinal: overridesPorId.has(r.preguntaId) ? overridesPorId.get(r.preguntaId)! : (r.notaFinal ?? r.notaSugerida),
-      }));
-    }
+    const respuestasPorPregunta = aplicarRevision(respuesta.respuestasPorPregunta as RespuestaPorPregunta[], dto.estadoRevision, dto.overridesPorPregunta);
 
     // Aceptar confirma la nota sugerida tal como está hoy: con la vara vigente, si tiene una.
     // Editar es decisión del docente y se impone a la vara.

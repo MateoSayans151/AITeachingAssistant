@@ -1,5 +1,6 @@
 'use client';
 
+import { SinSesion } from '@/app/components/SinSesion';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCurso } from '@/lib/api';
@@ -31,7 +32,7 @@ export default function NuevoCursoPage() {
   if (!docente) {
     return (
       <div className="page">
-        <p className="muted">Identificate primero desde el inicio.</p>
+        <SinSesion />
       </div>
     );
   }

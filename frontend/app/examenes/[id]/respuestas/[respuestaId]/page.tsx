@@ -1,5 +1,6 @@
 'use client';
 
+import { Cargando } from '@/app/components/Cargando';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,14 +10,17 @@ import {
   ExplicacionVara,
   Pregunta,
   RespuestaExamen,
+  TIPOS_AUTOCORREGIBLES,
   explicarVaraRespuesta,
   getRespuestaExamen,
   listRespuestasPorExamen,
   recorregirRespuestaExamen,
   revisarRespuestaExamen,
 } from '@/lib/api';
+import AutoTextarea from '@/app/components/AutoTextarea';
 import { RespuestaDelAlumno } from '@/app/components/RespuestaDelAlumno';
 import { CapturasIntento } from '@/app/components/CapturasIntento';
+import { devolucionInicial } from '@/lib/devolucion';
 import { navegacion } from '@/lib/navegacion-respuestas';
 import { formatearNota, plural } from '@/lib/texto';
 
@@ -107,6 +111,11 @@ function IntegridadCard({ integridad, examenId, respuestaId }: { integridad: Non
   );
 }
 
+/** ¿La corrige la IA con rúbrica (desarrollo, problema, demostración…)? Esas son las que llevan una devolución escrita. */
+function esDeLaIA(pregunta?: Pregunta): boolean {
+  return pregunta ? !TIPOS_AUTOCORREGIBLES.includes(pregunta.tipo) : false;
+}
+
 /** Puntaje máximo de la pregunta como número (viene como string de Prisma Decimal); null si no se pudo leer. */
 function puntajeMaximoDe(pregunta?: Pregunta): number | null {
   const max = pregunta ? Number(pregunta.puntajeMaximo) : NaN;
@@ -125,6 +134,8 @@ export default function DetalleRespuestaExamenPage() {
   const [explicacionVara, setExplicacionVara] = useState<ExplicacionVara | null>(null);
   const [notasFinales, setNotasFinales] = useState<Record<string, string>>({});
   const [notasInvalidas, setNotasInvalidas] = useState<Record<string, boolean>>({});
+  // La devolución de cada pregunta que corrige la IA, editable: arranca con lo que ya dejó el docente o, si no, con lo que comentó la IA.
+  const [devoluciones, setDevoluciones] = useState<Record<string, string>>({});
   const [feedbackFinal, setFeedbackFinal] = useState('');
   const [loading, setLoading] = useState(false);
   const [recorrigiendo, setRecorrigiendo] = useState(false);
@@ -143,6 +154,7 @@ export default function DetalleRespuestaExamenPage() {
             r.respuestasPorPregunta.map((rp) => [rp.preguntaId, String(rp.notaFinal ?? rp.notaSugerida)]),
           ),
         );
+        setDevoluciones(Object.fromEntries(r.respuestasPorPregunta.map((rp) => [rp.preguntaId, devolucionInicial(rp)])));
       })
       .catch((err) => {
         if (cancelado) return;
@@ -176,7 +188,7 @@ export default function DetalleRespuestaExamenPage() {
   if (!respuesta) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="pagina" />
       </div>
     );
   }
@@ -218,7 +230,7 @@ export default function DetalleRespuestaExamenPage() {
     // Antes de mandar nada: cada nota tiene que ser un número entre 0 y el puntaje máximo de su pregunta.
     const problemas: string[] = [];
     const invalidas: Record<string, boolean> = {};
-    const overridesPorPregunta: { preguntaId: string; notaFinal: number }[] = [];
+    const overridesPorPregunta: { preguntaId: string; notaFinal: number; feedbackFinal?: string }[] = [];
     actual.respuestasPorPregunta.forEach((rp, i) => {
       const crudo = (notasFinales[rp.preguntaId] ?? '').trim();
       const nota = crudo === '' ? NaN : Number(crudo);
@@ -230,7 +242,8 @@ export default function DetalleRespuestaExamenPage() {
         problemas.push(max !== null ? `la pregunta ${i + 1} tiene que estar entre 0 y ${max}` : `la pregunta ${i + 1} no puede ser negativa`);
         invalidas[rp.preguntaId] = true;
       } else {
-        overridesPorPregunta.push({ preguntaId: rp.preguntaId, notaFinal: nota });
+        const delIA = esDeLaIA(preguntasPorId.get(rp.preguntaId));
+        overridesPorPregunta.push({ preguntaId: rp.preguntaId, notaFinal: nota, ...(delIA ? { feedbackFinal: devoluciones[rp.preguntaId] ?? '' } : {}) });
       }
     });
     setNotasInvalidas(invalidas);
@@ -278,6 +291,7 @@ export default function DetalleRespuestaExamenPage() {
       setNotasFinales(
         Object.fromEntries(actualizada.respuestasPorPregunta.map((rp) => [rp.preguntaId, String(rp.notaSugerida)])),
       );
+      setDevoluciones(Object.fromEntries(actualizada.respuestasPorPregunta.map((rp) => [rp.preguntaId, devolucionInicial(rp)])));
       setNotasInvalidas({});
       explicarVaraRespuesta(params.id, params.respuestaId).then(setExplicacionVara).catch(() => setExplicacionVara(null));
     } catch (err) {
@@ -357,7 +371,10 @@ export default function DetalleRespuestaExamenPage() {
             <RespuestaDelAlumno pregunta={pregunta} contenido={rp.contenidoRespuesta} correcta={rp.correcta} />
 
             {rp.notaPorCriterio && rp.notaPorCriterio.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 16 }}>
+                <div className="muted" style={{ fontWeight: 600, marginBottom: 8 }}>
+                  Análisis de la IA por criterio
+                </div>
                 {rp.notaPorCriterio.map((c) => (
                   <div key={c.criterioId} style={{ marginBottom: 8 }}>
                     <strong>
@@ -368,6 +385,23 @@ export default function DetalleRespuestaExamenPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {esDeLaIA(pregunta) && (
+              <div className="field">
+                <label htmlFor={`devolucion-${rp.preguntaId}`}>Tu devolución sobre esta pregunta (editable)</label>
+                <AutoTextarea
+                  id={`devolucion-${rp.preguntaId}`}
+                  rows={3}
+                  value={devoluciones[rp.preguntaId] ?? ''}
+                  placeholder="Escribí qué estuvo bien y qué le faltó. Si la dejás vacía, no queda ninguna devolución para esta pregunta."
+                  onChange={(e) => setDevoluciones((prev) => ({ ...prev, [rp.preguntaId]: e.target.value }))}
+                  style={{ minHeight: 96 }}
+                />
+                <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                  Empieza con lo que comentó la IA: corregila a tu criterio. Se guarda cuando apretás «Guardar mis cambios».
+                </p>
               </div>
             )}
 

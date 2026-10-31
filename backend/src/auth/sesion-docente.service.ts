@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimsSupabase } from './verificador-sesion';
 
@@ -10,9 +10,14 @@ import { ClaimsSupabase } from './verificador-sesion';
  *     cuenta con el email de un docente y quedarse con sus datos.
  *  3. Con email confirmado: si existe un docente con ese email sin vincular (los de antes de Supabase Auth) se
  *     vincula; si no, se crea.
+ *
+ * Al vincularse o crearse por primera vez, el docente entra a los cursos a los que lo habían invitado con ese email (ver
+ * CursosService.agregarDocente). Solo en ese momento: en los pedidos de todos los días no se consulta.
  */
 @Injectable()
 export class SesionDocenteService {
+  private readonly logger = new Logger(SesionDocenteService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async resolver(claims: ClaimsSupabase): Promise<string> {
@@ -32,10 +37,12 @@ export class SesionDocenteService {
         // updateMany con authUserId null: si dos pedidos compiten, solo uno vincula.
         const r = await this.prisma.docente.updateMany({ where: { id: existente.id, authUserId: null }, data: { authUserId: claims.sub } });
         if (r.count === 0) throw new ConflictException('Ese email ya está asociado a otra cuenta');
+        await this.aceptarInvitaciones(existente.id, email);
         return existente.id;
       }
       const nombre = (typeof claims.user_metadata?.nombre === 'string' && claims.user_metadata.nombre.trim()) || email.split('@')[0];
       const creado = await this.prisma.docente.create({ data: { nombre, email, authUserId: claims.sub } });
+      await this.aceptarInvitaciones(creado.id, email);
       return creado.id;
     } catch (e: any) {
       if (e?.code !== 'P2002') throw e;
@@ -43,6 +50,26 @@ export class SesionDocenteService {
       const ahora = await this.prisma.docente.findUnique({ where: { authUserId: claims.sub }, select: { id: true } });
       if (ahora) return ahora.id;
       throw new ConflictException('Ese email ya está asociado a otra cuenta');
+    }
+  }
+
+  /**
+   * Convierte en membresías las invitaciones pendientes de este email. Si falla no se corta el inicio de sesión: el docente entra igual
+   * y quien lo invitó puede volver a agregarlo (agregarDocente es idempotente).
+   */
+  private async aceptarInvitaciones(docenteId: string, email: string) {
+    try {
+      const invitaciones = await this.prisma.cursoInvitacion.findMany({ where: { email }, select: { id: true, cursoId: true, invitadoPor: true } });
+      if (invitaciones.length === 0) return;
+      await this.prisma.$transaction([
+        this.prisma.cursoDocente.createMany({
+          data: invitaciones.map((i) => ({ cursoId: i.cursoId, docenteId, agregadoPor: i.invitadoPor })),
+          skipDuplicates: true,
+        }),
+        this.prisma.cursoInvitacion.deleteMany({ where: { id: { in: invitaciones.map((i) => i.id) } } }),
+      ]);
+    } catch (error) {
+      this.logger.error(`No se pudieron aceptar las invitaciones de un docente nuevo: ${(error as Error | undefined)?.name ?? 'error'}`);
     }
   }
 }

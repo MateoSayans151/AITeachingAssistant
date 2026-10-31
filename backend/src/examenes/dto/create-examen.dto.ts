@@ -72,7 +72,7 @@ export class CriterioPreguntaInputDto {
   puntajeMaximo: number;
 
   // Opcional: qué implica cada nivel de la escala del examen en este criterio. Sin esto, la IA juzga con la
-  // descripción del criterio y la escala general del examen (como en los trabajos prácticos). Ausente o [] = sin niveles
+  // descripción del criterio y la escala general del examen (como en una pregunta sin niveles detallados). Ausente o [] = sin niveles
   // detallados; si trae contenido tienen que ser TODOS los niveles de la escala (la cantidad depende de `niveles` del examen,
   // así que se valida en ExamenesService.create y no acá).
   @IsOptional()

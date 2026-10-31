@@ -1,64 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Curso, listCursos } from '@/lib/api';
-import { useDocente } from '@/lib/auth';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Cargando } from '@/app/components/Cargando';
 
+/** La lista de cursos es el inicio (`/`): esta dirección queda solo para no romper links y favoritos viejos. */
 export default function CursosPage() {
-  const docente = useDocente();
-  const [cursos, setCursos] = useState<Curso[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
+  const router = useRouter();
   useEffect(() => {
-    if (!docente) return;
-    listCursos()
-      .then(setCursos)
-      .catch((e) => setError(e.message));
-  }, [docente]);
-
-  if (!docente) {
-    return (
-      <div className="page">
-        <p className="muted">Identificate primero desde el inicio.</p>
-      </div>
-    );
-  }
-
+    router.replace('/');
+  }, [router]);
   return (
     <div className="page">
-      <header className="page-header">
-        <div className="eyebrow">Cursos y exámenes</div>
-        <h1>Tus cursos</h1>
-        <p>Cursos con sus comisiones y exámenes. Cada examen se publica a una o más comisiones.</p>
-      </header>
-
-      <div style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Link href="/examenes/nuevo" className="btn btn-primary">
-          + Nuevo examen
-        </Link>
-        <Link href="/cursos/nuevo" className="btn btn-secondary">
-          + Nuevo curso
-        </Link>
-      </div>
-
-      {error && <div className="error-box">{error}</div>}
-
-      {cursos === null && !error && <p className="muted">Cargando…</p>}
-
-      {cursos?.length === 0 && (
-        <div className="empty-state">Todavía no cargaste ningún curso.</div>
-      )}
-
-      {cursos?.map((curso) => (
-        <Link key={curso.id} href={`/cursos/${curso.id}`} className="card card-link">
-          <div className="card-title">{curso.nombre}</div>
-          <div className="card-meta">
-            {curso.materia ? `${curso.materia} · ` : ''}
-            {curso._count?.comisiones ?? 0} comisiones · {curso._count?.examenes ?? 0} exámenes
-          </div>
-        </Link>
-      ))}
+      <Cargando variante="cuadricula" />
     </div>
   );
 }

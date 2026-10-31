@@ -107,13 +107,13 @@ export function CapturasIntento({ examenId, respuestaId, cantidad }: { examenId:
             Cada captura tiene que mostrar el código <code>ID</code> de la barra del examen; si no coincide con el que emitió el servidor, aparece una advertencia.
             Se borran solas el {new Date(capturas[0].eliminarEn).toLocaleDateString('es-AR')}.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
             {capturas.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setAmpliada(c.id)}
-                style={{ textAlign: 'left', border: '1px solid var(--color-divider, #ddd)', borderRadius: 6, padding: 6, background: 'transparent', cursor: 'pointer' }}
+                style={{ textAlign: 'left', border: '1px solid var(--color-divider, #ddd)', borderRadius: 6, padding: 8, background: 'transparent', cursor: 'pointer' }}
               >
                 {imagenes[c.id] ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -136,7 +136,7 @@ export function CapturasIntento({ examenId, respuestaId, cantidad }: { examenId:
         <div style={{ marginTop: 12 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imagenes[elegida.id]} alt="Captura ampliada" style={{ maxWidth: '100%', borderRadius: 6, border: '1px solid var(--color-divider, #ddd)' }} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button type="button" className="btn btn-ghost" onClick={() => setAmpliada(null)}>
               Cerrar
             </button>

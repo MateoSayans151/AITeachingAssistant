@@ -2,7 +2,7 @@
 //   node --require ts-node/register --test test/material.test.ts   (o `npm test`)
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { MAX_ARCHIVO_BYTES as TOPE_FRONT, caracteresLegibles, problemaDelArchivo, tamanoLegible } from '../../frontend/lib/material';
+import { MAX_ARCHIVOS_POR_TANDA, MAX_ARCHIVO_BYTES as TOPE_FRONT, cantidadDeArchivos, caracteresLegibles, clasificarArchivos, problemaDelArchivo, tamanoLegible } from '../../frontend/lib/material';
 import { EXTENSIONES_SOPORTADAS, MAX_ARCHIVO_BYTES as TOPE_BACK } from '../src/materiales-curso/extractor-texto.util';
 
 test('los topes y formatos del navegador coinciden con los del servidor (si cambian allá, esto avisa)', () => {
@@ -43,4 +43,42 @@ test('caracteresLegibles: formato argentino y singular', () => {
   assert.equal(caracteresLegibles('a'), '1 carácter');
   assert.equal(caracteresLegibles(''), '0 caracteres');
   assert.equal(caracteresLegibles(undefined), '0 caracteres');
+});
+
+// ---------------------------------------------------------------------------
+// Varios archivos de una vez
+// ---------------------------------------------------------------------------
+const f = (name: string, size = 1000) => ({ name, size });
+
+test('clasificarArchivos: acepta los que sirven, en el orden en que se eligieron, y rechaza los que no con su motivo', () => {
+  const r = clasificarArchivos([f('a.pdf'), f('foto.png'), f('b.docx'), f('vacio.txt', 0), f('enorme.pdf', TOPE_BACK + 1)], []);
+  assert.deepEqual(r.aceptados.map((x) => x.name), ['a.pdf', 'b.docx']);
+  assert.deepEqual(r.rechazados.map((x) => x.nombre), ['foto.png', 'vacio.txt', 'enorme.pdf']);
+  assert.match(r.rechazados[0].motivo, /foto\.png/);
+  assert.match(r.rechazados[2].motivo, /máximo es 4 MB/);
+});
+
+test('clasificarArchivos: no repite lo que ya estaba elegido ni dos veces el mismo archivo de la misma tanda (mismo nombre y tamaño)', () => {
+  const r = clasificarArchivos([f('a.pdf'), f('a.pdf'), f('a.pdf', 2000), f('b.pdf')], [f('b.pdf')]);
+  assert.deepEqual(r.aceptados.map((x) => `${x.name}:${x.size}`), ['a.pdf:1000', 'a.pdf:2000']);
+  assert.equal(r.rechazados.length, 2);
+  assert.ok(r.rechazados.every((x) => /ya estaba en la lista/.test(x.motivo)));
+});
+
+test('clasificarArchivos: respeta el tope por tanda contando lo ya elegido, y avisa qué quedó afuera', () => {
+  const muchos = Array.from({ length: MAX_ARCHIVOS_POR_TANDA + 3 }, (_, i) => f(`apunte-${i}.pdf`));
+  const r = clasificarArchivos(muchos, []);
+  assert.equal(r.aceptados.length, MAX_ARCHIVOS_POR_TANDA);
+  assert.equal(r.rechazados.length, 3);
+  assert.match(r.rechazados[0].motivo, new RegExp(`hasta ${MAX_ARCHIVOS_POR_TANDA} archivos por vez`));
+  // Con lugar para uno solo, entra el primero y el resto no.
+  const casi = clasificarArchivos([f('x.pdf'), f('y.pdf')], Array.from({ length: MAX_ARCHIVOS_POR_TANDA - 1 }, (_, i) => f(`ya-${i}.pdf`)));
+  assert.deepEqual(casi.aceptados.map((x) => x.name), ['x.pdf']);
+  assert.deepEqual(casi.rechazados.map((x) => x.nombre), ['y.pdf']);
+});
+
+test('clasificarArchivos: sin archivos no hay nada que aceptar ni rechazar; cantidadDeArchivos concuerda en singular y plural', () => {
+  assert.deepEqual(clasificarArchivos([], []), { aceptados: [], rechazados: [] });
+  assert.equal(cantidadDeArchivos(1), '1 archivo');
+  assert.equal(cantidadDeArchivos(3), '3 archivos');
 });

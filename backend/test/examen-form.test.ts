@@ -13,6 +13,7 @@ import {
   criterioVacio,
   datosPorDefecto,
   examenAFormulario,
+  NOMBRE_CRITERIO_GENERAL,
   formatearPuntos,
   mensajesDelServidor,
   nivelDelMedio,
@@ -30,6 +31,7 @@ import {
   validarNiveles,
   validarPregunta,
 } from '../../frontend/lib/examen-form';
+import { tieneCriteriosCargados } from '../../frontend/lib/examen-preguntas';
 import type { CriterioForm, NivelForm, PreguntaForm } from '../../frontend/lib/examen-form';
 
 // ---------------------------------------------------------------------------
@@ -189,20 +191,17 @@ test('construirPregunta: no manda `plegada` ni ningún campo de interfaz', () =>
   }
 });
 
-test('validarPregunta: abiertas necesitan puntaje de la pregunta, y por criterio nombre, peso y descripción', () => {
+test('validarPregunta: abiertas necesitan puntaje de la pregunta; los criterios son opcionales pero el que se empieza pide nombre, peso y descripción', () => {
   assert.deepEqual(validarPregunta(abierta('10', ['1', '2']), 0), []);
 
   const sinPuntaje = validarPregunta(abierta('', ['1']), 1);
   assert.deepEqual(sinPuntaje, ['Pregunta 2: falta el puntaje de la pregunta.']);
 
-  // Un solo criterio todavía en blanco: no hay ninguno completo.
-  const sinCriterios = { ...abierta('5', []), criterios: [criterioVacio(NIVELES)] };
-  assert.deepEqual(validarPregunta(sinCriterios, 0), ['Pregunta 1: agregá al menos un criterio con su nombre y su peso.']);
-  // Un criterio con nombre pero sin peso: además de no haber ninguno completo, se marca qué le falta.
-  assert.deepEqual(validarPregunta(abierta('5', ['']), 0), [
-    'Pregunta 1: agregá al menos un criterio con su nombre y su peso.',
-    'Pregunta 1, criterio 1: falta el peso.',
-  ]);
+  // Los criterios son opcionales: sin ninguno (o con una fila todavía en blanco) la pregunta es válida.
+  assert.deepEqual(validarPregunta({ ...abierta('5', []), criterios: [] }, 0), []);
+  assert.deepEqual(validarPregunta({ ...abierta('5', []), criterios: [criterioVacio(NIVELES)] }, 0), []);
+  // Un criterio con nombre pero sin peso: se marca qué le falta.
+  assert.deepEqual(validarPregunta(abierta('5', ['']), 0), ['Pregunta 1, criterio 1: falta el peso.']);
 
   const incompleto = abierta('5', ['1', '2']);
   incompleto.criterios[1] = { ...incompleto.criterios[1], nombre: '', peso: '', descripcion: 'algo' };
@@ -320,6 +319,17 @@ test('examenAFormulario: el título lleva "(copia)" y el resto de los datos se n
   assert.equal(form.duracionMinutos, '90');
   assert.equal(form.feedbackModo, 'inmediato');
   assert.deepEqual(form.niveles, nivelesPorDefecto());
+});
+
+test('examenAFormulario: el criterio general que el servidor le pone a una abierta sin criterios no se copia como si fuera del docente', () => {
+  const general = { ...preguntaGuardada('desarrollo', 0), puntajeMaximo: '10.00', criterios: [{ ...critGuardado('g', 0, '10.00'), nombre: NOMBRE_CRITERIO_GENERAL }] } as unknown as Pregunta;
+  const pf = examenAFormulario(examenGuardado([general])).preguntas[0];
+  assert.equal(pf.puntajeMaximo, '10');
+  assert.equal(tieneCriteriosCargados(pf), false); // vuelve a quedar "sin criterios": no manda un criterio por su cuenta
+  assert.deepEqual(construirPregunta(pf).criterios, []);
+  // Un criterio común (aunque sea el único) sí se copia.
+  const unico = { ...preguntaGuardada('desarrollo', 1), criterios: [critGuardado('u', 0, '10.00')] } as unknown as Pregunta;
+  assert.equal(examenAFormulario(examenGuardado([unico])).preguntas[0].criterios.length, 1);
 });
 
 test('examenAFormulario: una abierta guardada con el modelo viejo (sin puntaje propio) toma como puntaje la suma de sus criterios', () => {
@@ -459,8 +469,9 @@ test('validarDatos: pide título y curso (la consigna es opcional); la escala; y
   const completo = { ...datosPorDefecto(), titulo: 'Parcial', consigna: 'Instrucciones', cursoElegido: 'c1' };
   assert.deepEqual(validarDatos(completo), []);
   assert.deepEqual(validarDatos({ ...completo, cursoElegido: 'nuevo' }), ['Falta el nombre del curso nuevo.']);
-  assert.deepEqual(validarDatos({ ...completo, escalaMin: '10' }), ['La escala mínima tiene que ser menor que la máxima.']);
-  assert.deepEqual(validarDatos({ ...completo, escalaMax: '' }), ['La escala necesita un mínimo y un máximo numéricos.']);
+  assert.deepEqual(validarDatos({ ...completo, escalaMin: '10' }), ['La nota mínima tiene que ser menor que los puntos del examen.']);
+  assert.deepEqual(validarDatos({ ...completo, escalaMax: '' }), ['Indicá cuántos puntos vale el examen (un número mayor que 0).']);
+  assert.deepEqual(validarDatos({ ...completo, escalaMin: 'x' }), ['La nota mínima tiene que ser un número (casi siempre 0).']);
   assert.deepEqual(validarDatos({ ...completo, modalidad: 'sesion_tiempo', duracionMinutos: '0' }), ['La duración tiene que ser de al menos 1 minuto.']);
   assert.deepEqual(validarDatos({ ...completo, distOn: true, umbralAprobacion: '11' }), ['La nota de aprobación tiene que estar entre 0 y 10 (la escala del examen).']);
   assert.deepEqual(validarDatos({ ...completo, distOn: true, aprobadosPct: '120' }), ['El porcentaje de aprobados esperado tiene que estar entre 0 y 100.']);

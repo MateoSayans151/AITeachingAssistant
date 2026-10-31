@@ -6,7 +6,7 @@
 
 /* ---- tarjeta ---- */
 .tarjeta {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   /* Al llevar el foco o el scroll a una tarjeta, que no quede tapada por la barra superior y el recuadro del total (ambos pegados). */
   scroll-margin-top: 150px;
 }
@@ -18,7 +18,7 @@
 
 /* ---- tarjeta plegada: UNA fila ---- */
 .tarjeta.plegada {
-  padding: 10px 14px;
+  padding: 12px 16px;
 }
 
 .fila {
@@ -46,7 +46,7 @@
 }
 
 .tipo {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -54,7 +54,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-error);
   white-space: nowrap;
@@ -94,7 +94,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
 }
 
 @media (min-width: 720px) {
@@ -109,7 +109,7 @@
 .cabecera {
   display: grid;
   align-items: center;
-  gap: 10px 12px;
+  gap: 12px 12px;
   margin-bottom: 12px;
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas:
@@ -153,9 +153,9 @@
 /* ---- botones de acción (Subir, Bajar, Duplicar, Editar/Plegar) ---- */
 .btnAccion.btnAccion {
   min-height: 34px;
-  padding: 5px 11px;
-  gap: 6px;
-  font-size: 13px;
+  padding: 4px 12px;
+  gap: 8px;
+  font-size: 14px;
 }
 
 .btnAccion svg {
@@ -189,7 +189,7 @@
   width: min(400px, calc(100vw - 2 * var(--space-8)));
   max-height: min(70vh, 560px);
   overflow-y: auto;
-  padding: 6px;
+  padding: 8px;
   background: #fff;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -202,12 +202,11 @@
 }
 
 .menuGrupo {
-  padding: 10px 10px 4px;
-  font-size: 11px;
+  padding: 12px 12px 4px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-accent-700);
+
+  color: var(--color-text);
 }
 
 .menuItem {
@@ -215,7 +214,7 @@
   flex-direction: column;
   gap: 1px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: transparent;
   border: 0;
   border-radius: var(--radius-md);
@@ -227,12 +226,12 @@
 
 .menuItem:hover,
 .menuItem:focus-visible {
-  background: var(--color-accent-100);
+  background: var(--color-surface);
   outline: none;
 }
 
 .menuItem:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--color-accent-active);
+  box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
 .menuItemTitulo {
@@ -241,7 +240,7 @@
 }
 
 .menuItemDesc {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
@@ -255,13 +254,13 @@
 
 .btnTotal.btnTotal {
   min-height: 34px;
-  padding: 5px 12px;
-  font-size: 13px;
+  padding: 4px 12px;
+  font-size: 14px;
 }
 
 .aviso {
-  margin: -6px 0 14px;
-  font-size: 13px;
+  margin: -8px 0 16px;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
@@ -272,7 +271,7 @@
 /* Una línea bajo el selector de tipo: si se corrige sola o la IA, y qué es. */
 .ayudaTipo {
   margin: 0 0 var(--space-3);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
@@ -283,7 +282,7 @@
 
 .ayudaOpciones {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
@@ -339,15 +338,15 @@
 
 .opcionEstado {
   min-width: 64px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-success);
 }
 
 .opcionQuitar {
   min-height: 34px;
-  padding: 4px 10px;
-  font-size: 13px;
+  padding: 4px 12px;
+  font-size: 14px;
 }
 
 @media (max-width: 520px) {
@@ -388,4 +387,182 @@
     right: 0;
     width: auto;
   }
+}
+
+
+/* ---- barra "El examen vale N puntos" (pegada debajo de la barra superior) ---- */
+.barraTotal {
+  position: sticky;
+  top: var(--topnav-h);
+  z-index: 25;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: 0 -8px 0 0 var(--color-bg), var(--shadow-sm); /* la franja de arriba tapa lo que pasa por detrás */
+}
+
+.barraTotal[data-estado='ok'] {
+  border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-border));
+}
+
+.barraTotal[data-estado='sobra'] {
+  border-color: color-mix(in srgb, var(--color-error) 45%, var(--color-border));
+}
+
+.totalCampo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.totalInput {
+  width: 72px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: var(--color-surface-raised);
+}
+
+.totalEstado {
+  flex: 1 1 200px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.barraTotal[data-estado='ok'] .totalEstado {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.barraTotal[data-estado='sobra'] .totalEstado {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+/* ---- sin preguntas: tres formas de empezar ---- */
+/* La lista de preguntas ocupa el alto que queda en la columna del asistente: sin preguntas, la tarjeta de inicio lo aprovecha. */
+.raiz {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.vacio {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.vacioTitulo {
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-1);
+}
+
+.vacioFila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* ---- puntos de una pregunta ---- */
+.campoPuntos {
+  max-width: 320px;
+}
+
+.puntosFila {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.puntosFila input {
+  width: 96px;
+  flex: none;
+}
+
+.puntosAuto {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ---- menú "⋯" de cada pregunta ---- */
+.menuPregRaiz {
+  position: relative;
+  display: inline-flex;
+}
+
+.btnMas {
+  padding-inline: var(--space-2);
+}
+
+.menuPreg {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 35;
+  min-width: 190px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.menuPregItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuPregItem:hover:not(:disabled),
+.menuPregItem:focus-visible {
+  background: var(--color-neutral-200);
+  outline: none;
+}
+
+.menuPregItem:disabled {
+  color: var(--color-text-tertiary);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.menuPregPeligro {
+  color: var(--color-error);
 }

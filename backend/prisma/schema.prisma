@@ -45,145 +45,19 @@ model Docente {
   authUserId   String?  @unique @map("auth_user_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
 
-  trabajosPracticos TrabajoPractico[]
-  cursos            Curso[]
-  matricesRubrica   MatrizRubrica[]
-  ajustesVara       AjusteVara[]
+  // Cursos que creó (ver Curso.docenteId) y cursos de los que forma parte (el equipo: incluye los que creó).
+  cursos               Curso[]
+  membresias           CursoDocente[]
+  invitacionesEnviadas CursoInvitacion[]
+  examenesCreados      Examen[]          @relation("ExamenCreadoPor")
+  matricesRubrica      MatrizRubrica[]
+  ajustesVara          AjusteVara[]
 
   @@map("docentes")
 }
 
-model TrabajoPractico {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  docenteId String   @map("docente_id") @db.Uuid
-  titulo    String
-  consigna  String
-  materia   String?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // Link para que los alumnos entreguen solos (/entregar/<slug>). null = TP anterior al link.
-  slugAcceso      String?   @unique @map("slug_acceso")
-  modoSeguro      Boolean   @default(false) @map("modo_seguro")
-  // Ventana de tiempo: minutos que tiene cada alumno desde que empieza. null = horario fijo.
-  duracionMinutos Int?      @map("duracion_minutos")
-  // Horario fijo: el link se abre en fechaInicio y vence en fechaFin.
-  fechaInicio     DateTime? @map("fecha_inicio")
-  fechaFin        DateTime? @map("fecha_fin")
-
-  docente        Docente           @relation(fields: [docenteId], references: [id], onDelete: Cascade)
-  criterios      CriterioRubrica[]
-  entregas       Entrega[]
-  resumenesCurso ResumenCurso[]
-  intentos       IntentoEntrega[]
-
-  @@index([docenteId])
-  @@map("trabajos_practicos")
-}
-
-model CriterioRubrica {
-  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  trabajoPracticoId String  @map("trabajo_practico_id") @db.Uuid
-  nombre            String
-  descripcion       String
-  puntajeMaximo     Decimal @map("puntaje_maximo")
-  orden             Int     @default(0)
-
-  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
-
-  @@index([trabajoPracticoId])
-  @@map("criterios_rubrica")
-}
-
-model Entrega {
-  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  trabajoPracticoId String        @map("trabajo_practico_id") @db.Uuid
-  alumnoNombre      String        @map("alumno_nombre")
-  alumnoEmail       String?       @map("alumno_email")
-  textoTrabajo      String        @map("texto_trabajo")
-  estado            EstadoEntrega @default(pendiente_correccion)
-  createdAt         DateTime      @default(now()) @map("created_at")
-
-  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
-  correccion      Correccion?
-  // Solo si el alumno entregó desde el link: de ahí salen las señales de integridad.
-  intento         IntentoEntrega?
-
-  @@index([trabajoPracticoId])
-  @@index([estado])
-  @@map("entregas")
-}
-
-// Un alumno entregando un trabajo práctico desde su link: el servidor fija cuándo empezó y cuándo
-// vence (el reloj del navegador es solo informativo) y guarda el borrador. Al entregar (o al
-// vencer) se convierte en una Entrega común, que sigue el flujo de siempre (IA → revisión docente).
-// El alumno no tiene cuenta: se identifica con el nombre y el email que escribe.
-model IntentoEntrega {
-  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  trabajoPracticoId     String        @map("trabajo_practico_id") @db.Uuid
-  alumnoNombre          String        @map("alumno_nombre")
-  alumnoEmail           String        @map("alumno_email")
-  inicioEn              DateTime      @default(now()) @map("inicio_en")
-  expiraEn              DateTime      @map("expira_en")
-  estado                EstadoIntento @default(en_curso)
-  borrador              String        @default("")
-  borradorActualizadoEn DateTime?     @map("borrador_actualizado_en")
-  // Cuándo aceptó el aviso de qué se monitorea (solo con modo seguro).
-  consentimientoEn      DateTime?     @map("consentimiento_en")
-  // Señales de integridad del modo seguro: contadores, no una fila por evento.
-  salidasPantalla       Int           @default(0) @map("salidas_pantalla")
-  cambiosPestana        Int           @default(0) @map("cambios_pestana")
-  pegados               Int           @default(0)
-  entregadoEn           DateTime?     @map("entregado_en")
-  // null si venció sin escribir nada: no se manda a corregir un texto vacío.
-  entregaId             String?       @unique @map("entrega_id") @db.Uuid
-  createdAt             DateTime      @default(now()) @map("created_at")
-
-  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
-  entrega         Entrega?        @relation(fields: [entregaId], references: [id], onDelete: SetNull)
-
-  @@unique([trabajoPracticoId, alumnoEmail])
-  @@index([estado, expiraEn])
-  @@map("intentos_entrega")
-}
-
-model Correccion {
-  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  entregaId         String         @unique @map("entrega_id") @db.Uuid
-  modeloIa          String         @map("modelo_ia")
-  notaPorCriterio   Json           @map("nota_por_criterio")
-  notaTotalSugerida Decimal        @map("nota_total_sugerida")
-  feedbackSugerido  String         @map("feedback_sugerido")
-  notaTotalFinal    Decimal?       @map("nota_total_final")
-  feedbackFinal     String?        @map("feedback_final")
-  estadoRevision    EstadoRevision @default(pendiente) @map("estado_revision")
-  revisadoEn        DateTime?      @map("revisado_en")
-  createdAt         DateTime       @default(now()) @map("created_at")
-
-  entrega Entrega @relation(fields: [entregaId], references: [id], onDelete: Cascade)
-
-  @@index([estadoRevision])
-  @@map("correcciones")
-}
-
-model ResumenCurso {
-  id                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  trabajoPracticoId          String   @map("trabajo_practico_id") @db.Uuid
-  contenido                  String
-  cantidadEntregasAnalizadas Int      @map("cantidad_entregas_analizadas")
-  modeloIa                   String   @map("modelo_ia")
-  generadoEn                 DateTime @default(now()) @map("generado_en")
-
-  trabajoPractico TrabajoPractico @relation(fields: [trabajoPracticoId], references: [id], onDelete: Cascade)
-
-  @@index([trabajoPracticoId])
-  @@map("resumenes_curso")
-}
-
 // ============================================================================
 // Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara de ajuste.
-// Todo lo de acá abajo es aditivo y convive con el flujo simple de arriba
-// (TrabajoPractico/Entrega/Correccion) sin tocarlo: son dos flujos distintos
-// que comparten Docente y AiService.
 // ============================================================================
 
 enum TipoPregunta {
@@ -246,6 +120,9 @@ enum EstadoExamen {
   @@map("estado_examen")
 }
 
+// Un curso lo comparten varios docentes (`equipo`), todos con los mismos permisos: el acceso se decide por pertenencia al equipo,
+// nunca por `docenteId`. `docenteId` es quien lo creó (el "docente de referencia" que firma los mails a los alumnos) y no se puede
+// borrar mientras tenga cursos: la baja de un docente no se lleva puesto un curso que usan otros.
 model Curso {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   docenteId String   @map("docente_id") @db.Uuid
@@ -253,13 +130,47 @@ model Curso {
   materia   String?
   createdAt DateTime @default(now()) @map("created_at")
 
-  docente    Docente         @relation(fields: [docenteId], references: [id], onDelete: Cascade)
-  comisiones Comision[]
-  examenes   Examen[]
-  materiales MaterialCurso[]
+  docente      Docente           @relation(fields: [docenteId], references: [id], onDelete: Restrict)
+  equipo       CursoDocente[]
+  invitaciones CursoInvitacion[]
+  comisiones   Comision[]
+  examenes     Examen[]
+  materiales   MaterialCurso[]
 
   @@index([docenteId])
   @@map("cursos")
+}
+
+// Pertenencia de un docente a un curso. Quien lo crea entra solo; los demás los suma alguien del equipo.
+model CursoDocente {
+  cursoId     String   @map("curso_id") @db.Uuid
+  docenteId   String   @map("docente_id") @db.Uuid
+  agregadoPor String?  @map("agregado_por") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  curso   Curso   @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  docente Docente @relation(fields: [docenteId], references: [id], onDelete: Cascade)
+
+  @@id([cursoId, docenteId])
+  @@index([docenteId])
+  @@map("curso_docentes")
+}
+
+// Invitación a un docente que todavía no tiene cuenta: apenas entra con ese email (confirmado) se suma al equipo.
+model CursoInvitacion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cursoId     String   @map("curso_id") @db.Uuid
+  // Siempre en minúsculas y sin espacios.
+  email       String
+  invitadoPor String?  @map("invitado_por") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  curso     Curso    @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  invitador Docente? @relation(fields: [invitadoPor], references: [id], onDelete: SetNull)
+
+  @@unique([cursoId, email])
+  @@index([email])
+  @@map("curso_invitaciones")
 }
 
 // Material de cátedra: apuntes/bibliografía en texto plano por curso (no por examen
@@ -360,9 +271,12 @@ model Examen {
   estado               EstadoExamen    @default(borrador)
   // Anti-cheat nivel 1: { pantallaCompleta, cambioPestana, pegado } (booleans). null = sin controles.
   antiCheat            Json?           @map("anti_cheat")
+  // Quién lo armó (los exámenes anteriores no lo tienen). Cualquiera del equipo del curso lo puede editar y corregir igual.
+  creadoPorId          String?         @map("creado_por") @db.Uuid
   createdAt            DateTime        @default(now()) @map("created_at")
 
   curso       Curso             @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  creadoPor   Docente?          @relation("ExamenCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
   preguntas   Pregunta[]
   comisiones  ExamenComision[]
   respuestas  RespuestaExamen[]
@@ -370,6 +284,7 @@ model Examen {
   ajustesVara AjusteVara[]
 
   @@index([cursoId])
+  @@index([creadoPorId])
   @@map("examenes")
 }
 

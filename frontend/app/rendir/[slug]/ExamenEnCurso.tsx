@@ -466,7 +466,7 @@ export default function ExamenEnCurso({
           justifyContent: 'space-between',
           gap: 12,
           flexWrap: 'wrap',
-          padding: '10px 0',
+          padding: '12px 0',
           marginBottom: 16,
           background: 'var(--color-bg, #fff)',
           borderBottom: '1px solid var(--color-divider, #ddd)',

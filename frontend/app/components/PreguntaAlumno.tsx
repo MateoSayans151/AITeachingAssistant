@@ -121,8 +121,8 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
       <>
         {cfg.izquierda.map((izq, k) => (
           // La clave lleva la posición: en la vista previa el docente puede tener textos repetidos mientras escribe.
-          <div key={`${k}-${izq}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
-            <div style={{ paddingTop: 10 }}>{izq}</div>
+          <div key={`${k}-${izq}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+            <div style={{ paddingTop: 12 }}>{izq}</div>
             <div className="field" style={{ marginBottom: 0 }}>
               <select
                 aria-label={`Elegí la pareja de ${izq}`}

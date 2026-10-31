@@ -1,12 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { Cargando } from '@/app/components/Cargando';
+import { FormEvent, useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { plural } from '@/lib/texto';
 import { caracteresLegibles, problemaDelArchivo, tamanoLegible } from '@/lib/material';
-import { Comision, Curso, MaterialCurso, ApiError, createMaterialCurso, eliminarMaterialCurso, getComision, getCurso, subirArchivoMaterialCurso } from '@/lib/api';
+import { useDocente } from '@/lib/auth';
+import {
+  Comision,
+  Curso,
+  EquipoDelCurso,
+  MaterialCurso,
+  ApiError,
+  agregarDocenteCurso,
+  createMaterialCurso,
+  eliminarMaterialCurso,
+  getComision,
+  getCurso,
+  getEquipoCurso,
+  quitarDocenteCurso,
+  quitarInvitacionCurso,
+  subirArchivoMaterialCurso,
+} from '@/lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
   borrador: 'Borrador',
@@ -17,7 +34,7 @@ const ESTADO_LABELS: Record<string, string> = {
 export default function CursoDetallePage() {
   const params = useParams<{ id: string }>();
   const [curso, setCurso] = useState<Curso | null>(null);
-  const [tab, setTab] = useState<'examenes' | 'material' | 'comisiones'>('examenes');
+  const [tab, setTab] = useState<'examenes' | 'material' | 'comisiones' | 'docentes'>('examenes');
   const [error, setError] = useState<string | null>(null);
 
   function recargar() {
@@ -39,7 +56,7 @@ export default function CursoDetallePage() {
   if (!curso) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="pagina" />
       </div>
     );
   }
@@ -47,19 +64,25 @@ export default function CursoDetallePage() {
   return (
     <div className="page">
       <header className="page-header">
+        <Link href="/" className="volver">
+          ← Tus cursos
+        </Link>
         <div className="eyebrow">{curso.materia ?? 'Curso'}</div>
         <h1>{curso.nombre}</h1>
       </header>
 
       <div className="tabs">
-        <button className={`tab ${tab === 'examenes' ? 'tab-active' : ''}`} onClick={() => setTab('examenes')}>
-          Exámenes ({curso.examenes?.length ?? 0})
-        </button>
         <button className={`tab ${tab === 'material' ? 'tab-active' : ''}`} onClick={() => setTab('material')}>
           Material ({curso.materiales?.length ?? 0})
         </button>
+        <button className={`tab ${tab === 'examenes' ? 'tab-active' : ''}`} onClick={() => setTab('examenes')}>
+          Exámenes ({curso.examenes?.length ?? 0})
+        </button>
         <button className={`tab ${tab === 'comisiones' ? 'tab-active' : ''}`} onClick={() => setTab('comisiones')}>
           Comisiones ({curso.comisiones?.length ?? 0})
+        </button>
+        <button className={`tab ${tab === 'docentes' ? 'tab-active' : ''}`} onClick={() => setTab('docentes')}>
+          Docentes
         </button>
       </div>
 
@@ -76,10 +99,12 @@ export default function CursoDetallePage() {
           )}
 
           {curso.examenes?.map((examen) => (
-            <Link key={examen.id} href={`/examenes/${examen.id}`} className="card card-link">
+            <div key={examen.id} className="card examen-fila">
+              <Link href={`/examenes/${examen.id}`} className="examen-fila-info">
               <div className="card-title">{examen.titulo}</div>
               <div className="card-meta">
                 {ESTADO_LABELS[examen.estado] ?? examen.estado}
+                {examen.creadoPor && ` · armado por ${examen.creadoPor.nombre}`}
                 {examen.resumenRespuestas && examen.resumenRespuestas.entregadas > 0 ? (
                   <>
                     {' · '}
@@ -95,12 +120,20 @@ export default function CursoDetallePage() {
                   ' · todavía sin entregas'
                 ) : null}
               </div>
-            </Link>
+              </Link>
+              {examen.resumenRespuestas && examen.resumenRespuestas.entregadas > 0 && (
+                <Link href={`/examenes/${examen.id}/respuestas`} className={`btn ${examen.resumenRespuestas.porRevisar > 0 ? 'btn-primary' : 'btn-secondary'}`}>
+                  {examen.resumenRespuestas.porRevisar > 0 ? `Revisar (${examen.resumenRespuestas.porRevisar})` : 'Ver respuestas'}
+                </Link>
+              )}
+            </div>
           ))}
         </>
       )}
 
       {tab === 'material' && <MaterialTab curso={curso} onChange={recargar} />}
+
+      {tab === 'docentes' && <EquipoTab cursoId={curso.id} />}
 
       {tab === 'comisiones' && (
         <>
@@ -116,6 +149,158 @@ export default function CursoDetallePage() {
 
           {curso.comisiones?.map((comision) => (
             <ComisionCard key={comision.id} comision={comision} />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Mensaje en castellano para un fallo al tocar el equipo (nunca el JSON crudo del servidor). */
+function mensajeErrorEquipo(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 400) return 'Revisá el email: no parece válido.';
+    if (err.status === 409) return 'El curso tiene que quedar con al menos un docente.';
+    if (err.status === 404) return 'Ese docente o ese curso ya no está disponible. Actualizá la página.';
+    if (err.status === 429) return 'Hiciste demasiados cambios seguidos. Esperá un minuto y probá de nuevo.';
+    if (err.status === 401) return 'Tu sesión venció. Volvé a iniciar sesión y probá de nuevo.';
+    return 'No pudimos hacer el cambio por un problema del servidor. Probá de nuevo en un momento.';
+  }
+  return 'No pudimos conectarnos con el servidor. Revisá tu conexión y probá de nuevo.';
+}
+
+/**
+ * Los docentes del curso. Todos tienen los mismos permisos (ver el curso, armar y corregir exámenes, cargar material, manejar
+ * comisiones y sumar o sacar docentes), así que no hay roles que explicar: se ve quién está, se suma por email y se saca.
+ * Si el email no tiene cuenta todavía queda como invitación y el curso aparece apenas se registre con ese email.
+ */
+function EquipoTab({ cursoId }: { cursoId: string }) {
+  const router = useRouter();
+  const yo = useDocente();
+  const confirmar = useConfirmar();
+  const [equipo, setEquipo] = useState<EquipoDelCurso | null>(null);
+  const [email, setEmail] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function recargar() {
+    getEquipoCurso(cursoId)
+      .then(setEquipo)
+      .catch((e) => setError(mensajeErrorEquipo(e)));
+  }
+
+  useEffect(recargar, [cursoId]);
+
+  async function agregar(e: FormEvent) {
+    e.preventDefault();
+    const limpio = email.trim();
+    if (!limpio || enviando) return;
+    setEnviando(true);
+    setError(null);
+    setAviso(null);
+    try {
+      const r = await agregarDocenteCurso(cursoId, limpio);
+      setAviso(
+        r.estado === 'agregado'
+          ? `${r.docente.nombre} ya forma parte del curso y puede verlo y trabajar en él.`
+          : `${r.email} todavía no tiene cuenta: va a ver el curso apenas se registre con ese email.`,
+      );
+      setEmail('');
+      recargar();
+    } catch (err) {
+      setError(mensajeErrorEquipo(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function quitar(docenteId: string, nombre: string, esUno: boolean) {
+    const ok = await confirmar(
+      esUno
+        ? { titulo: '¿Salir del curso?', mensaje: 'Vas a dejar de ver este curso y sus exámenes. Cualquiera de los docentes que quedan puede volver a sumarte.', textoConfirmar: 'Salir del curso', peligrosa: true }
+        : { titulo: `¿Sacar a ${nombre}?`, mensaje: `${nombre} va a dejar de ver este curso. Los exámenes que armó se quedan en el curso.`, textoConfirmar: 'Sacar', peligrosa: true },
+    );
+    if (!ok) return;
+    setError(null);
+    setAviso(null);
+    try {
+      await quitarDocenteCurso(cursoId, docenteId);
+      if (esUno) {
+        router.push('/cursos');
+        return;
+      }
+      recargar();
+    } catch (err) {
+      setError(mensajeErrorEquipo(err));
+    }
+  }
+
+  async function cancelarInvitacion(id: string) {
+    setError(null);
+    try {
+      await quitarInvitacionCurso(cursoId, id);
+      recargar();
+    } catch (err) {
+      setError(mensajeErrorEquipo(err));
+    }
+  }
+
+  return (
+    <div>
+      <p className="muted" style={{ marginBottom: 16, maxWidth: '62ch' }}>
+        Los docentes del curso pueden ver y hacer lo mismo: armar y corregir exámenes, cargar material, manejar comisiones y sumar o sacar a otros
+        docentes.
+      </p>
+
+      <form onSubmit={agregar} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+        <label className="field" style={{ flex: '1 1 280px', margin: 0 }}>
+          <span>Email del docente</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="docente@universidad.edu.ar" maxLength={200} autoComplete="off" />
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={enviando || !email.trim()}>
+          {enviando ? 'Agregando…' : 'Agregar docente'}
+        </button>
+      </form>
+
+      <div aria-live="polite">
+        {aviso && <div className="muted" style={{ marginBottom: 12 }}>{aviso}</div>}
+        {error && <div className="error-box" style={{ marginBottom: 12 }}>{error}</div>}
+      </div>
+
+      {equipo === null && !error && <Cargando />}
+
+      {equipo?.docentes.map((d) => {
+        const esUno = d.id === yo?.id;
+        return (
+          <div key={d.id} className="card" style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div>
+              <div className="card-title">
+                {d.nombre}
+                {esUno && <span className="badge badge-revisado" style={{ marginLeft: 8 }}>Vos</span>}
+              </div>
+              <div className="card-meta">{d.email}</div>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={() => quitar(d.id, d.nombre, esUno)} disabled={equipo.docentes.length <= 1} title={equipo.docentes.length <= 1 ? 'El curso tiene que quedar con al menos un docente' : undefined}>
+              {esUno ? 'Salir del curso' : 'Sacar'}
+            </button>
+          </div>
+        );
+      })}
+
+      {equipo && equipo.invitaciones.length > 0 && (
+        <>
+          <div className="eyebrow" style={{ margin: '20px 0 8px' }}>Invitaciones pendientes</div>
+          {equipo.invitaciones.map((i) => (
+            <div key={i.id} className="card" style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <div>
+                <div className="card-title">{i.email}</div>
+                <div className="card-meta">Todavía no tiene cuenta: entra al curso apenas se registre con este email.</div>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={() => cancelarInvitacion(i.id)}>
+                Cancelar invitación
+              </button>
+            </div>
           ))}
         </>
       )}
@@ -330,7 +515,7 @@ function MaterialTab({ curso, onChange }: { curso: Curso; onChange: () => void }
                 }}
               />
             </div>
-            <p className="muted" id="mArchivoAyuda" style={{ marginTop: 6, fontSize: 13 }}>
+            <p className="muted" id="mArchivoAyuda" style={{ marginTop: 8, fontSize: 13 }}>
               Hasta 4 MB. Se lee el texto del archivo; los PDF escaneados (imágenes) todavía no se pueden leer.
             </p>
           </div>

@@ -1,5 +1,7 @@
 'use client';
 
+import { TabsExamen } from '@/app/components/TabsExamen';
+import { Cargando } from '@/app/components/Cargando';
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useParams } from 'next/navigation';
@@ -91,6 +93,9 @@ export default function RespuestasExamenPage() {
   const [sondeoAgotado, setSondeoAgotado] = useState(false);
   // Se incrementa al pedir otra corrección para que el sondeo arranque con su ventana de 3 minutos de nuevo.
   const [sondeoVuelta, setSondeoVuelta] = useState(0);
+  // Filtro y búsqueda de la lista: con una cursada entera (60, 120 alumnos) encontrar a alguien o ver solo lo pendiente es lo primero que se hace.
+  const [filtro, setFiltro] = useState<'todas' | Categoria>('todas');
+  const [busqueda, setBusqueda] = useState('');
 
   const montado = useRef(true);
   useEffect(() => {
@@ -227,7 +232,7 @@ export default function RespuestasExamenPage() {
   if (!examen || !respuestas) {
     return (
       <div className="page">
-        <p className="muted">Cargando…</p>
+        <Cargando variante="pagina" />
       </div>
     );
   }
@@ -241,26 +246,65 @@ export default function RespuestasExamenPage() {
   const hayIntegridad = Boolean(examen?.antiCheat) || respuestas.some((r) => (r.intento?.eventos ?? 0) > 0 || r.intento?.estado === 'vencido');
   const ocupado = aceptando || corrigiendo;
 
+  const normalizar = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const consulta = normalizar(busqueda.trim());
+  const visibles = respuestas.filter(
+    (r) =>
+      (filtro === 'todas' || categoriaDe(r) === filtro) &&
+      (consulta === '' || normalizar(`${r.alumno?.nombre ?? ''} ${r.alumno?.email ?? ''}`).includes(consulta)),
+  );
+  const primeraParaRevisar = respuestas.find((r) => categoriaDe(r) === 'para_revisar');
+  const filtros: { valor: 'todas' | Categoria; etiqueta: string; cantidad: number }[] = [
+    { valor: 'todas', etiqueta: 'Todas', cantidad: respuestas.length },
+    { valor: 'para_revisar', etiqueta: 'Para revisar', cantidad: paraRevisar },
+    ...(sinCorregir > 0 ? [{ valor: 'sin_corregir' as const, etiqueta: 'Sin corregir', cantidad: sinCorregir }] : []),
+    { valor: 'aceptada', etiqueta: 'Aceptadas', cantidad: respuestas.filter((r) => categoriaDe(r) === 'aceptada').length },
+    { valor: 'editada', etiqueta: 'Editadas', cantidad: respuestas.filter((r) => categoriaDe(r) === 'editada').length },
+  ];
+
   return (
     <div className="page">
       <header className="page-header">
-        <div className="eyebrow">{examen.titulo}</div>
-        <h1>Respuestas ({respuestas.length})</h1>
+        <Link href={`/cursos/${examen.cursoId}`} className="volver">
+          ← Volver al curso
+        </Link>
+        <div className="eyebrow">Examen</div>
+        <h1>{examen.titulo}</h1>
       </header>
 
+      <TabsExamen examenId={examen.id} activa="respuestas" cantidadRespuestas={respuestas.length} />
+
       {respuestas.length > 0 && (
-        <p style={{ marginBottom: 16 }}>
-          <strong>{sinCorregir}</strong> sin corregir por la IA · <strong>{paraRevisar}</strong> para revisar · <strong>{revisadas}</strong>{' '}
-          {revisadas === 1 ? 'revisada' : 'revisadas'}
-        </p>
+        <div className="filtros-respuestas">
+          <div className="filtros" role="group" aria-label="Filtrar respuestas">
+            {filtros.map((f) => (
+              <button key={f.valor} type="button" className="filtro" aria-pressed={filtro === f.valor} onClick={() => setFiltro(f.valor)}>
+                {f.etiqueta} <span className="filtro-cantidad">{f.cantidad}</span>
+              </button>
+            ))}
+          </div>
+          <input
+            type="search"
+            className="busqueda"
+            placeholder="Buscar alumno por nombre o email"
+            aria-label="Buscar alumno"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
       )}
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+        {primeraParaRevisar && (
+          <Link href={`/examenes/${examen.id}/respuestas/${primeraParaRevisar.id}`} className="btn btn-primary">
+            Empezar a revisar ({paraRevisar})
+          </Link>
+        )}
         <button
-          className="btn btn-primary"
+          className={`btn ${primeraParaRevisar ? 'btn-secondary' : 'btn-primary'}`}
           onClick={handleBulkAceptar}
           disabled={ocupado || aceptables === 0}
-          title={aceptables === 0 ? 'No hay sugerencias de la IA esperando tu revisión.' : undefined}
+          title={aceptables === 0 ? 'No hay sugerencias de la IA esperando tu revisión.' : 'Confirma de una vez todas las notas que sugirió la IA, sin revisarlas una por una'}
         >
           {aceptando ? 'Aceptando…' : `Aceptar ${aceptables === 1 ? '1 sugerencia' : `${aceptables} sugerencias`} de la IA`}
         </button>
@@ -269,22 +313,9 @@ export default function RespuestasExamenPage() {
             {corrigiendo ? 'Enviando…' : 'Corregir pendientes con IA'}
           </button>
         )}
-        <button className="btn btn-secondary" onClick={() => exportarCsv(examen, respuestas)} disabled={respuestas.length === 0}>
+        <button className="btn btn-ghost" onClick={() => exportarCsv(examen, respuestas)} disabled={respuestas.length === 0}>
           Exportar CSV
         </button>
-      </div>
-
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-title" style={{ marginBottom: 8 }}>
-          Notas para los alumnos
-        </div>
-        <LiberarNotasButton
-          examenId={examen.id}
-          feedbackModo={examen.feedbackModo}
-          liberadoEn={examen.feedbackLiberadoEn}
-          revisadas={revisadas}
-          onChange={(actualizado) => setExamen((prev) => (prev ? { ...prev, feedbackLiberadoEn: actualizado.feedbackLiberadoEn } : prev))}
-        />
       </div>
 
       {errorAccion && (
@@ -322,12 +353,17 @@ export default function RespuestasExamenPage() {
               </tr>
             </thead>
             <tbody>
-              {respuestas.map((r) => {
+              {visibles.map((r) => {
                 const categoria = categoriaDe(r);
                 const estado = ESTADO_UI[categoria];
                 return (
                   <tr key={r.id}>
-                    <td>{r.alumno?.nombre}</td>
+                    <td>
+                      <Link href={`/examenes/${examen.id}/respuestas/${r.id}`} className="enlace-fila">
+                        {r.alumno?.nombre}
+                      </Link>
+                      {r.alumno?.email && <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>{r.alumno.email}</div>}
+                    </td>
                     <td title={categoria === 'sin_corregir' ? 'La IA todavía no corrigió esta respuesta, así que no hay nota sugerida.' : undefined}>
                       {categoria === 'sin_corregir' ? '—' : formatearNota(r.notaTotalSugerida)}
                     </td>
@@ -356,6 +392,28 @@ export default function RespuestasExamenPage() {
           </table>
         </div>
       )}
+
+      {respuestas.length > 0 && visibles.length === 0 && (
+        <div className="empty-state">
+          Ninguna respuesta coincide con ese filtro o búsqueda.{' '}
+          <button type="button" className="btn btn-ghost" onClick={() => { setFiltro('todas'); setBusqueda(''); }}>
+            Ver todas
+          </button>
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <div className="card-title" style={{ marginBottom: 8 }}>
+          Notas para los alumnos
+        </div>
+        <LiberarNotasButton
+          examenId={examen.id}
+          feedbackModo={examen.feedbackModo}
+          liberadoEn={examen.feedbackLiberadoEn}
+          revisadas={revisadas}
+          onChange={(actualizado) => setExamen((prev) => (prev ? { ...prev, feedbackLiberadoEn: actualizado.feedbackLiberadoEn } : prev))}
+        />
+      </div>
     </div>
   );
 }

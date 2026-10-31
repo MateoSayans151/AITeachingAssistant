@@ -40,7 +40,7 @@ function mensajeDeSesion(e: unknown): string {
       /* cuerpo no JSON */
     }
   }
-  return 'No se pudo verificar tu sesión. ¿Está corriendo el backend?';
+  return 'No pudimos verificar tu sesión. Revisá tu conexión y probá de nuevo en un momento.';
 }
 
 let usuarioVerificado: string | null = null;

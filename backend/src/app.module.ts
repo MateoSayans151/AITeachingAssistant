@@ -7,10 +7,6 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
 import { AccesoModule } from './acceso/acceso.module';
-import { TrabajosPracticosModule } from './trabajos-practicos/trabajos-practicos.module';
-import { EntregasModule } from './entregas/entregas.module';
-import { CorreccionesModule } from './correcciones/correcciones.module';
-import { ResumenCursoModule } from './resumen-curso/resumen-curso.module';
 import { CursosModule } from './cursos/cursos.module';
 import { ComisionesModule } from './comisiones/comisiones.module';
 import { MaterialesCursoModule } from './materiales-curso/materiales-curso.module';
@@ -28,12 +24,7 @@ import { InvitacionesModule } from './mail/invitaciones.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     AuthModule,
     AccesoModule,
-    TrabajosPracticosModule,
-    EntregasModule,
-    CorreccionesModule,
-    ResumenCursoModule,
-    // Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara — feature-set
-    // nuevo, en paralelo al flujo de arriba (TrabajoPractico/Entrega/Correccion).
+    // Cátedra: exámenes con preguntas tipadas, cursos/comisiones y vara.
     CursosModule,
     ComisionesModule,
     MaterialesCursoModule,

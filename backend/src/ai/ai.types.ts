@@ -1,49 +1,5 @@
 import { z } from 'zod';
 
-// Schema de salida para la corrección de UNA entrega.
-// El LLM tiene que devolver exactamente esta forma (generateObject la fuerza).
-export const CorreccionSchema = z.object({
-  notaPorCriterio: z
-    .array(
-      z.object({
-        criterioId: z.string().describe('id del criterio de rúbrica evaluado'),
-        nombre: z.string(),
-        notaSugerida: z.number().describe('nota para este criterio, entre 0 y el puntaje máximo del criterio'),
-        comentario: z.string().describe('comentario breve y específico sobre por qué se asignó esa nota'),
-      }),
-    )
-    .describe('Una entrada por cada criterio de la rúbrica, en el mismo orden recibido'),
-  notaTotalSugerida: z.number().describe('suma de notaSugerida de todos los criterios'),
-  feedbackSugerido: z
-    .string()
-    .describe('devolución personalizada para el alumno: qué hizo bien, qué mejorar, tono constructivo'),
-});
-
-export type CorreccionIA = z.infer<typeof CorreccionSchema>;
-
-// Schema de salida para el análisis agregado del curso (segundo prompt del flujo).
-export const ResumenCursoSchema = z.object({
-  patronesDetectados: z
-    .array(
-      z.object({
-        criterioOConcepto: z.string(),
-        cantidadAlumnosAfectados: z.number(),
-        descripcion: z.string().describe('qué error o dificultad concreta se repite'),
-      }),
-    )
-    .describe('Ordenado de mayor a menor impacto'),
-  resumenGeneral: z.string().describe('párrafo de síntesis para que el docente lo lea rápido'),
-});
-
-export type ResumenCursoIA = z.infer<typeof ResumenCursoSchema>;
-
-export interface CriterioInput {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  puntajeMaximo: number;
-}
-
 // ---- Corrección de exámenes (Cátedra): preguntas tipadas con matriz de niveles ----
 
 export interface NivelEscalaInput {
@@ -183,4 +139,71 @@ export interface CriterioSugerido {
 
 export interface SugerenciaCriterios {
   criterios: CriterioSugerido[];
+}
+
+// ---- Sugerencia de preguntas de examen (borrador para el docente) ----
+
+export const DIFICULTADES_PREGUNTA = ['facil', 'media', 'dificil'] as const;
+export type DificultadPregunta = (typeof DIFICULTADES_PREGUNTA)[number];
+
+export const CANTIDAD_PREGUNTAS_MIN = 1;
+export const CANTIDAD_PREGUNTAS_MAX = 8;
+export const CANTIDAD_PREGUNTAS_DEFECTO = 3;
+
+/** Un fragmento del material de cátedra (o un tema suelto) con el que se arma el pedido: el modelo lo cita por su etiqueta ("F1"). */
+export interface FragmentoMaterial {
+  etiqueta: string;
+  titulo: string;
+  unidad: string | null;
+  contenido: string;
+}
+
+// Lo que le pedimos al modelo. Plano y laxo a propósito (sin uniones ni mínimos): la forma la fuerza generateObject, pero lo que
+// vale (una sola correcta, pares completos, puntos, longitudes) lo impone `normalizarPreguntas` en código, así una pregunta mal
+// formada se descarta sin tirar abajo todo el pedido. Los campos que no corresponden al tipo van en null.
+export const SugerenciaPreguntasSchema = z.object({
+  preguntas: z
+    .array(
+      z.object({
+        tipo: z.string().describe('uno de los tipos pedidos, tal cual (por ejemplo "opcion_multiple")'),
+        enunciado: z.string().describe('el enunciado completo de la pregunta, claro y sin ambigüedades'),
+        opciones: z
+          .array(z.object({ texto: z.string(), correcta: z.boolean() }))
+          .nullable()
+          .describe('solo opcion_multiple (3 a 5, UNA correcta) y casillas (4 a 6, al menos dos correctas y al menos una incorrecta); null en los demás'),
+        verdaderoFalso: z.boolean().nullable().describe('solo verdadero_falso: true si la afirmación del enunciado es verdadera; null en los demás'),
+        numerica: z
+          .object({ respuestaCorrecta: z.number(), tolerancia: z.number() })
+          .nullable()
+          .describe('solo numerica: el valor correcto y la tolerancia absoluta aceptada (0 si tiene que ser exacto); null en los demás'),
+        pares: z
+          .array(z.object({ izquierda: z.string(), derecha: z.string() }))
+          .nullable()
+          .describe('solo relacionar_pares: de 3 a 6 pares correctos; null en los demás'),
+        explicacion: z
+          .string()
+          .describe('por qué la respuesta correcta lo es (o, en las preguntas abiertas, qué debería contener una buena respuesta), en 1 a 3 oraciones'),
+        fuente: z.string().nullable().describe('etiqueta del fragmento del material en que se basa la pregunta (por ejemplo "F2"); null si no se basa en ninguno'),
+      }),
+    )
+    .describe('Las preguntas propuestas'),
+});
+
+export type SugerenciaPreguntasIA = z.infer<typeof SugerenciaPreguntasSchema>;
+
+/** Una pregunta ya validada y normalizada en código (ver sugerencia-preguntas.util.ts). `opciones` tiene la misma forma que se guarda en el examen. */
+export interface PreguntaSugerida {
+  tipo: string;
+  enunciado: string;
+  /** Solo en las cerradas: opción múltiple y casillas -> [{id, texto, correcta}], V/F -> {correcta}, numérica -> {respuestaCorrecta, tolerancia}, pares -> {izquierda, derecha, paresCorrectos}. */
+  opciones?: unknown;
+  explicacion: string;
+  /** De qué parte del material sale; null si el modelo no la citó (o citó una que no existe). */
+  fuente: { titulo: string; unidad: string | null } | null;
+}
+
+export interface SugerenciaPreguntas {
+  preguntas: PreguntaSugerida[];
+  /** true si el pedido no tuvo ningún fragmento del material: las preguntas salen solo del tema indicado y conviene revisarlas con más cuidado. */
+  sinMaterial: boolean;
 }

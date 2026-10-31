@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '../src/auth/auth.guard';
 import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { VerificadorSesion } from '../src/auth/verificador-sesion';
+import { NOMBRE_CRITERIO_GENERAL, conCriterioGeneral } from '../src/examenes/criterio-general.util';
 import { ExamenesController } from '../src/examenes/examenes.controller';
 import { ExamenesService, MENSAJE_EXAMEN_CON_ALUMNOS } from '../src/examenes/examenes.service';
 import { mismoPuntaje, puntajeDeCriterios, puntajeEfectivo, puntajeTotalExamen, redondearPuntaje, validarNivelesEscala, validarPuntajes } from '../src/examenes/puntaje.util';
@@ -184,9 +185,34 @@ test('create: una abierta con puntaje declarado distinto de la suma de sus crite
   assert.equal((await crear(dtoDe([abierta(8, [3, 5]), cerrada(2)]))).error, null);
 });
 
-test('create: las reglas que ya existían siguen primero (criterios obligatorios, escala mínima < máxima)', async () => {
-  const sinCriterios = await crear(dtoDe([cerrada(4), { tipo: 'desarrollo', enunciado: 'x', puntajeMaximo: 6, criterios: [] }]));
-  assert.equal(mensajeDe(sinCriterios.error), 'La pregunta 2 (desarrollo) necesita al menos un criterio de rúbrica');
+test('create: los criterios de una pregunta abierta son opcionales: sin ellos se guarda un criterio general que vale todos sus puntos', async () => {
+  const r = await crear(dtoDe([cerrada(4), { tipo: 'desarrollo', enunciado: 'x', puntajeMaximo: 6, criterios: [] }]));
+  assert.equal(r.error, null);
+  const guardada = r.creados[0].preguntas.create[1];
+  assert.deepEqual(
+    guardada.criterios.create.map((c: any) => [c.nombre, c.puntajeMaximo, c.nivelesDescripcion]),
+    [[NOMBRE_CRITERIO_GENERAL, 6, []]],
+  );
+  // Sin la propiedad `criterios` (el frontend la omite) pasa lo mismo.
+  const sinPropiedad = await crear(dtoDe([cerrada(4), { tipo: 'analisis_caso', enunciado: 'x', puntajeMaximo: 6 }]));
+  assert.equal(sinPropiedad.error, null);
+  assert.equal(sinPropiedad.creados[0].preguntas.create[1].criterios.create[0].puntajeMaximo, 6);
+  // Las que sí traen criterios no se tocan, y las cerradas nunca reciben uno.
+  const conCriterios = await crear(dtoDe([abierta(10, [4, 6])]));
+  assert.deepEqual(conCriterios.creados[0].preguntas.create[0].criterios.create.map((c: any) => c.puntajeMaximo), [4, 6]);
+  assert.equal(r.creados[0].preguntas.create[0].criterios, undefined);
+  // Y el puntaje total sigue valiendo igual: una abierta sin criterios cuenta por sus puntos.
+  assert.equal(mensajeDe((await crear(dtoDe([cerrada(4), { tipo: 'desarrollo', enunciado: 'x', puntajeMaximo: 5 }]))).error), msgTotal('9', '10'));
+});
+
+test('conCriterioGeneral no muta lo que recibe', () => {
+  const original = [{ tipo: 'desarrollo', puntajeMaximo: 3 }];
+  const r = conCriterioGeneral(original as any);
+  assert.equal((original[0] as any).criterios, undefined);
+  assert.equal(r[0].criterios?.length, 1);
+});
+
+test('create: las reglas que ya existían siguen primero (opciones de las cerradas, escala mínima < máxima)', async () => {
   const sinOpciones = await crear(dtoDe([{ tipo: 'opcion_multiple', enunciado: 'x', puntajeMaximo: 10 }]));
   assert.equal(mensajeDe(sinOpciones.error), 'La pregunta 1 (opcion_multiple) necesita "opciones" con la clave correcta');
   const escalaMal = await crear(dtoDe([cerrada(10)], { escalaMin: 10, escalaMax: 0 }));

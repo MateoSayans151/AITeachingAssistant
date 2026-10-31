@@ -1,6 +1,7 @@
-import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ExamenesService } from './examenes.service';
 import { CreateExamenDto } from './dto/create-examen.dto';
+import { UpdateExamenDto } from './dto/update-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
 import { ReglaVaraDto } from './dto/vara.dto';
 import { VaraService } from './vara.service';
@@ -20,10 +21,24 @@ export class ExamenesController {
   @Post()
   async create(@DocenteId() docenteId: string, @Body() dto: CreateExamenDto) {
     await this.acceso.curso(docenteId, dto.cursoId);
-    // Una matriz de origen ajena no se puede referenciar (leería su contenido por el examen).
+    // Una matriz de origen ajena no se puede referenciar (leería su contenido por el examen). Si un docente duplica o rehace el examen
+    // de un compañero, sus criterios traen la matriz PERSONAL de ese compañero como origen: el contenido ya está copiado en cada
+    // criterio, así que el origen se descarta (queda como criterio suelto) en vez de rechazar todo el examen con 404.
     const matrizIds = [...new Set(dto.preguntas.flatMap((p) => (p.criterios ?? []).map((c) => c.matrizOrigenId)))];
-    for (const id of matrizIds) if (id) await this.acceso.matriz(docenteId, id);
-    return this.service.create(dto);
+    const propias = new Set<string>();
+    for (const id of matrizIds) {
+      if (!id) continue;
+      try {
+        await this.acceso.matriz(docenteId, id);
+        propias.add(id);
+      } catch (e) {
+        if (!(e instanceof NotFoundException)) throw e;
+      }
+    }
+    for (const p of dto.preguntas) {
+      for (const c of p.criterios ?? []) if (c.matrizOrigenId && !propias.has(c.matrizOrigenId)) c.matrizOrigenId = undefined;
+    }
+    return this.service.create(dto, docenteId);
   }
 
   @Get()
@@ -42,6 +57,13 @@ export class ExamenesController {
   async findOne(@DocenteId() docenteId: string, @Param('id') id: string) {
     await this.acceso.examen(docenteId, id);
     return this.service.findOne(id);
+  }
+
+  // Cambiar el título (el nombre del examen) se puede en cualquier momento, también con alumnos rindiendo: no toca ninguna nota.
+  @Patch(':id')
+  async rename(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto: UpdateExamenDto) {
+    await this.acceso.examen(docenteId, id);
+    return this.service.renombrar(id, dto.titulo);
   }
 
   // Solo si nadie empezó ni entregó (si no, 409): preguntas, criterios, links y ajustes de vara se van con el examen.

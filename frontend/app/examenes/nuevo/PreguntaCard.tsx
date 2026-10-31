@@ -27,12 +27,13 @@
 // Para que PasoPreguntas lleve el foco y el scroll, la tarjeta se identifica con `data-pregunta-indice` y sus botones con
 // `data-accion` ("subir", "bajar", "duplicar", "alternar"); el enunciado con `data-campo="enunciado"`.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import type { MatrizRubrica, TipoPregunta } from '@/lib/api';
 import { TIPOS_AUTOCORREGIBLES } from '@/lib/api';
 import { idDeOpcion, preguntaVacia, validarPregunta } from '@/lib/examen-form';
 import type { NivelForm, PreguntaForm } from '@/lib/examen-form';
-import { etiquetaPuntos, resumenEnunciado } from '@/lib/examen-preguntas';
+import { esFija, etiquetaPuntos, resumenEnunciado } from '@/lib/examen-preguntas';
 import { RubricaEditor } from './RubricaEditor';
 import s from './PreguntaCard.module.css';
 
@@ -119,6 +120,18 @@ const IconoDuplicar = () => (
     <path d="M10.5 3.5v-.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" />
   </svg>
 );
+const IconoQuitar = () => (
+  <svg {...iconoProps}>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.5 8h5l.5-8" />
+  </svg>
+);
+const IconoMas = () => (
+  <svg {...iconoProps}>
+    <circle cx="3.5" cy="8" r="0.9" fill="currentColor" />
+    <circle cx="8" cy="8" r="0.9" fill="currentColor" />
+    <circle cx="12.5" cy="8" r="0.9" fill="currentColor" />
+  </svg>
+);
 const IconoAlerta = () => (
   <svg {...iconoProps}>
     <path d="M8 2.2l6 10.6H2L8 2.2z" />
@@ -146,6 +159,9 @@ export function PreguntaCard({
   const numero = indice + 1;
   const raiz = useRef<HTMLDivElement>(null);
   const devolverFoco = useRef(false);
+  // Lo que se está escribiendo en «Puntos»: mientras el campo tiene el foco puede quedar vacío (para borrar y escribir otro número) sin
+  // que el reparto automático lo vuelva a llenar. Al salir sin valor la pregunta vuelve a «automático».
+  const [escribiendoPuntos, setEscribiendoPuntos] = useState<string | null>(null);
 
   // El botón "Editar"/"Plegar" cambia de lugar al plegar o desplegar: apenas se redibuja se le devuelve el foco al nuevo botón.
   useEffect(() => {
@@ -158,6 +174,19 @@ export function PreguntaCard({
     onChange({ ...p, [campo]: valor });
   }
 
+  /** Escribir puntos a mano los fija (el reparto automático los respeta). Vacío mientras se escribe no cambia nada: se resuelve al salir del campo. */
+  function cambiarPuntos(valor: string) {
+    setEscribiendoPuntos(valor);
+    if (valor.trim() !== '') onChange({ ...p, puntajeMaximo: valor, puntosFijos: true });
+  }
+
+  /** Al salir del campo: si quedó vacío, la pregunta vuelve al reparto automático (que le pone su parte). */
+  function terminarPuntos() {
+    const vacio = (escribiendoPuntos ?? '').trim() === '';
+    setEscribiendoPuntos(null);
+    if (vacio && escribiendoPuntos !== null) onChange({ ...p, puntosFijos: false });
+  }
+
   function alternarPlegada() {
     devolverFoco.current = true;
     onChange({ ...p, plegada: !p.plegada });
@@ -165,7 +194,7 @@ export function PreguntaCard({
 
   function cambiarTipo(tipo: TipoPregunta) {
     // Al cambiar de tipo se parte de una pregunta vacía y se conserva solo lo común: enunciado y puntos (y si está plegada).
-    onChange({ ...preguntaVacia(niveles), tipo, enunciado: p.enunciado, puntajeMaximo: p.puntajeMaximo, plegada: p.plegada });
+    onChange({ ...preguntaVacia(niveles), tipo, enunciado: p.enunciado, puntajeMaximo: p.puntajeMaximo, puntosFijos: p.puntosFijos, plegada: p.plegada });
   }
 
   function actualizarChoice(oi: number, campo: 'texto' | 'correcta', valor: string | boolean) {
@@ -198,28 +227,17 @@ export function PreguntaCard({
     onChange({ ...p, paresIzquierda: [...p.paresIzquierda, ''], paresDerecha: [...p.paresDerecha, ''] });
   }
 
-  // Subir, Bajar y Duplicar: en la fila plegada son solo ícono; en la cabecera de la tarjeta desplegada llevan también el texto.
-  const botonesMoverYDuplicar = (
-    <>
-      {onMover && (
-        <>
-          <button type="button" className={`btn btn-secondary ${s.btnAccion}`} data-accion="subir" onClick={() => onMover(-1)} disabled={esPrimera} aria-label={`Subir la pregunta ${numero}`} title="Subir">
-            <IconoSubir />
-            <span className={s.btnTexto}>Subir</span>
-          </button>
-          <button type="button" className={`btn btn-secondary ${s.btnAccion}`} data-accion="bajar" onClick={() => onMover(1)} disabled={esUltima} aria-label={`Bajar la pregunta ${numero}`} title="Bajar">
-            <IconoBajar />
-            <span className={s.btnTexto}>Bajar</span>
-          </button>
-        </>
-      )}
-      {onDuplicar && (
-        <button type="button" className={`btn btn-secondary ${s.btnAccion}`} data-accion="duplicar" onClick={onDuplicar} aria-label={`Duplicar la pregunta ${numero}`} title="Duplicar">
-          <IconoDuplicar />
-          <span className={s.btnTexto}>Duplicar</span>
-        </button>
-      )}
-    </>
+  // Subir, Bajar, Duplicar y Quitar viven en un menú "⋯": son acciones de uso ocasional y cinco botones con borde por tarjeta pesaban más que el contenido.
+  const menuAcciones = (
+    <MenuAcciones
+      numero={numero}
+      onSubir={onMover ? () => onMover(-1) : undefined}
+      onBajar={onMover ? () => onMover(1) : undefined}
+      onDuplicar={onDuplicar}
+      onQuitar={onQuitar}
+      puedeSubir={!esPrimera}
+      puedeBajar={!esUltima}
+    />
   );
 
   const claseTarjeta = `card ${s.tarjeta}${errores && errores.length > 0 ? ' card-invalid' : ''}`;
@@ -248,10 +266,10 @@ export function PreguntaCard({
           </div>
           <span className={`${s.puntos}${puntos === 'sin puntos' ? ` ${s.sinPuntos}` : ''}`}>{puntos}</span>
           <div className={`${s.acciones} ${s.soloIconos}`}>
-            {botonesMoverYDuplicar}
             <button type="button" className={`btn btn-secondary ${s.btnAccion}`} data-accion="alternar" onClick={alternarPlegada} aria-expanded={false} aria-label={`Editar la pregunta ${numero}`}>
               Editar
             </button>
+            {menuAcciones}
           </div>
         </div>
       </div>
@@ -275,13 +293,10 @@ export function PreguntaCard({
           ))}
         </select>
         <div className={s.acciones}>
-          {botonesMoverYDuplicar}
           <button type="button" className={`btn btn-secondary ${s.btnAccion}`} data-accion="alternar" onClick={alternarPlegada} aria-expanded={true} aria-label={`Plegar la pregunta ${numero}`}>
             Plegar
           </button>
-          <button type="button" className={`btn btn-secondary ${s.btnAccion}`} onClick={onQuitar} disabled={cantidadPreguntas === 1}>
-            Quitar pregunta
-          </button>
+          {menuAcciones}
         </div>
       </div>
 
@@ -291,7 +306,7 @@ export function PreguntaCard({
 
       {errores && errores.length > 0 && (
         <div className="error-box" role="alert">
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
             {errores.map((m, i) => (
               <li key={i}>{m}</li>
             ))}
@@ -304,9 +319,26 @@ export function PreguntaCard({
         <textarea id={`pregunta-${indice}-enunciado`} data-campo="enunciado" value={p.enunciado} onChange={(e) => actualizar('enunciado', e.target.value)} />
       </div>
 
-      <div className="field" style={{ maxWidth: 160 }}>
-        <label htmlFor={`pregunta-${indice}-puntaje`}>Puntaje máximo</label>
-        <input id={`pregunta-${indice}-puntaje`} type="number" min="0.5" step="any" value={p.puntajeMaximo} onChange={(e) => actualizar('puntajeMaximo', e.target.value)} />
+      <div className={`field ${s.campoPuntos}`}>
+        <label htmlFor={`pregunta-${indice}-puntaje`}>Puntos de esta pregunta</label>
+        <div className={s.puntosFila}>
+          <input
+            id={`pregunta-${indice}-puntaje`}
+            type="number"
+            min="0"
+            step="any"
+            value={escribiendoPuntos ?? p.puntajeMaximo}
+            onChange={(e) => cambiarPuntos(e.target.value)}
+            onBlur={terminarPuntos}
+          />
+          {esFija(p) ? (
+            <button type="button" className={`btn btn-ghost ${s.btnAccion}`} onClick={() => actualizar('puntosFijos', false)} title="Vuelve a repartirse solo, junto con las demás preguntas">
+              Volver a automático
+            </button>
+          ) : (
+            <span className={s.puntosAuto}>automático</span>
+          )}
+        </div>
       </div>
 
       {!cerrada && (
@@ -394,13 +426,123 @@ export function PreguntaCard({
       {p.tipo === 'relacionar_pares' && (
         <div>
           {p.paresIzquierda.map((izq, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
               <input placeholder="Elemento A" value={izq} onChange={(e) => actualizarPar('paresIzquierda', i, e.target.value)} />
               <input placeholder="Corresponde con…" value={p.paresDerecha[i]} onChange={(e) => actualizarPar('paresDerecha', i, e.target.value)} />
             </div>
           ))}
           <button type="button" className="btn btn-secondary" onClick={agregarPar}>
             + Agregar par
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface MenuAccionesProps {
+  numero: number;
+  onSubir?: () => void;
+  onBajar?: () => void;
+  onDuplicar?: () => void;
+  onQuitar: () => void;
+  puedeSubir: boolean;
+  puedeBajar: boolean;
+}
+
+/**
+ * Menú "⋯" de una pregunta: Subir, Bajar, Duplicar y Quitar. Teclado: al abrir el foco va al primer ítem habilitado; flechas, Inicio
+ * y Fin se mueven entre ítems; Esc cierra y devuelve el foco al botón. Un click afuera también cierra.
+ */
+function MenuAcciones({ numero, onSubir, onBajar, onDuplicar, onQuitar, puedeSubir, puedeBajar }: MenuAccionesProps) {
+  const [abierto, setAbierto] = useState(false);
+  const raiz = useRef<HTMLDivElement>(null);
+  const boton = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const idMenu = useId();
+
+  useEffect(() => {
+    if (abierto) menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+  }, [abierto]);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const alPresionar = (e: PointerEvent) => {
+      if (!raiz.current?.contains(e.target as Node)) setAbierto(false);
+    };
+    document.addEventListener('pointerdown', alPresionar);
+    return () => document.removeEventListener('pointerdown', alPresionar);
+  }, [abierto]);
+
+  function cerrar(devolverFoco: boolean) {
+    setAbierto(false);
+    if (devolverFoco) boton.current?.focus();
+  }
+
+  function alTeclear(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Escape' || e.key === 'Tab') {
+      if (e.key === 'Escape') e.preventDefault();
+      cerrar(true);
+      return;
+    }
+    const items = Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+    const actual = items.indexOf(document.activeElement as HTMLElement);
+    let siguiente = -1;
+    if (e.key === 'ArrowDown') siguiente = (actual + 1) % items.length;
+    else if (e.key === 'ArrowUp') siguiente = (actual - 1 + items.length) % items.length;
+    else if (e.key === 'Home') siguiente = 0;
+    else if (e.key === 'End') siguiente = items.length - 1;
+    if (siguiente >= 0) {
+      e.preventDefault();
+      items[siguiente]?.focus();
+    }
+  }
+
+  const elegir = (accion?: () => void) => () => {
+    setAbierto(false);
+    accion?.();
+  };
+
+  return (
+    <div ref={raiz} className={s.menuPregRaiz}>
+      <button
+        ref={boton}
+        type="button"
+        className={`btn btn-secondary ${s.btnAccion} ${s.btnMas}`}
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        aria-controls={abierto ? idMenu : undefined}
+        aria-label={`Más acciones de la pregunta ${numero}`}
+        title="Más acciones"
+        onClick={() => setAbierto((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && !abierto) {
+            e.preventDefault();
+            setAbierto(true);
+          }
+        }}
+      >
+        <IconoMas />
+      </button>
+      {abierto && (
+        <div ref={menu} id={idMenu} role="menu" aria-label={`Acciones de la pregunta ${numero}`} className={s.menuPreg} onKeyDown={alTeclear}>
+          {onSubir && (
+            <button type="button" role="menuitem" tabIndex={-1} className={s.menuPregItem} data-accion="subir" disabled={!puedeSubir} onClick={elegir(onSubir)}>
+              <IconoSubir /> Subir
+            </button>
+          )}
+          {onBajar && (
+            <button type="button" role="menuitem" tabIndex={-1} className={s.menuPregItem} data-accion="bajar" disabled={!puedeBajar} onClick={elegir(onBajar)}>
+              <IconoBajar /> Bajar
+            </button>
+          )}
+          {onDuplicar && (
+            <button type="button" role="menuitem" tabIndex={-1} className={s.menuPregItem} data-accion="duplicar" onClick={elegir(onDuplicar)}>
+              <IconoDuplicar /> Duplicar
+            </button>
+          )}
+          <button type="button" role="menuitem" tabIndex={-1} className={`${s.menuPregItem} ${s.menuPregPeligro}`} onClick={elegir(onQuitar)}>
+            <IconoQuitar /> Quitar pregunta
           </button>
         </div>
       )}

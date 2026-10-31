@@ -127,7 +127,7 @@ function OpcionesElegidas({ opciones, contenido, multiple }: { opciones: OpcionE
 
   return (
     <>
-      <ul style={{ listStyle: 'none', display: 'grid', gap: 6 }}>
+      <ul style={{ listStyle: 'none', display: 'grid', gap: 8 }}>
         {opciones.map((o) => {
           const elegida = elegidas.has(o.id);
           const esCorrecta = o.correcta === true;
@@ -137,7 +137,7 @@ function OpcionesElegidas({ opciones, contenido, multiple }: { opciones: OpcionE
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
+                gap: 12,
                 padding: '8px 12px',
                 border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-md)',
@@ -295,7 +295,7 @@ export function RespuestaDelAlumno({
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
         <span className="eyebrow">Respuesta del alumno</span>
         {correcta !== undefined && <Veredicto correcta={correcta} />}
       </div>

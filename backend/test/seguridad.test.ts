@@ -18,7 +18,6 @@ import { AlmacenFallosMemoria, LimitadorFallos } from '../src/respuestas-examen/
 import { antiCheatActivo, eventoPermitido } from '../src/respuestas-examen/anticheat.util';
 import { AuthController } from '../src/auth/auth.controller';
 import { RendirController } from '../src/respuestas-examen/rendir.controller';
-import { EntregarController } from '../src/trabajos-practicos/entregar.controller';
 import { CursosController } from '../src/cursos/cursos.controller';
 import { ComisionesController, ComisionDetalleController, AlumnosController } from '../src/comisiones/comisiones.controller';
 import { MaterialesCursoController, MaterialDetalleController } from '../src/materiales-curso/materiales-curso.controller';
@@ -27,10 +26,6 @@ import { ExamenesController } from '../src/examenes/examenes.controller';
 import { SugerenciasController } from '../src/examenes/sugerencias.controller';
 import { InvitacionesController } from '../src/mail/invitaciones.controller';
 import { RespuestasExamenController } from '../src/respuestas-examen/respuestas-examen.controller';
-import { TrabajosPracticosController } from '../src/trabajos-practicos/trabajos-practicos.controller';
-import { EntregasController } from '../src/entregas/entregas.controller';
-import { CorreccionesController } from '../src/correcciones/correcciones.controller';
-import { ResumenCursoController } from '../src/resumen-curso/resumen-curso.controller';
 
 // JWT_SECRET del backend: firma SOLO el token del intento de un alumno.
 const SECRET = 'x'.repeat(40);
@@ -70,12 +65,11 @@ function ctx(controller: any, handler: string, authorization?: string): Executio
 // ---------------------------------------------------------------------------
 // 1. Superficie pública: si alguien abre una ruta nueva sin querer, este test falla.
 // ---------------------------------------------------------------------------
-test('las únicas rutas públicas son las de rendir y entregar (el login es de Supabase, no hay rutas de login acá)', () => {
+test('las únicas rutas públicas son las de rendir (el login es de Supabase, no hay rutas de login acá)', () => {
   const controllers = [
-    AuthController, RendirController, EntregarController, CursosController, ComisionesController, ComisionDetalleController,
+    AuthController, RendirController, CursosController, ComisionesController, ComisionDetalleController,
     AlumnosController, MaterialesCursoController, MaterialDetalleController, MatricesRubricaController,
-    ExamenesController, RespuestasExamenController, TrabajosPracticosController, EntregasController,
-    CorreccionesController, ResumenCursoController, SugerenciasController, InvitacionesController,
+    ExamenesController, RespuestasExamenController, SugerenciasController, InvitacionesController,
   ];
   const publicas: string[] = [];
   for (const c of controllers) {
@@ -94,12 +88,6 @@ test('las únicas rutas públicas son las de rendir y entregar (el login es de S
     'RendirController.info',
     'RendirController.intento',
     'RendirController.iniciar',
-    'EntregarController.borrador',
-    'EntregarController.enviar',
-    'EntregarController.evento',
-    'EntregarController.info',
-    'EntregarController.intento',
-    'EntregarController.iniciar',
   ].sort());
 });
 

@@ -14,12 +14,15 @@ import {
   duplicarPregunta,
   esPreguntaAbierta,
   etiquetaPuntos,
-  hayPuntosCargados,
+  balancearPuntos,
+  esFija,
+  hayPuntosFijados,
   indicesConError,
   moverPregunta,
   plegarCompletas,
   repartirPuntos,
   resumenEnunciado,
+  soltarPuntos,
   tieneCriteriosCargados,
 } from '../../frontend/lib/examen-preguntas';
 
@@ -285,11 +288,61 @@ test('repartirPuntos: cada pregunta abierta reparte SUS puntos entre sus criteri
   }
 });
 
-test('hayPuntosCargados: avisa si algún puntaje ya tiene algo escrito', () => {
-  assert.equal(hayPuntosCargados([cerrada('A', ''), abierta('B', '  ')]), false);
-  assert.equal(hayPuntosCargados([cerrada('A', ''), abierta('B', '2')]), true);
-  assert.equal(hayPuntosCargados([cerrada('A', '0')]), true);
-  assert.equal(hayPuntosCargados([]), false);
+test('esFija / hayPuntosFijados: sin el dato cuenta como fija si ya trae puntos; false explícito la suelta', () => {
+  assert.equal(esFija({ ...cerrada('A', '3') }), false, 'preguntaVacia arranca en automático');
+  assert.equal(esFija({ ...cerrada('A', '3'), puntosFijos: undefined }), true, 'borrador o examen viejo con puntos');
+  assert.equal(esFija({ ...cerrada('A', ''), puntosFijos: undefined }), false);
+  assert.equal(esFija({ ...cerrada('A', '3'), puntosFijos: true }), true);
+  assert.equal(hayPuntosFijados([cerrada('A', '3'), cerrada('B', '')]), false);
+  assert.equal(hayPuntosFijados([cerrada('A', '3'), { ...cerrada('B', '2'), puntosFijos: true }]), true);
+  assert.equal(hayPuntosFijados([]), false);
+});
+
+// ---------------------------------------------------------------------------
+// Reparto automático de los puntos (el examen vale N; lo fijado a mano no se toca)
+// ---------------------------------------------------------------------------
+const auto = (p: PreguntaForm): PreguntaForm => ({ ...p, puntosFijos: false });
+const fija = (p: PreguntaForm): PreguntaForm => ({ ...p, puntosFijos: true });
+const puntos = (l: PreguntaForm[]) => l.map((q) => q.puntajeMaximo);
+
+test('balancearPuntos: todas automáticas se reparten en partes iguales y la suma da exacto el total', () => {
+  assert.deepEqual(puntos(balancearPuntos([auto(cerrada('A', '')), auto(cerrada('B', ''))], 10)), ['5', '5']);
+  assert.deepEqual(puntos(balancearPuntos([auto(cerrada('A', '')), auto(cerrada('B', '')), auto(cerrada('C', ''))], 10)), ['3.33', '3.33', '3.34']);
+});
+
+test('balancearPuntos: la pregunta fijada a mano no se toca y las demás absorben lo que queda', () => {
+  const l = balancearPuntos([auto(cerrada('A', '')), fija(cerrada('B', '7')), auto(cerrada('C', ''))], 10);
+  assert.deepEqual(puntos(l), ['1.5', '7', '1.5']);
+  assert.equal(l[1].puntosFijos, true);
+});
+
+test('balancearPuntos: si lo fijado ya alcanza o pasa el total, las automáticas quedan sin puntos (no se inventan negativos)', () => {
+  assert.deepEqual(puntos(balancearPuntos([fija(cerrada('A', '10')), auto(cerrada('B', ''))], 10)), ['10', '']);
+  assert.deepEqual(puntos(balancearPuntos([fija(cerrada('A', '12')), auto(cerrada('B', ''))], 10)), ['12', '']);
+});
+
+test('balancearPuntos: es idempotente (devuelve la MISMA lista si ya está repartido) y no hace nada sin total válido ni sin automáticas', () => {
+  const una = balancearPuntos([auto(cerrada('A', '')), auto(cerrada('B', ''))], 10);
+  assert.equal(balancearPuntos(una, 10), una);
+  const fijas = [fija(cerrada('A', '4')), fija(cerrada('B', '6'))];
+  assert.equal(balancearPuntos(fijas, 10), fijas);
+  const l = [auto(cerrada('A', ''))];
+  assert.equal(balancearPuntos(l, 0), l);
+  assert.equal(balancearPuntos(l, NaN), l);
+  assert.deepEqual(balancearPuntos([], 10), []);
+});
+
+test('balancearPuntos: una pregunta nueva del wizard sale en automático, y un borrador viejo (con puntos, sin el dato) se respeta', () => {
+  assert.deepEqual(puntos(balancearPuntos([preguntaVacia(NIVELES)], 10)), ['10']);
+  const viejo = { ...cerrada('A', '3'), puntosFijos: undefined };
+  const l = balancearPuntos([viejo, auto(cerrada('B', ''))], 10);
+  assert.deepEqual(puntos(l), ['3', '7']);
+});
+
+test('soltarPuntos: todas vuelven a automático y el balanceo las reparte parejo', () => {
+  const l = balancearPuntos(soltarPuntos([fija(cerrada('A', '7')), fija(cerrada('B', '3'))]), 10);
+  assert.deepEqual(puntos(l), ['5', '5']);
+  assert.ok(l.every((q) => q.puntosFijos === false));
 });
 
 // ---------------------------------------------------------------------------

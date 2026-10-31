@@ -3,7 +3,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { borradorTieneContenido, claveBorrador, haceCuanto, leerBorrador, serializarBorrador, VERSION_BORRADOR } from '../../frontend/lib/borrador-examen';
-import { datosPorDefecto, hayErrorEnAjustes, nivelesPorDefecto, preguntaVacia, resumenAjustes } from '../../frontend/lib/examen-form';
+import { TITULO_POR_DEFECTO, datosPorDefecto, hayErrorEnAjustes, nivelesPorDefecto, preguntaVacia, resumenAjustes } from '../../frontend/lib/examen-form';
 import type { DatosForm, PreguntaForm } from '../../frontend/lib/examen-form';
 
 const NIVELES = nivelesPorDefecto();
@@ -47,15 +47,29 @@ test('datos incompletos o de tipo equivocado se completan con los valores por de
   assert.equal(b.preguntas[0].enunciado, '');
 });
 
-test('preguntas: se descartan las de tipo desconocido o que no son objetos; si no queda ninguna, una pregunta vacía', () => {
+test('preguntas: se descartan las de tipo desconocido o que no son objetos; si no queda ninguna, la lista queda vacía (el paso de preguntas muestra su estado vacío)', () => {
   const buena = completo().preguntas[1];
   const crudo = JSON.stringify({ version: 1, guardadoEn: 1, datos: {}, preguntas: [null, 5, 'x', { tipo: 'inventado' }, buena, { enunciado: 'sin tipo' }] });
   const b = leerBorrador(crudo)!;
   assert.equal(b.preguntas.length, 1);
   assert.equal(b.preguntas[0].tipo, 'opcion_multiple');
   const ninguna = leerBorrador(JSON.stringify({ version: 1, guardadoEn: 1, datos: {}, preguntas: [{ tipo: 'inventado' }] }))!;
-  assert.equal(ninguna.preguntas.length, 1);
-  assert.equal(ninguna.preguntas[0].enunciado, '');
+  assert.deepEqual(ninguna.preguntas, []);
+});
+
+test('puntosFijos: se conserva si viene guardado y, si no viene, queda sin definir (cuenta como fija si ya trae puntos)', () => {
+  const { datos, preguntas } = completo();
+  const fijas = leerBorrador(serializarBorrador(datos, preguntas.map((p) => ({ ...p, puntosFijos: false }))))!;
+  assert.equal(fijas.preguntas[0].puntosFijos, false);
+  const viejo = JSON.parse(serializarBorrador(datos, preguntas));
+  delete viejo.preguntas[0].puntosFijos;
+  assert.equal(leerBorrador(JSON.stringify(viejo))!.preguntas[0].puntosFijos, undefined);
+});
+
+test('borradorTieneContenido: el título por defecto no cuenta como algo escrito, uno propio sí', () => {
+  const d = { ...datosPorDefecto(), titulo: TITULO_POR_DEFECTO };
+  assert.equal(borradorTieneContenido(d, []), false);
+  assert.equal(borradorTieneContenido({ ...d, titulo: 'Parcial 2' }, []), true);
 });
 
 test('la cantidad de niveles guardada se respeta si es válida (3 a 7) y se descarta si no', () => {
@@ -100,22 +114,19 @@ test('haceCuanto: expresiones en castellano y nunca negativas', () => {
   assert.equal(haceCuanto(t, t - 99_999), 'hace un momento', 'un reloj adelantado no da tiempos negativos');
 });
 
-test('hayErrorEnAjustes: escala no numérica o desordenada y sesión sin duración abren el bloque; lo demás no', () => {
+test('hayErrorEnAjustes: solo la sesión sin duración abre «Cómo se rinde» (la escala ya no se pide ahí: vive en la barra de puntos)', () => {
   const d = datosPorDefecto();
   assert.equal(hayErrorEnAjustes(d), false);
-  assert.equal(hayErrorEnAjustes({ ...d, escalaMax: '' }), true);
-  assert.equal(hayErrorEnAjustes({ ...d, escalaMin: 'x' }), true);
-  assert.equal(hayErrorEnAjustes({ ...d, escalaMin: '10', escalaMax: '10' }), true);
+  assert.equal(hayErrorEnAjustes({ ...d, escalaMax: '' }), false);
+  assert.equal(hayErrorEnAjustes({ ...d, escalaMin: 'x' }), false);
   assert.equal(hayErrorEnAjustes({ ...d, modalidad: 'sesion_tiempo', duracionMinutos: '0' }), true);
   assert.equal(hayErrorEnAjustes({ ...d, modalidad: 'sesion_tiempo', duracionMinutos: '30' }), false);
   assert.equal(hayErrorEnAjustes({ ...d, modalidad: 'ventana_dias', duracionMinutos: '' }), false, 'la duración no importa en una ventana de días');
   assert.equal(hayErrorEnAjustes({ ...d, titulo: '', consigna: '' }), false, 'un título vacío no es un error de ajustes');
 });
 
-test('resumenAjustes: una línea con modalidad, escala, feedback e integridad', () => {
+test('resumenAjustes: una línea con modalidad y feedback (la integridad tiene su propia sección, siempre visible)', () => {
   const d = datosPorDefecto();
-  assert.equal(resumenAjustes(d), 'ventana de varios días · escala 0 a 10 · feedback manual · sin señales de integridad');
-  assert.equal(resumenAjustes({ ...d, modalidad: 'sesion_tiempo', duracionMinutos: '45', feedbackModo: 'inmediato', antiCheatOn: true }), 'sesión de 45 min · escala 0 a 10 · feedback inmediato · con señales de integridad');
-  assert.match(resumenAjustes({ ...d, antiCheatOn: true, acPantalla: false, acPestana: false, acPegado: false }), /sin señales de integridad/, 'activado pero sin ningún control = sin monitoreo');
-  assert.match(resumenAjustes({ ...d, escalaMax: '' }), /escala 0 a \?/);
+  assert.equal(resumenAjustes(d), 'ventana de varios días · feedback manual');
+  assert.equal(resumenAjustes({ ...d, modalidad: 'sesion_tiempo', duracionMinutos: '45', feedbackModo: 'inmediato', antiCheatOn: true }), 'sesión de 45 min · feedback inmediato');
 });

@@ -1,8 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AiService } from './ai.service';
 
-// Global porque tanto EntregasModule (corrección individual) como
-// ResumenCursoModule (análisis agregado) necesitan llamarlo.
+// Global porque lo usan varios módulos (corrección de respuestas de examen, sugerencias al armar el examen).
 @Global()
 @Module({
   providers: [AiService],

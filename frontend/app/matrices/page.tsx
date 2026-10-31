@@ -1,5 +1,7 @@
 'use client';
 
+import { Cargando } from '@/app/components/Cargando';
+import { SinSesion } from '@/app/components/SinSesion';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MatrizRubrica, listMatricesRubrica } from '@/lib/api';
@@ -23,7 +25,7 @@ export default function MatricesPage() {
   if (!docente) {
     return (
       <div className="page">
-        <p className="muted">Identificate primero desde el inicio.</p>
+        <SinSesion />
       </div>
     );
   }
@@ -46,7 +48,7 @@ export default function MatricesPage() {
       </div>
 
       {error && <div className="error-box">{error}</div>}
-      {matrices === null && !error && <p className="muted">Cargando…</p>}
+      {matrices === null && !error && <Cargando />}
       {matrices?.length === 0 && <div className="empty-state">Todavía no cargaste ninguna matriz.</div>}
 
       {matrices?.map((m) => {
@@ -55,7 +57,7 @@ export default function MatricesPage() {
           <div key={m.id} className="card">
             <div className="card-title">{m.nombre}</div>
             <div className="card-meta">{m.criterios.length} {m.criterios.length === 1 ? 'criterio' : 'criterios'}</div>
-            <ul style={{ listStyle: 'none', marginTop: 10, display: 'grid', gap: 4, fontSize: 14 }} aria-label={`Criterios de ${m.nombre}`}>
+            <ul style={{ listStyle: 'none', marginTop: 12, display: 'grid', gap: 4, fontSize: 14 }} aria-label={`Criterios de ${m.nombre}`}>
               {m.criterios.map((c, i) => (
                 <li key={c.id}>
                   {c.nombre} <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>· {formatoPorcentaje.format(porcentajes[i])} %</span>
