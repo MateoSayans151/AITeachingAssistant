@@ -220,7 +220,7 @@ export function PasoPreguntas({ preguntas, onChange, niveles, matrices, escalaMi
   const estadoTotal = coincide ? 'ok' : diferencia > 0 ? 'falta' : 'sobra';
 
   return (
-    <div ref={raiz} className={s.raiz}>
+    <div ref={raiz} className={s.raiz} data-guia="examen-preguntas">
       {preguntas.length > 0 && (
         <div className={s.barraTotal} role="status" data-estado={max === null ? 'falta' : estadoTotal}>
           <div className={s.totalCampo}>

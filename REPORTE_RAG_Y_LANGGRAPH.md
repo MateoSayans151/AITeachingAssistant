@@ -6,8 +6,11 @@ El RAG queda dentro del backend NestJS, sin crear ni gestionar branches de Supab
 
 1. Al crear un material, `RagService` lo divide en fragmentos de aproximadamente 2.200 caracteres con solapamiento.
 2. Genera un embedding de 768 dimensiones por fragmento con `gemini-embedding-001` (modelo y dimensiones configurables con `RAG_EMBEDDING_MODEL_ID` y `RAG_EMBEDDING_DIMENSIONS`; los fragmentos se embeben como `RETRIEVAL_DOCUMENT` y la consulta como `RETRIEVAL_QUERY`) y lo guarda en `rag_fragmentos_material` (pgvector).
-3. Antes de corregir las preguntas abiertas, genera un embedding de la consigna y las respuestas del alumno y recupera los seis fragmentos mas cercanos, siempre filtrados por `curso_id`.
+3. Antes de corregir las preguntas abiertas, genera un embedding de los enunciados y las respuestas del alumno (acotados a 6.000 caracteres, los enunciados primero) y recupera los seis fragmentos mas cercanos, siempre filtrados por `curso_id`. Si la busqueda falla, se corrige sin material.
 4. Solo esos fragmentos llegan a `AiService`. La rubrica sigue determinando la nota y la validacion de notas sigue ocurriendo en codigo.
+5. "Sugerir preguntas con IA" reutiliza el indice: con un tema escrito a mano usa la busqueda semantica; con unidades tildadas usa ese material; sin tema, una muestra pareja de todo el curso. Entran hasta 26.000 caracteres por pedido (`fragmentos-material.util.ts`).
+
+El material se carga pegando texto o subiendo un archivo (`.pdf`, `.docx`, `.pptx`, `.md`, `.txt`, hasta 4 MB y 200.000 caracteres de texto), sin OCR.
 
 La migracion a aplicar en la base elegida es `supabase/migrations/20260921_add_rag_materiales.sql`. Para una base nueva, `supabase/schema.sql` ya incluye las mismas estructuras. Despues de aplicar la migracion, llamar `POST /api/cursos/:cursoId/materiales/reindexar` para indexar materiales que ya existian.
 
@@ -18,7 +21,7 @@ La migracion a aplicar en la base elegida es `supabase/migrations/20260921_add_r
 - `rag_fragmentos_material` queda cubierta por la migracion de RLS `supabase/migrations/20261004_rls_todas_las_tablas.sql` (deny-all para `anon`/`authenticated`, sin policies): solo el backend la lee y escribe, con SQL crudo desde `RagService`, conectado como `postgres`.
 - Si falla el embedding al crear un material, el texto se conserva y se puede reintentar la indexacion mediante el endpoint.
 - No cambiar `RAG_EMBEDDING_MODEL_ID` ni `RAG_EMBEDDING_DIMENSIONS` sin reindexar: vectores de modelos o dimensiones distintas no se pueden comparar.
-- La indexacion es sincronica y adecuada para texto plano del MVP. Para PDF/Word o lotes grandes deberia pasar a una cola.
+- La indexacion corre dentro del pedido de carga, de a 10 fragmentos en paralelo. Alcanza para el tope actual de un material; para OCR o lotes grandes deberia pasar a una cola.
 
 ## Microservicio futuro: Python + LangGraph
 

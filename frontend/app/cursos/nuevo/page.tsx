@@ -47,7 +47,7 @@ export default function NuevoCursoPage() {
 
       {error && <div className="error-box">{error}</div>}
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} data-guia="curso-nuevo-datos">
         <div className="field">
           <label htmlFor="nombre">Nombre del curso</label>
           <input id="nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} required />

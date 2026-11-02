@@ -1,6 +1,7 @@
 'use client';
 
 import { Cargando } from '@/app/components/Cargando';
+import { PrimerosPasos } from '@/app/components/PrimerosPasos';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -56,8 +57,10 @@ export default function HomePage() {
         <p>Entrá a un curso para armar exámenes, mandarles el link a tus alumnos y revisar sus respuestas.</p>
       </header>
 
+      {cursos && <PrimerosPasos docenteId={docente.id} cursos={cursos} examenPorRevisarId={porRevisar[0]?.id} />}
+
       {porRevisar.length > 0 && (
-        <section style={{ marginBottom: 'var(--space-8)' }} aria-labelledby="para-revisar">
+        <section style={{ marginBottom: 'var(--space-8)' }} aria-labelledby="para-revisar" data-guia="inicio-para-revisar">
           <h2 id="para-revisar" style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-3)' }}>
             Para revisar
           </h2>
@@ -79,7 +82,7 @@ export default function HomePage() {
       {cursos === null && !error && <Cargando variante="cuadricula" />}
 
       {cursos && (
-        <div className="cursos-grid">
+        <div className="cursos-grid" data-guia="inicio-cursos">
           {cursos.map((curso) => {
             const pendientes = porRevisarDelCurso.get(curso.id) ?? 0;
             return (
@@ -99,7 +102,7 @@ export default function HomePage() {
               </Link>
             );
           })}
-          <Link href="/cursos/nuevo" className="curso-card curso-card-nuevo">
+          <Link href="/cursos/nuevo" className="curso-card curso-card-nuevo" data-guia="inicio-nuevo-curso">
             <span className="curso-card-mas" aria-hidden="true">
               +
             </span>
@@ -210,6 +213,11 @@ function IdentificacionDocente({ errorSesion }: { errorSesion: string | null }) 
         <div className="eyebrow">AI Teaching Assistant</div>
         <h1>Armá el examen, la IA lo corrige, vos decidís la nota</h1>
         <p>Para docentes que quieren corregir menos a mano y no perder el control de lo que le llega a cada alumno.</p>
+        <p style={{ marginTop: 'var(--space-2)' }}>
+          <Link href="/ayuda" style={{ textDecoration: 'underline' }}>
+            ¿Primera vez? Mirá cómo funciona
+          </Link>
+        </p>
       </header>
 
       <ol className="pasos-inicio">

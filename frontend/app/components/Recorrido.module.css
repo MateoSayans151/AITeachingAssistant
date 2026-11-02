@@ -1,0 +1,166 @@
+/* Recorrido guiado. El movimiento tiene una sola función: que la vista siga al recuadro de un lugar al otro, en vez de saltar y obligar
+   a buscarlo. Por eso el recuadro se desliza, y el resto apenas aparece. Con "reducir movimiento" todo cambia sin animación. */
+
+.capa {
+  --ease-salida: cubic-bezier(0.22, 1, 0.36, 1);
+  --fondo-recorrido: rgba(32, 28, 24, 0.62);
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.bloqueo {
+  position: absolute;
+  inset: 0;
+  animation: aparecer 0.2s ease both;
+}
+
+.fondo {
+  background: var(--fondo-recorrido);
+}
+
+.foco {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 200vmax var(--fondo-recorrido);
+  transition:
+    transform 0.42s var(--ease-salida),
+    width 0.42s var(--ease-salida),
+    height 0.42s var(--ease-salida);
+  pointer-events: none;
+}
+
+/* Un solo pulso al llegar: "es acá". No se repite, para no distraer de la lectura. */
+.pulso {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid #fff;
+  animation: pulso 0.9s 0.3s var(--ease-salida) both;
+}
+
+.tarjeta {
+  position: absolute;
+  width: min(380px, calc(100vw - 32px));
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  transition:
+    top 0.42s var(--ease-salida),
+    left 0.42s var(--ease-salida);
+}
+
+.tarjeta[data-centrada='true'] {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.contenido {
+  animation: entrar 0.28s var(--ease-salida) both;
+}
+
+.contador {
+  margin-bottom: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.titulo {
+  margin-bottom: var(--space-2);
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.texto {
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.barra {
+  height: 4px;
+  margin-top: var(--space-4);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-200);
+}
+
+.barraRelleno {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  transform-origin: left;
+  transition: transform 0.42s var(--ease-salida);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.separador {
+  flex: 1;
+}
+
+/* En el celular la tarjeta es una hoja abajo: nunca tapa ni se corre fuera de la pantalla. */
+@media (max-width: 560px) {
+  .tarjeta,
+  .tarjeta[data-centrada='true'] {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    transform: none;
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes entrar {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes pulso {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .foco,
+  .tarjeta,
+  .barraRelleno {
+    transition: none;
+  }
+
+  .bloqueo,
+  .contenido,
+  .pulso {
+    animation: none;
+  }
+
+  .pulso {
+    opacity: 0;
+  }
+}

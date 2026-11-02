@@ -71,7 +71,7 @@ export default function CursoDetallePage() {
         <h1>{curso.nombre}</h1>
       </header>
 
-      <div className="tabs">
+      <div className="tabs" data-guia="curso-pestanas">
         <button className={`tab ${tab === 'material' ? 'tab-active' : ''}`} onClick={() => setTab('material')}>
           Material ({curso.materiales?.length ?? 0})
         </button>
@@ -89,7 +89,7 @@ export default function CursoDetallePage() {
       {tab === 'examenes' && (
         <>
           <div style={{ marginBottom: 20 }}>
-            <Link href={`/examenes/nuevo?cursoId=${curso.id}`} className="btn btn-primary">
+            <Link href={`/examenes/nuevo?cursoId=${curso.id}`} className="btn btn-primary" data-guia="curso-nuevo-examen">
               + Nuevo examen
             </Link>
           </div>

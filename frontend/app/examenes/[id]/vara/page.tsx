@@ -204,7 +204,7 @@ export default function AjustarVaraPage() {
       {error && <div className="error-box">{error}</div>}
       {aviso && <div className="card" style={{ marginBottom: 16 }}>{aviso}</div>}
 
-      <div className="card" style={{ marginBottom: 24 }}>
+      <div className="card" style={{ marginBottom: 24 }} data-guia="vara-regla">
         <div className="field" style={{ maxWidth: 420, marginBottom: 16 }}>
           <label htmlFor="modo">Regla</label>
           <select id="modo" value={modo} onChange={(e) => setModo(e.target.value as ModoVara)}>

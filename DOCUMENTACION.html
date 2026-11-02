@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Teaching Assistant · Documentación</title>
+<style>
+:root {
+  --bg: #f3f3f0; --panel: #ffffff; --panel-2: #ebebe7; --text: #222222; --text-2: #5e5e5e; --border: #dcdcd6; --border-2: #aeaea8;
+  --accent: #cc4a0a; --accent-soft: #fff1e8; --accent-text: #9a3412;
+  --c-persona: #3f6212; --c-front: #1d4ed8; --c-back: #cc4a0a; --c-dato: #0f766e; --c-ext: #7c3aed;
+  --code-bg: #ebebe7; --ease: cubic-bezier(0.22, 1, 0.36, 1); --radius: 12px;
+  font-family: Figtree, 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181a; --panel: #222225; --panel-2: #2c2c30; --text: #ededeb; --text-2: #adadaa; --border: #38383c; --border-2: #5a5a5f;
+    --accent: #f0702e; --accent-soft: #3b2417; --accent-text: #ffb48a;
+    --c-persona: #a3d65c; --c-front: #7fa8ff; --c-back: #f0702e; --c-dato: #4fd1c0; --c-ext: #b794f6; --code-bg: #2c2c30;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); line-height: 1.6; font-size: 16px; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent-text); }
+code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); padding: 14px 16px; border-radius: 10px; overflow-x: auto; margin: 12px 0; font-size: 14px; line-height: 1.5; }
+pre code { background: none; padding: 0; overflow-wrap: normal; }
+.layout { display: flex; min-height: 100vh; }
+.menu { position: sticky; top: 0; align-self: flex-start; flex: none; width: 250px; height: 100vh; overflow-y: auto; padding: 24px 14px; border-right: 1px solid var(--border); background: var(--panel); }
+.marca { display: block; padding: 0 10px 16px; font-weight: 800; color: var(--text); text-decoration: none; }
+.menu nav a { display: block; padding: 7px 10px; border-radius: 8px; color: var(--text-2); text-decoration: none; font-size: 15px; }
+.menu nav a:hover { background: var(--bg); color: var(--text); }
+.menu nav a[aria-current="true"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 700; }
+main { flex: 1; min-width: 0; padding: 40px 32px 80px; }
+.columna { max-width: 980px; margin: 0 auto; }
+header.portada { margin-bottom: 40px; }
+.antetitulo { color: var(--text-2); font-size: 14px; font-weight: 600; }
+h1 { font-size: 38px; line-height: 1.15; letter-spacing: -.02em; margin: 4px 0 12px; }
+.bajada { color: var(--text-2); font-size: 18px; max-width: 70ch; }
+section { padding-top: 40px; scroll-margin-top: 0; }
+h2 { font-size: 26px; letter-spacing: -.01em; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 18px; margin: 24px 0 8px; }
+p, ul, ol { margin-bottom: 12px; max-width: 76ch; }
+ul, ol { padding-left: 22px; }
+li { margin-bottom: 4px; }
+.tabla { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th { text-align: left; font-size: 13px; color: var(--text-2); }
+th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+.grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0 16px; }
+.caja { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.caja strong { display: block; margin-bottom: 4px; }
+.caja p { margin: 0; color: var(--text-2); font-size: 15px; }
+.nota { background: var(--accent-soft); border-radius: 10px; padding: 12px 16px; margin: 12px 0 16px; max-width: 76ch; }
+details.plegable { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; }
+details.plegable summary { padding: 10px 14px; cursor: pointer; font-weight: 600; }
+details.plegable > div { padding: 0 14px 12px; }
+input[type=search] { width: 100%; max-width: 420px; padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; margin-bottom: 8px; }
+
+/* ---- Flujo de datos ---- */
+.flujo { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-top: 16px; }
+.escenarios { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.escenarios button, .control { font: inherit; font-size: 14px; font-weight: 600; min-height: 38px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border-2); background: transparent; color: var(--text); cursor: pointer; }
+.escenarios button:hover, .control:hover:not(:disabled) { border-color: var(--text); }
+.escenarios button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.control:disabled { opacity: .45; cursor: default; }
+.control.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, .lista-pasos button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lienzo { overflow-x: auto; border-radius: 10px; background: var(--bg); }
+#mapa { display: block; width: 100%; min-width: 820px; height: auto; }
+#mapa text { font-family: inherit; fill: var(--text); }
+.carril { fill: none; stroke: var(--border-2); stroke-dasharray: 4 4; }
+.carril-rotulo { font-size: 12px; font-weight: 700; fill: var(--text-2) !important; }
+.nodo { cursor: pointer; transition: opacity .3s ease; }
+.nodo rect { fill: var(--panel); stroke: var(--tono); stroke-width: 1.5; transition: fill .25s ease, stroke-width .25s ease; }
+.nodo text { font-size: 13px; font-weight: 600; pointer-events: none; }
+.nodo .sub { font-size: 10.5px; font-weight: 400; fill: var(--text-2); }
+.nodo:hover rect, .nodo:focus-visible rect { stroke-width: 2.5; }
+.nodo:focus { outline: none; }
+.nodo:focus-visible rect { stroke: var(--accent); }
+#mapa[data-activo="true"] .nodo { opacity: .28; }
+#mapa[data-activo="true"] .nodo[data-parte="true"] { opacity: 1; }
+.nodo[data-ahora="true"] rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+.nodo[data-elegido="true"] rect { stroke-width: 3; }
+.arista { fill: none; stroke: var(--border-2); stroke-width: 1.5; marker-end: url(#punta); transition: stroke .2s ease; }
+.arista[data-ahora="true"] { stroke: var(--accent); stroke-width: 2.5; marker-end: url(#punta-activa); }
+.arista[data-pasada="true"] { stroke: var(--text-2); }
+#particula { fill: var(--accent); }
+.detalle { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; margin-top: 14px; }
+.lista-pasos { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow-y: auto; }
+.lista-pasos li { margin: 0 0 2px; }
+.lista-pasos button { display: flex; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: var(--text-2); font: inherit; font-size: 14px; line-height: 1.35; text-align: left; cursor: pointer; }
+.lista-pasos button:hover { background: var(--bg); }
+.lista-pasos button[aria-current="step"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 700; }
+.lista-pasos .n { flex: none; width: 20px; font-variant-numeric: tabular-nums; }
+.panel { background: var(--bg); border-radius: 10px; padding: 14px 16px; min-height: 200px; }
+.panel h3 { margin: 0 0 6px; font-size: 17px; }
+.panel p { font-size: 15px; margin-bottom: 8px; }
+.panel .ruta { color: var(--text-2); font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.panel dl { display: grid; gap: 6px; font-size: 14px; margin-top: 8px; }
+.panel dt { color: var(--text-2); font-size: 12px; font-weight: 700; }
+.panel dd { margin: 0; }
+.controles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.controles .estado { margin-left: auto; color: var(--text-2); font-size: 14px; }
+.leyenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--text-2); font-size: 13px; }
+.leyenda i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+@media (max-width: 900px) {
+  .layout { display: block; }
+  .menu { position: static; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 14px 16px; }
+  .menu nav { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+  .menu nav a { flex: none; }
+  .marca { padding: 0 0 8px; }
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 30px; }
+  .detalle { grid-template-columns: minmax(0, 1fr); }
+  .flujo { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .nodo, .nodo rect, .arista { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="menu">
+  <a class="marca" href="#inicio">AI Teaching Assistant</a>
+  <nav aria-label="Secciones">
+    <a href="#inicio">Qué es</a>
+    <a href="#arquitectura">Arquitectura</a>
+    <a href="#flujo-de-datos">Flujo de Datos</a>
+    <a href="#funciones">Funcionalidades</a>
+    <a href="#ia">IA y RAG</a>
+    <a href="#datos">Modelo de datos</a>
+    <a href="#api">API</a>
+    <a href="#seguridad">Seguridad</a>
+    <a href="#instalar">Instalación</a>
+    <a href="#deploy">Deploy</a>
+    <a href="#pruebas">Pruebas</a>
+    <a href="#guia">Guía para docentes</a>
+    <a href="#pendientes">Pendientes</a>
+  </nav>
+</aside>
+<main>
+<div class="columna">
+
+<header class="portada" id="inicio">
+  <div class="antetitulo">Tecnología e Innovación · UADE · Mateo Sayanz, Facundo Conde, Tomás Lonati</div>
+  <h1>AI Teaching Assistant</h1>
+  <p class="bajada">Plataforma para que un docente arme un examen, lo tomen sus alumnos con un link, la IA sugiera la corrección y él decida la nota final.</p>
+</header>
+
+<p><strong>La regla central del producto:</strong> la IA nunca califica sola. Produce una nota <em>sugerida</em>; nada le llega a un alumno sin que el docente lo revise y lo publique.</p>
+<div class="grilla">
+  <div class="caja"><strong>Docente</strong><p>Tiene cuenta. Arma exámenes, carga material, publica links, revisa y publica las notas.</p></div>
+  <div class="caja"><strong>Alumno</strong><p>No tiene cuenta. Entra con el link y su mail, rinde desde el celular o la compu, y recibe la nota por mail.</p></div>
+  <div class="caja"><strong>IA</strong><p>Corrige las preguntas abiertas contra la rúbrica y sugiere preguntas y criterios. Las cerradas se corrigen en código.</p></div>
+</div>
+<p>Alcance del MVP: todo es texto. No hay OCR ni carga de imágenes, y un PDF escaneado se rechaza con un mensaje claro.</p>
+
+<section id="arquitectura">
+  <h2>Arquitectura</h2>
+  <div class="tabla"><table>
+    <thead><tr><th>Capa</th><th>Tecnología</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td>Frontend</td><td>Next.js 14, React 18</td><td>Panel del docente y vista pública <code>/rendir/[slug]</code>. Login directo contra Supabase Auth.</td></tr>
+      <tr><td>Backend</td><td>NestJS 10, Prisma 5</td><td>API bajo <code>/api</code>, reglas de negocio, corrección y trabajos en segundo plano. Necesita un proceso Node persistente.</td></tr>
+      <tr><td>Base de datos</td><td>Supabase Postgres + pgvector</td><td>Datos del negocio e índice de búsqueda semántica. Con RLS: solo el backend accede.</td></tr>
+      <tr><td>Autenticación</td><td>Supabase Auth</td><td>Registro, login y recuperación de contraseña de docentes. El alumno usa un token propio por intento.</td></tr>
+      <tr><td>Archivos</td><td>Supabase Storage</td><td>Bucket privado <code>capturas</code>; en desarrollo, una carpeta local.</td></tr>
+      <tr><td>IA</td><td>Vercel AI SDK</td><td>Gemini 3.1 Flash-Lite por defecto o Claude Haiku 4.5 (variable <code>AI_PROVIDER</code>). Embeddings: <code>gemini-embedding-001</code>, siempre.</td></tr>
+      <tr><td>Mail</td><td>Resend</td><td>Notas, invitaciones y códigos de acceso.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Estructura del repositorio</h3>
+<pre><code>backend/src/
+  auth/ acceso/         sesión del docente y permisos por equipo
+  cursos/ comisiones/   cursos, equipo docente, alumnos
+  examenes/             exámenes, publicación, vara, sugerencias
+  respuestas-examen/    rendir, intentos, corrección, integridad, código por mail
+  materiales-curso/ rag/  material de cátedra y búsqueda semántica
+  ai/                   único punto de contacto con el modelo
+  mail/                 envíos con Resend
+backend/test/           tests (cubren también la lógica pura del front)
+frontend/app/           pantallas (Next App Router)
+frontend/lib/           cliente de API, lógica pura y contenido de la guía
+supabase/               schema.sql y migraciones</code></pre>
+</section>
+
+<section id="flujo-de-datos">
+  <h2>Flujo de Datos</h2>
+  <p>Elegí un recorrido y apretá <strong>Reproducir</strong>, o avanzá paso a paso. Cada paso muestra qué dato viaja, entre qué partes y en qué archivo está. Tocá cualquier caja para ver qué hace y en qué recorridos participa.</p>
+  <div class="flujo">
+    <div class="escenarios" id="escenarios" role="group" aria-label="Recorridos"></div>
+    <div class="lienzo">
+      <svg id="mapa" viewBox="0 0 1040 590" role="group" aria-label="Mapa de los componentes del sistema y el recorrido de los datos elegido">
+        <defs>
+          <marker id="punta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--text-2)"/></marker>
+          <marker id="punta-activa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+        </defs>
+        <g id="carriles"></g>
+        <g id="aristas"></g>
+        <g id="nodos"></g>
+        <circle id="particula" r="6" visibility="hidden"></circle>
+      </svg>
+    </div>
+    <div class="leyenda" aria-hidden="true">
+      <span><i style="background:var(--c-persona)"></i>Personas</span>
+      <span><i style="background:var(--c-front)"></i>Frontend</span>
+      <span><i style="background:var(--c-back)"></i>Backend</span>
+      <span><i style="background:var(--c-dato)"></i>Datos</span>
+      <span><i style="background:var(--c-ext)"></i>Servicios externos</span>
+    </div>
+    <div class="controles">
+      <button class="control principal" id="reproducir" type="button">Reproducir</button>
+      <button class="control" id="anterior" type="button">Anterior</button>
+      <button class="control" id="siguiente" type="button">Siguiente</button>
+      <span class="estado" id="estado" aria-live="polite"></span>
+    </div>
+    <div class="detalle">
+      <ol class="lista-pasos" id="pasos"></ol>
+      <div class="panel" id="panel" aria-live="polite"></div>
+    </div>
+  </div>
+  <p style="margin-top:14px">Todo pedido del docente pasa además por <code>ThrottlerGuard</code> (120 pedidos por minuto) y <code>AuthGuard</code>, que es <em>default-deny</em>: una ruta nueva nace protegida. El único controller público es <code>RendirController</code>.</p>
+</section>
+
+<section id="funciones">
+  <h2>Funcionalidades</h2>
+  <h3>Cursos y equipo docente</h3>
+  <p>Un curso lo comparte un equipo, todos con los mismos permisos: el acceso se decide por pertenencia (<code>curso_docentes</code>), no por quién lo creó. Se suma a alguien por mail; si no tiene cuenta queda invitado y entra solo cuando se registra con ese mail confirmado. Un curso no puede quedar sin docentes. Las matrices de rúbrica son personales.</p>
+  <h3>Armar un examen</h3>
+  <p>El asistente tiene tres pasos: <strong>Preguntas → Ajustes → Publicar</strong>. Se guarda un borrador en el navegador mientras se trabaja.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Se corrigen solas</th><th>Las corrige la IA</th></tr></thead>
+    <tbody><tr><td>Opción múltiple, casillas, verdadero/falso, numérica, relacionar pares</td><td>Desarrollo, resolución de problema, demostración, análisis de caso, respuesta corta</td></tr></tbody>
+  </table></div>
+  <ul>
+    <li><strong>Puntos:</strong> la suma tiene que dar la escala máxima. El sistema reparte en partes iguales, y la pregunta editada a mano queda fija. El servidor lo revalida.</li>
+    <li><strong>Rúbricas:</strong> criterios con peso y niveles de desempeño (de 3 a 7). Son opcionales: sin criterios, la pregunta se guarda con uno general.</li>
+    <li><strong>Con IA:</strong> sugerir criterios (20 por minuto) y sugerir preguntas desde el material (hasta 8 por pedido, 10 por minuto). Siempre son borradores.</li>
+    <li><strong>Un examen creado no se edita;</strong> se duplica. El título sí se puede cambiar, y solo se elimina si nadie empezó.</li>
+  </ul>
+  <h3>Publicar y rendir</h3>
+  <ul>
+    <li><strong>Acceso:</strong> por defecto entra cualquiera con el link y se suma solo a la comisión (tope de 1000). La alternativa es solo la lista.</li>
+    <li><strong>Modalidad:</strong> ventana de días o sesión con tiempo límite. El reloj es del servidor.</li>
+    <li><strong>Autoguardado:</strong> 1,5 s después de dejar de escribir. Tras un corte se retoma; si el tiempo vence, se entrega lo último guardado.</li>
+    <li><strong>Código por mail (opcional):</strong> 6 dígitos, 10 minutos, un solo uso y 5 intentos; se guarda solo un HMAC. Da además sesión única.</li>
+  </ul>
+  <h3>Control de integridad</h3>
+  <p>Opt-in por examen y con aceptación del alumno. Son señales para el criterio del docente: <strong>nunca bloquean el examen ni tocan la nota</strong>.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Origen</th><th>Señales</th></tr></thead>
+    <tbody>
+      <tr><td>Navegador</td><td>Salida de pantalla completa, cambio de pestaña, pegado, pantalla compartida detenida, superficie no permitida, monitor extendido</td></tr>
+      <tr><td>Servidor</td><td>Salto de texto (más de 300 caracteres a más de 30 por segundo), cambio de origen, captura omitida, latido perdido (más de 60 s)</td></tr>
+    </tbody>
+  </table></div>
+  <p>Con pantalla compartida, el servidor pide capturas cada 4 a 10 minutos y la página muestra un ID rotativo de 4 caracteres que debe verse en ellas. Se borran a los 7 días. No funciona en celulares.</p>
+  <h3>Revisar y publicar</h3>
+  <ul>
+    <li><strong>Revisar:</strong> aceptar, editar nota y devolución por pregunta, o aceptar en bloque. Con «Corregir pendientes» se reintentan las que fallaron.</li>
+    <li><strong>Vara:</strong> regla por porcentaje, puntos o aprobados esperados. Se previsualiza, solo toca lo no revisado, se puede revertir y nunca pisa la nota sugerida.</li>
+    <li><strong>Notas:</strong> se envían por mail de a 2 a la vez, una sola vez por alumno. No hay pantalla pública de resultados. Sin Resend configurado, publicar responde 409 antes de marcar nada.</li>
+  </ul>
+</section>
+
+<section id="ia">
+  <h2>IA y RAG</h2>
+  <p>Todo pasa por <code>AiService</code>; ninguna otra parte llama a un proveedor. Solo se usa <code>generateObject</code> con un schema de Zod, así que el modelo no tiene herramientas: únicamente puede devolver un JSON con esa forma.</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Uso</th><th>Tiempo máximo</th><th>Reintentos</th></tr></thead>
+    <tbody>
+      <tr><td>Corrección (segundo plano)</td><td>90 s</td><td>4</td></tr>
+      <tr><td>Sugerir criterios</td><td>30 s</td><td>1</td></tr>
+      <tr><td>Sugerir preguntas</td><td>40 s</td><td>2</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Cómo se calcula una nota</h3>
+  <ol>
+    <li>Las preguntas cerradas se resuelven en código (<code>correccion-cerradas.util.ts</code>).</li>
+    <li>Para las abiertas, el modelo elige un <strong>nivel</strong> por criterio y escribe un comentario.</li>
+    <li>La nota la calcula el código: <code>puntaje del criterio × porcentaje del nivel</code>. Lo inventado por el modelo se descarta.</li>
+  </ol>
+  <h3>Material de cátedra</h3>
+  <p>El texto se divide en fragmentos de 2.200 caracteres con 300 de solapamiento y cada uno se guarda con un embedding de 768 dimensiones. Al corregir se recuperan los 6 más cercanos, siempre filtrados por <code>curso_id</code>. Si la búsqueda falla, se corrige sin material. La rúbrica manda sobre el material. No cambies el modelo ni las dimensiones sin reindexar.</p>
+  <p>Hasta <code>IA_MAX_CONCURRENTES</code> correcciones corren a la vez (4 por defecto), para no agotar la cuota cuando entrega todo el curso junto.</p>
+</section>
+
+<section id="datos">
+  <h2>Modelo de datos</h2>
+  <p>La fuente es <code>backend/prisma/schema.prisma</code>, que refleja <code>supabase/schema.sql</code>. La tabla <code>rag_fragmentos_material</code> no está en Prisma: se usa con SQL crudo.</p>
+  <details class="plegable" open><summary>Personas y cursos</summary><div><p><code>docentes</code>, <code>cursos</code>, <code>curso_docentes</code> (equipo), <code>curso_invitaciones</code>, <code>comisiones</code>, <code>alumnos</code> (únicos por comisión y mail)</p></div></details>
+  <details class="plegable"><summary>Exámenes</summary><div><p><code>examenes</code>, <code>preguntas</code>, <code>criterios_pregunta</code>, <code>examen_comisiones</code> (el link: slug, fechas, acceso abierto, verificación, dominio), <code>matrices_rubrica</code>, <code>criterios_matriz</code></p></div></details>
+  <details class="plegable"><summary>Rendir</summary><div><p><code>intentos_examen</code> (reloj, borrador, sesión, latido), <code>respuestas_examen</code> (nota sugerida, con vara y final), <code>sesiones_intento</code>, <code>codigos_acceso</code>, <code>fallos_acceso</code></p></div></details>
+  <details class="plegable"><summary>Integridad, vara y material</summary><div><p><code>eventos_integridad</code>, <code>capturas_integridad</code>, <code>ajustes_vara</code>, <code>ajustes_vara_detalle</code>, <code>materiales_curso</code>, <code>rag_fragmentos_material</code></p></div></details>
+  <h3>Estados de una respuesta</h3>
+  <div class="tabla"><table>
+    <thead><tr><th>Campo</th><th>Valores</th><th>Significado</th></tr></thead>
+    <tbody>
+      <tr><td><code>estado</code></td><td><code>pendiente_correccion</code> → <code>corregido</code> → <code>revisado</code></td><td>Avance de la corrección</td></tr>
+      <tr><td><code>estadoRevision</code></td><td><code>pendiente</code> → <code>aceptada</code> o <code>editada</code></td><td>Decisión del docente</td></tr>
+      <tr><td>Notas</td><td><code>notaTotalSugerida</code>, <code>notaConVara</code>, <code>notaTotalFinal</code></td><td>La sugerida nunca se modifica; la final solo la escribe el docente</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="api">
+  <h2>API</h2>
+  <p>Todas las rutas van bajo <code>/api</code> y requieren la sesión del docente, salvo <code>/rendir</code>.</p>
+  <input type="search" id="filtro-api" placeholder="Filtrar, por ejemplo vara o capturas" aria-label="Filtrar rutas de la API">
+  <div class="tabla"><table id="tabla-api">
+    <thead><tr><th>Método</th><th>Ruta</th><th>Para qué</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</section>
+
+<section id="seguridad">
+  <h2>Seguridad</h2>
+  <ul>
+    <li><strong>Autorización:</strong> <code>AccesoService</code> comprueba la pertenencia al equipo. Si el recurso no existe o es ajeno responde 404, para no revelar qué ids hay.</li>
+    <li><strong>Token del alumno separado:</strong> lo firma el backend con <code>typ: 'intento'</code> y solo vale para su intento. No sirve como sesión de docente.</li>
+    <li><strong>RLS:</strong> activo en todas las tablas y sin policies. La <em>anon key</em> es pública, así que sin RLS cualquiera podría leer la clave de respuestas.</li>
+    <li><strong>Clave de respuestas:</strong> <code>sanitizarOpcionesParaAlumno</code> la quita antes de mandar las preguntas, y los pares se entregan mezclados.</li>
+    <li><strong>Inyección de prompt:</strong> sin herramientas, con la respuesta delimitada como dato y salida validada en código. El peor caso es una sugerencia mala que el docente corrige.</li>
+    <li><strong>Mails:</strong> nunca incluyen la clave, la nota sugerida ni los criterios internos.</li>
+  </ul>
+</section>
+
+<section id="instalar">
+  <h2>Instalación</h2>
+  <ol>
+    <li>Creá un proyecto en Supabase y corré <code>supabase/schema.sql</code> en el SQL Editor.</li>
+    <li>Creá el bucket privado <code>capturas</code> si vas a usar pantalla compartida.</li>
+    <li>En Authentication, activá <em>Confirm email</em> y cargá las URLs de redirección.</li>
+  </ol>
+<pre><code># Terminal 1: escucha en http://localhost:3001/api
+cd backend
+npm install
+cp .env.example .env     # completá las variables
+npx prisma generate
+npm run start:dev
+
+# Terminal 2: abrí http://localhost:3000
+cd frontend
+npm install
+cp .env.local.example .env.local
+npm run dev</code></pre>
+  <div class="nota">Corré los comandos de Prisma siempre desde <code>backend/</code>. Después de un <code>git pull</code> con dependencias nuevas, corré <code>npm ci</code> en las dos carpetas.</div>
+  <div class="tabla"><table>
+    <thead><tr><th>Variable</th><th>Dónde</th><th>Para qué</th></tr></thead>
+    <tbody>
+      <tr><td><code>DATABASE_URL</code></td><td>backend</td><td>Postgres por el Transaction pooler (6543)</td></tr>
+      <tr><td><code>AI_PROVIDER</code>, <code>GOOGLE_GENERATIVE_AI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code></td><td>backend</td><td>Proveedor de IA y claves</td></tr>
+      <tr><td><code>SUPABASE_URL</code></td><td>backend</td><td>Verificar los tokens de docente</td></tr>
+      <tr><td><code>JWT_SECRET</code></td><td>backend</td><td>Firmar el token del alumno (mínimo 32 caracteres; sin él no arranca)</td></tr>
+      <tr><td><code>RESEND_API_KEY</code>, <code>EMAIL_FROM</code>, <code>EMAIL_REDIRECT_TO</code></td><td>backend</td><td>Mails; la última activa el modo prueba</td></tr>
+      <tr><td><code>FRONTEND_ORIGIN</code></td><td>backend</td><td>CORS y armado de los links</td></tr>
+      <tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td>backend</td><td>Guardar capturas. Nunca en el front</td></tr>
+      <tr><td><code>TRUST_PROXY</code></td><td>backend</td><td>Ver la IP real detrás de un proxy</td></tr>
+      <tr><td><code>NEXT_PUBLIC_API_URL</code>, <code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td><td>frontend</td><td>Valores públicos</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="deploy">
+  <h2>Deploy</h2>
+  <ul>
+    <li><strong>Frontend:</strong> Vercel, carpeta <code>frontend/</code>.</li>
+    <li><strong>Backend:</strong> un host con <strong>Node persistente</strong> (Render, Railway, Fly.io). Build: <code>npm install &amp;&amp; npx prisma generate &amp;&amp; npm run build</code>. Inicio: <code>npm run start:prod</code>.</li>
+    <li><strong>Antes de abrirlo:</strong> verificá RLS con el <code>curl</code> del README.</li>
+  </ul>
+  <p>No puede ser serverless: la corrección y los mails corren en segundo plano, y un <code>setInterval</code> cierra los intentos vencidos. En serverless el proceso se congela apenas se responde el pedido.</p>
+  <p>Límite a tener en cuenta: el plan gratuito de Resend permite 100 mails por día, compartidos entre notas, invitaciones y códigos.</p>
+</section>
+
+<section id="pruebas">
+  <h2>Pruebas</h2>
+<pre><code>cd backend
+npm test                  # 616 tests sin base ni red (noviembre de 2026)
+npm run test:integracion  # recorrido contra un backend levantado
+npm run seed:demo         # examen demo con 9 alumnos en todos los estados</code></pre>
+  <p>Hay controles que cuidan decisiones de producto: <code>sin-dialogos-nativos</code> impide volver a usar <code>window.confirm</code>, y <code>guia</code> avisa si la guía quedó desactualizada.</p>
+</section>
+
+<section id="guia">
+  <h2>Guía para docentes</h2>
+  <div class="grilla">
+    <div class="caja"><strong>Primeros pasos</strong><p>Tarjeta del inicio que se tilda sola con lo que el docente hizo.</p></div>
+    <div class="caja"><strong>Mostrame esta pantalla</strong><p>Recorrido animado sobre la pantalla real. Teclado, celular y reducir movimiento.</p></div>
+    <div class="caja"><strong>/ayuda</strong><p>Paso a paso, problemas frecuentes y glosario, sin necesidad de cuenta.</p></div>
+  </div>
+  <p>El contenido está en <code>frontend/lib/guia.ts</code>. Cada paso apunta a un atributo <code>data-guia</code>. Para mantenerla con Claude Code está la skill <code>.claude/skills/guia-docente</code>.</p>
+</section>
+
+<section id="pendientes">
+  <h2>Pendientes y limitaciones</h2>
+  <ul>
+    <li>La devolución por pregunta que escribe el docente se guarda, pero no viaja en el mail.</li>
+    <li>Cambiar una nota después de enviarla no manda un mail nuevo, y no hay reenvío individual.</li>
+    <li>«Enviado» significa que Resend lo aceptó: rebotes y spam no se detectan, y un mail mal escrito no avisa.</li>
+    <li>El avance del envío de invitaciones vive en memoria y se pierde al reiniciar.</li>
+    <li>La corrección no tiene cola persistente: un reinicio deja la respuesta pendiente, recuperable con «Corregir pendientes».</li>
+    <li>Falta captcha en el pedido del código por mail, y OCR para PDF escaneados.</li>
+    <li>Falta <code>DIRECT_URL</code> en Prisma (ver <code>MEJORAS.md</code>) y ESLint en el front.</li>
+  </ul>
+  <p>Más detalle en <code>README.md</code>, <code>MEJORAS.md</code> y <code>REPORTE_RAG_Y_LANGGRAPH.md</code>. <code>QA_REPORTE.md</code> es histórico.</p>
+</section>
+
+</div>
+</main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var W = 156, H = 54;
+  var NODOS = {
+    docente: { x: 24, y: 96, t: 'Docente', s: 'en el navegador', c: 'persona', d: 'Persona con cuenta. Arma exámenes, revisa respuestas y decide las notas.' },
+    alumno: { x: 24, y: 400, t: 'Alumno', s: 'celular o compu', c: 'persona', d: 'Sin cuenta: entra con el link y su mail. Recibe la nota por mail.' },
+    web: { x: 214, y: 96, t: 'Panel docente', s: 'Next.js · lib/api.ts', c: 'front', d: 'Todas las pantallas del docente. Manda el token de Supabase en cada pedido.', f: 'frontend/app, frontend/lib/api.ts' },
+    rendir: { x: 214, y: 400, t: 'Rendir examen', s: '/rendir/[slug]', c: 'front', d: 'La única vista pública. Autoguarda, late cada 15 s y corrige la diferencia de reloj con el servidor.', f: 'frontend/app/rendir/[slug]/ExamenEnCurso.tsx' },
+    guard: { x: 416, y: 44, t: 'AuthGuard + Acceso', s: 'sesión y permisos', c: 'back', d: 'Verifica la sesión del docente y que el recurso sea de su equipo. Si no, responde 404.', f: 'backend/src/auth, backend/src/acceso' },
+    examenes: { x: 416, y: 132, t: 'Exámenes', s: 'crear y publicar', c: 'back', d: 'Valida puntos y niveles, crea el examen, genera el link y publica las notas.', f: 'backend/src/examenes/examenes.service.ts' },
+    materiales: { x: 416, y: 220, t: 'Material', s: 'extraer texto', c: 'back', d: 'Recibe archivos o texto, extrae el contenido y lo manda a indexar.', f: 'backend/src/materiales-curso' },
+    intentos: { x: 416, y: 308, t: 'Rendir e intentos', s: 'reloj y borrador', c: 'back', d: 'Controller público. Inicia el intento, guarda borradores, valida el token y cierra los vencidos.', f: 'backend/src/respuestas-examen/intentos.service.ts' },
+    integridad: { x: 416, y: 396, t: 'Integridad', s: 'señales y capturas', c: 'back', d: 'Latido, marca rotativa, pedido de capturas y borrado automático. Nunca toca la nota.', f: 'backend/src/respuestas-examen/integridad.service.ts' },
+    notif: { x: 416, y: 484, t: 'Notificaciones', s: 'mails con la nota', c: 'back', d: 'Envía en segundo plano, de a 2 a la vez y una sola vez por alumno.', f: 'backend/src/mail/notificaciones.service.ts' },
+    vara: { x: 610, y: 44, t: 'Vara', s: 'ajuste auditable', c: 'back', d: 'Aplica una regla sobre las notas sugeridas de lo no revisado. Se puede revertir.', f: 'backend/src/examenes/vara.service.ts' },
+    correccion: { x: 610, y: 132, t: 'Corrección', s: 'respuestas', c: 'back', d: 'Único punto que corrige: cerradas en código, abiertas con IA. También guarda la revisión del docente.', f: 'backend/src/respuestas-examen/respuestas-examen.service.ts' },
+    rag: { x: 610, y: 220, t: 'RagService', s: 'búsqueda semántica', c: 'back', d: 'Fragmenta e indexa el material, y recupera lo relevante, siempre filtrado por curso.', f: 'backend/src/rag/rag.service.ts' },
+    ai: { x: 610, y: 308, t: 'AiService', s: 'único acceso a la IA', c: 'back', d: 'Arma el pedido, llama al modelo y valida la salida en código.', f: 'backend/src/ai/ai.service.ts' },
+    sauth: { x: 860, y: 36, t: 'Supabase Auth', s: 'cuentas', c: 'ext', d: 'Registro, login y recuperación de contraseña. Emite el token del docente.' },
+    pg: { x: 860, y: 124, t: 'Postgres', s: 'Prisma · con RLS', c: 'dato', d: 'Todos los datos del negocio. Solo entra el backend.', f: 'backend/prisma/schema.prisma' },
+    vector: { x: 860, y: 212, t: 'pgvector', s: 'fragmentos', c: 'dato', d: 'Tabla rag_fragmentos_material: texto y embedding de cada fragmento.' },
+    storage: { x: 860, y: 300, t: 'Storage', s: 'bucket capturas', c: 'dato', d: 'Capturas de pantalla, en un bucket privado. Se borran a los 7 días.', f: 'backend/src/respuestas-examen/almacen-capturas.ts' },
+    llm: { x: 860, y: 388, t: 'Gemini / Claude', s: 'modelo de IA', c: 'ext', d: 'Devuelve un JSON con forma fija. No tiene herramientas ni acceso a nada.' },
+    resend: { x: 860, y: 476, t: 'Resend', s: 'envío de mails', c: 'ext', d: 'Entrega notas, invitaciones y códigos. Plan gratuito: 100 mails por día.' }
+  };
+  var CARRILES = [
+    { x: 10, w: 184, r: 'Personas' }, { x: 202, w: 180, r: 'Frontend' }, { x: 402, w: 382, r: 'Backend NestJS' }, { x: 846, w: 184, r: 'Datos y servicios' }
+  ];
+  function p(de, a, t, d, dato, f) { return { de: de, a: a, t: t, d: d, dato: dato, f: f }; }
+  var ESCENARIOS = [
+    { id: 'login', t: 'Login del docente', pasos: [
+      p('docente', 'web', 'Escribe mail y contraseña', 'El login no pasa por nuestro backend: el navegador habla directo con Supabase.', 'Mail y contraseña', 'frontend/app/page.tsx'),
+      p('web', 'sauth', 'signInWithPassword', 'Supabase comprueba la contraseña. Con «Confirm email» activo, una cuenta sin confirmar no entra.', 'Credenciales', 'frontend/lib/auth.ts'),
+      p('sauth', 'web', 'Devuelve el token', 'supabase-js lo guarda y lo renueva solo.', 'Access token (JWT)'),
+      p('web', 'guard', 'GET /auth/me', 'A partir de acá, cada pedido lleva el token en el encabezado Authorization.', 'Bearer token', 'frontend/lib/api.ts'),
+      p('guard', 'sauth', 'Verifica la firma', 'Usa las claves públicas del proyecto (JWKS). El backend no necesita ningún secreto de Supabase.', 'Claves públicas', 'backend/src/auth/verificador-sesion.ts'),
+      p('guard', 'pg', 'Vincula o crea al docente', 'Si es la primera vez exige mail confirmado, y convierte en membresías las invitaciones pendientes.', 'Fila de docentes y curso_docentes', 'backend/src/auth/sesion-docente.service.ts'),
+      p('guard', 'web', 'Responde quién es', 'El panel ya puede mostrar sus cursos.', 'id, nombre y mail')
+    ] },
+    { id: 'material', t: 'Cargar material', pasos: [
+      p('docente', 'web', 'Sube un archivo', 'El navegador revisa formato y tamaño antes de mandarlo.', 'PDF, Word, PowerPoint o texto, hasta 4 MB', 'frontend/lib/material.ts'),
+      p('web', 'guard', 'POST /cursos/:id/materiales/archivo', 'Se comprueba que el docente sea del equipo del curso.', 'Formulario multipart', 'backend/src/materiales-curso/materiales-curso.controller.ts'),
+      p('guard', 'materiales', 'Extrae el texto', 'Valida que el contenido coincida con la extensión. Un PDF sin texto se rechaza: no hay OCR. Tope de 200.000 caracteres.', 'Archivo en memoria', 'backend/src/materiales-curso/extractor-texto.util.ts'),
+      p('materiales', 'pg', 'Guarda el material', 'El texto queda guardado aunque después falle la indexación.', 'Título, unidad y contenido'),
+      p('materiales', 'rag', 'Pide indexarlo', 'Divide en fragmentos de 2.200 caracteres con 300 de solapamiento.', 'Id del material', 'backend/src/rag/rag.service.ts'),
+      p('rag', 'llm', 'Pide los embeddings', 'De a 10 fragmentos en paralelo. Siempre con Google, aunque el modelo de corrección sea Claude.', 'Texto de cada fragmento'),
+      p('llm', 'rag', 'Devuelve los vectores', 'Un vector de 768 dimensiones por fragmento.', 'Embeddings'),
+      p('rag', 'vector', 'Reemplaza el índice', 'En una transacción: borra lo anterior del material e inserta lo nuevo.', 'Fragmento, vector y curso_id')
+    ] },
+    { id: 'publicar', t: 'Armar y publicar', pasos: [
+      p('docente', 'web', 'Arma las preguntas', 'Se guarda un borrador en el navegador, por docente.', 'Formulario del examen', 'frontend/lib/borrador-examen.ts'),
+      p('web', 'examenes', 'Pide preguntas a la IA (opcional)', 'POST /examenes/sugerir-preguntas, con un tope de 10 por minuto.', 'Curso, tipos, temas, cantidad', 'backend/src/examenes/sugerencia-preguntas.service.ts'),
+      p('examenes', 'rag', 'Busca el material del tema', 'Si la búsqueda falla, usa el material directo.', 'Tema escrito por el docente', 'backend/src/examenes/fragmentos-material.util.ts'),
+      p('rag', 'examenes', 'Devuelve fragmentos', 'Entran hasta 26.000 caracteres de material por pedido.', 'Fragmentos del curso'),
+      p('examenes', 'ai', 'Arma el pedido', 'Material y pedido van delimitados como datos.', 'Fragmentos y pedido', 'backend/src/ai/sugerencia-preguntas.util.ts'),
+      p('ai', 'llm', 'Consulta al modelo', 'Hasta 40 segundos y 2 reintentos.', 'Prompt y schema'),
+      p('llm', 'ai', 'Devuelve el JSON', 'Se valida la clave de cada cerrada, se mezclan las opciones y se descartan repetidas.', 'Preguntas sugeridas'),
+      p('ai', 'web', 'Llega el borrador', 'No se guarda nada: el docente revisa y elige qué agrega.', 'Preguntas con explicación y fuente'),
+      p('web', 'guard', 'POST /examenes', 'El servidor revalida todo lo que validó el navegador.', 'Examen completo', 'backend/src/examenes/examenes.controller.ts'),
+      p('guard', 'examenes', 'Valida las reglas', 'Los puntos tienen que sumar la escala máxima, y las cerradas necesitan su clave.', 'Examen', 'backend/src/examenes/puntaje.util.ts'),
+      p('examenes', 'pg', 'Crea el examen', 'Una pregunta abierta sin criterios recibe un criterio general.', 'Examen, preguntas y criterios'),
+      p('web', 'examenes', 'POST /examenes/:id/comisiones', 'Publica el examen para una comisión. Genera un slug aleatorio.', 'Comisión, fechas y modo de acceso'),
+      p('examenes', 'web', 'Devuelve el link', 'El docente lo copia, o lo manda por mail con Resend.', 'urlAcceso')
+    ] },
+    { id: 'rendir', t: 'Rendir el examen', pasos: [
+      p('alumno', 'rendir', 'Abre el link', 'No necesita cuenta.', 'Slug del link'),
+      p('rendir', 'intentos', 'GET /rendir/:slug', 'Solo datos generales: las preguntas se entregan recién al iniciar.', 'Título, consigna, ventana', 'backend/src/respuestas-examen/rendir.controller.ts'),
+      p('intentos', 'resend', 'Manda el código (opcional)', 'Si el link pide verificación. Se guarda solo un HMAC, y la respuesta es siempre igual para no revelar quién cursa.', 'Código de 6 dígitos', 'backend/src/respuestas-examen/codigos-acceso.service.ts'),
+      p('resend', 'alumno', 'Llega el código', 'Dura 10 minutos y es de un solo uso.', 'Mail con el código'),
+      p('rendir', 'intentos', 'POST /rendir/:slug/iniciar', 'Con el mail, el código si hace falta y la aceptación del aviso de monitoreo.', 'Mail, nombre, consentimiento'),
+      p('intentos', 'pg', 'Crea el intento', 'El servidor fija el inicio y el vencimiento. Con acceso abierto, además suma al alumno a la comisión.', 'Alumno e intento', 'backend/src/respuestas-examen/intentos.service.ts'),
+      p('intentos', 'rendir', 'Entrega las preguntas', 'Sin la clave de respuestas y con los pares mezclados.', 'Token del intento y preguntas', 'backend/src/respuestas-examen/correccion-cerradas.util.ts'),
+      p('rendir', 'intentos', 'PUT /rendir/:slug/borrador', 'Autoguardado 1,5 s después de dejar de escribir. Si no hay conexión, queda en el dispositivo y reintenta.', 'Respuestas parciales'),
+      p('intentos', 'pg', 'Guarda el borrador', 'Si el examen monitorea, detecta acá los saltos de texto.', 'Borrador del intento'),
+      p('rendir', 'intentos', 'POST /rendir/:slug/entregar', 'Si el alumno nunca entrega, un barrido cada minuto cierra el intento vencido con lo último guardado.', 'Respuestas finales'),
+      p('intentos', 'correccion', 'Crea la respuesta', 'La corrección arranca en segundo plano: el alumno no espera a la IA.', 'Contenido por pregunta')
+    ] },
+    { id: 'correccion', t: 'Corrección con IA', pasos: [
+      p('intentos', 'correccion', 'Llega la entrega', 'Empieza como pendiente_correccion.', 'Respuesta del alumno', 'backend/src/respuestas-examen/respuestas-examen.service.ts'),
+      p('correccion', 'rag', 'Busca material relevante', 'Solo si hay preguntas abiertas. Hasta 4 correcciones a la vez.', 'Enunciados y respuestas, hasta 6.000 caracteres'),
+      p('rag', 'llm', 'Embedding de la consulta', 'Si el curso no tiene material, no se gasta esta llamada.', 'Texto de la consulta'),
+      p('rag', 'vector', 'Busca los 6 más cercanos', 'Siempre filtrado por curso_id: nunca mezcla materias.', 'Vector de consulta'),
+      p('rag', 'correccion', 'Devuelve los fragmentos', 'Si la búsqueda falla, se corrige sin material.', 'Título, unidad, contenido'),
+      p('correccion', 'ai', 'Pide corregir las abiertas', 'Las cerradas ya se resolvieron en código y nunca llegan a la IA.', 'Preguntas, criterios, niveles, respuestas, material', 'backend/src/ai/ai.service.ts'),
+      p('ai', 'llm', 'generateObject', 'La respuesta del alumno va entre etiquetas y marcada como dato, nunca como instrucción. Hasta 90 segundos.', 'Prompt y schema'),
+      p('llm', 'ai', 'Elige un nivel por criterio', 'El modelo no calcula la nota.', 'JSON con niveles y comentarios'),
+      p('ai', 'correccion', 'Valida y calcula la nota', 'Descarta lo inventado, acota el nivel y calcula puntaje por porcentaje.', 'Notas sugeridas'),
+      p('correccion', 'pg', 'Guarda la sugerencia', 'Queda como corregido y pendiente de revisión. Si la IA falla, queda pendiente para reintentar.', 'Nota sugerida y feedback')
+    ] },
+    { id: 'revisar', t: 'Revisar y vara', pasos: [
+      p('docente', 'web', 'Abre las respuestas', 'Desde «Para revisar» en el inicio.', 'Id del examen'),
+      p('web', 'correccion', 'GET /examenes/:id/respuestas', 'Antes de listar, cierra los intentos vencidos.', 'Lista con notas y señales', 'backend/src/respuestas-examen/respuestas-examen.controller.ts'),
+      p('web', 'vara', 'POST /examenes/:id/vara/preview (opcional)', 'Calcula cómo quedarían las notas sin guardar nada.', 'Regla de la vara', 'backend/src/examenes/vara.util.ts'),
+      p('vara', 'pg', 'Aplica la regla', 'Solo a lo no revisado. Guarda quién, cuándo y el antes y después de cada nota, y se puede revertir.', 'ajustes_vara y notaConVara', 'backend/src/examenes/vara.service.ts'),
+      p('web', 'correccion', 'PATCH de la respuesta', 'Aceptar confirma la sugerencia; editar deja la nota del docente.', 'Estado, notas y feedback', 'backend/src/respuestas-examen/revision.util.ts'),
+      p('correccion', 'pg', 'Guarda la nota final', 'La nota sugerida no se toca nunca.', 'notaTotalFinal')
+    ] },
+    { id: 'notas', t: 'Publicar notas', pasos: [
+      p('docente', 'web', 'Publica las notas', 'Pide confirmación porque no se puede retirar.', 'Id del examen', 'frontend/app/components/LiberarNotasButton.tsx'),
+      p('web', 'examenes', 'POST /examenes/:id/liberar-feedback', 'Sin Resend configurado responde 409 antes de marcar nada.', 'Id del examen', 'backend/src/examenes/examenes.service.ts'),
+      p('examenes', 'pg', 'Marca la fecha', 'Es idempotente: conserva la primera fecha.', 'feedbackLiberadoEn'),
+      p('examenes', 'notif', 'Lanza el envío', 'En segundo plano. Solo a respuestas ya revisadas.', 'Ids de respuestas', 'backend/src/mail/notificaciones.service.ts'),
+      p('notif', 'resend', 'Manda cada mail', 'De a 2 a la vez, con una pausa de 1 segundo y clave de idempotencia.', 'Nota, feedback y nota por pregunta', 'backend/src/mail/mail-resultado.util.ts'),
+      p('resend', 'alumno', 'El alumno recibe la nota', 'Si responde el mail, le llega al docente. Nunca incluye la clave ni la nota sugerida.', 'Mail con el resultado'),
+      p('notif', 'pg', 'Anota el envío', 'Con notificadoEn cada alumno recibe un solo mail. Si falló, se reintenta con «Reenviar a los que faltan».', 'notificadoEn o notificacionError')
+    ] },
+    { id: 'integridad', t: 'Integridad', pasos: [
+      p('rendir', 'intentos', 'Latido cada 15 segundos', 'Valida el token y anota si cambió el origen.', 'Foco, visibilidad, compartiendo', 'frontend/app/rendir/[slug]/ExamenEnCurso.tsx'),
+      p('intentos', 'integridad', 'Procesa el latido', 'Más de 60 segundos sin latido queda como señal.', 'Estado del intento', 'backend/src/respuestas-examen/integridad.service.ts'),
+      p('integridad', 'rendir', 'Devuelve la marca', 'Un ID de 4 caracteres que la página muestra, y a veces el pedido de una captura.', 'Marca y pedido de captura'),
+      p('rendir', 'intentos', 'POST /rendir/:slug/capturas', 'Un JPEG de unos 60 KB, tomado de la pantalla compartida.', 'Imagen, motivo y marca', 'frontend/lib/captura-pantalla.ts'),
+      p('intentos', 'integridad', 'Comprueba la captura', 'Valida que sea un JPEG y compara la marca con la que emitió.', 'Imagen'),
+      p('integridad', 'storage', 'Guarda la imagen', 'En el bucket privado, sin URLs públicas.', 'JPEG'),
+      p('integridad', 'pg', 'Registra la captura', 'Con fecha de borrado a los 7 días. Una captura pedida que no llega queda como señal.', 'capturas_integridad'),
+      p('web', 'correccion', 'El docente mira las capturas', 'Se bajan con su sesión y solo si es del equipo. Son información: no cambian la nota.', 'GET .../capturas/:id')
+    ] }
+  ];
+  var API = [
+    ['GET','/auth/me','Docente de la sesión'],
+    ['GET, POST','/cursos','Listar y crear cursos'],['GET','/cursos/:id','Detalle del curso'],
+    ['GET, POST','/cursos/:id/docentes','Ver el equipo y sumar por mail (20 por minuto)'],['DELETE','/cursos/:id/docentes/:docenteId','Sacar a un docente o salir'],['DELETE','/cursos/:id/invitaciones/:id','Cancelar una invitación'],
+    ['GET, POST','/cursos/:cursoId/comisiones','Listar y crear comisiones'],['GET','/comisiones/:id','Detalle de la comisión'],['POST','/comisiones/:id/alumnos','Agregar un alumno'],
+    ['GET, POST','/cursos/:cursoId/materiales','Listar y crear con texto'],['POST','/cursos/:cursoId/materiales/archivo','Subir un archivo'],['POST','/cursos/:cursoId/materiales/reindexar','Reindexar el material'],['DELETE','/materiales/:id','Borrar un material'],
+    ['GET, POST','/matrices-rubrica','Listar y crear matrices'],['GET','/matrices-rubrica/:id','Detalle de la matriz'],
+    ['GET, POST','/examenes','Listar por curso y crear'],['GET','/examenes/pendientes','Lo que espera revisión'],['GET, PATCH, DELETE','/examenes/:id','Detalle, renombrar y eliminar'],
+    ['POST','/examenes/:id/comisiones','Publicar: genera el link'],['POST','/examenes/sugerir-criterios','Borrador de rúbrica (20 por minuto)'],['POST','/examenes/sugerir-preguntas','Borrador de preguntas (10 por minuto)'],
+    ['POST','/examenes/:id/vara/preview','Previsualizar la vara'],['GET, POST','/examenes/:id/vara','Historial y aplicar'],['POST','/examenes/:id/vara/:ajusteId/revertir','Revertir un ajuste'],
+    ['POST','/examenes/:id/liberar-feedback','Publicar notas y enviar mails'],['GET','/examenes/:id/notificaciones','Estado de los mails de notas'],['POST','/examenes/:id/notificaciones/reenviar','Reenviar a los que faltan'],['GET, POST','/examenes/:id/invitaciones','Estado y envío del link por mail'],
+    ['GET','/examenes/:id/respuestas','Listar respuestas'],['POST','/examenes/:id/respuestas/bulk-aceptar','Aceptar en bloque'],['POST','/examenes/:id/respuestas/corregir-pendientes','Reintentar la corrección'],
+    ['GET, PATCH','/examenes/:id/respuestas/:rid','Detalle y revisión'],['POST','/examenes/:id/respuestas/:rid/recorregir','Volver a correr la IA'],['GET','/examenes/:id/respuestas/:rid/vara','Explicar la vara de esa nota'],
+    ['GET, DELETE','/examenes/:id/respuestas/:rid/capturas','Listar y borrar capturas'],['GET, DELETE','/examenes/:id/respuestas/:rid/capturas/:capturaId','Ver y borrar una captura'],
+    ['GET','/rendir/:slug','Público: datos del link'],['POST','/rendir/:slug/codigo','Público: pedir el código'],['POST','/rendir/:slug/iniciar','Público: iniciar o retomar'],
+    ['GET','/rendir/:slug/intento','Token del alumno: retomar'],['PUT','/rendir/:slug/borrador','Token del alumno: autoguardar'],['POST','/rendir/:slug/eventos','Token del alumno: señal de integridad'],['POST','/rendir/:slug/latido','Token del alumno: latido'],['POST','/rendir/:slug/capturas','Token del alumno: subir captura'],['POST','/rendir/:slug/entregar','Token del alumno: entregar']
+  ];
+
+  var ns = 'http://www.w3.org/2000/svg';
+  var $ = function (id) { return document.getElementById(id); };
+  var reducido = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function el(tag, attrs, padre, texto) {
+    var e = document.createElementNS(ns, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (texto) e.textContent = texto;
+    if (padre) padre.appendChild(e);
+    return e;
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  var mapa = $('mapa'), gAristas = $('aristas'), particula = $('particula');
+  CARRILES.forEach(function (c) {
+    el('rect', { x: c.x, y: 8, width: c.w, height: 574, rx: 12, class: 'carril' }, $('carriles'));
+    el('text', { x: c.x + 12, y: 25, class: 'carril-rotulo' }, $('carriles'), c.r);
+  });
+  var gNodo = {};
+  Object.keys(NODOS).forEach(function (id) {
+    var n = NODOS[id];
+    var g = el('g', { class: 'nodo', tabindex: 0, role: 'button', 'aria-label': n.t + ': ' + n.s, style: '--tono: var(--c-' + n.c + ')' }, $('nodos'));
+    el('rect', { x: n.x, y: n.y, width: W, height: H, rx: 10 }, g);
+    el('text', { x: n.x + 12, y: n.y + 23 }, g, n.t);
+    el('text', { x: n.x + 12, y: n.y + 40, class: 'sub' }, g, n.s);
+    g.addEventListener('click', function () { elegirNodo(id); });
+    g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegirNodo(id); } });
+    gNodo[id] = g;
+  });
+
+  /* La curva sale del costado que mira al destino. Dentro de una misma columna sale por la derecha y vuelve, para no pisar las cajas del medio. */
+  function curva(de, a) {
+    var A = NODOS[de], B = NODOS[a];
+    if (Math.abs(A.x - B.x) < 30) {
+      var x = A.x + W, y1 = A.y + H / 2, y2 = B.y + H / 2, c = 26 + Math.abs(y2 - y1) * 0.08;
+      return 'M' + x + ' ' + y1 + ' C' + (x + c) + ' ' + y1 + ' ' + (x + c) + ' ' + y2 + ' ' + (x + 2) + ' ' + y2;
+    }
+    var der = B.x > A.x;
+    var x1 = der ? A.x + W : A.x, x2 = der ? B.x - 2 : B.x + W + 2;
+    var y3 = A.y + H / 2, y4 = B.y + H / 2, m = Math.max(40, Math.abs(x2 - x1) * 0.45) * (der ? 1 : -1);
+    return 'M' + x1 + ' ' + y3 + ' C' + (x1 + m) + ' ' + y3 + ' ' + (x2 - m) + ' ' + y4 + ' ' + x2 + ' ' + y4;
+  }
+
+  var esc_actual = ESCENARIOS[0], indice = 0, reproduciendo = false, temporizador = null, marcoAnim = null, nodoElegido = null, trazos = [];
+
+  function dibujarEscenario() {
+    gAristas.textContent = '';
+    trazos = esc_actual.pasos.map(function (paso) { return el('path', { class: 'arista', d: curva(paso.de, paso.a), visibility: 'hidden' }, gAristas); });
+    var participan = {};
+    esc_actual.pasos.forEach(function (paso) { participan[paso.de] = 1; participan[paso.a] = 1; });
+    Object.keys(gNodo).forEach(function (id) { gNodo[id].setAttribute('data-parte', participan[id] ? 'true' : 'false'); });
+    mapa.setAttribute('data-activo', 'true');
+    Array.prototype.forEach.call($('escenarios').children, function (b) { b.setAttribute('aria-pressed', b.dataset.id === esc_actual.id ? 'true' : 'false'); });
+    var ol = $('pasos');
+    ol.textContent = '';
+    esc_actual.pasos.forEach(function (paso, i) {
+      var li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span class="n">' + (i + 1) + '</span><span>' + esc(paso.t) + '</span>';
+      b.addEventListener('click', function () { parar(); irA(i); });
+      li.appendChild(b);
+      ol.appendChild(li);
+    });
+  }
+
+  function irA(i, animar) {
+    indice = i;
+    nodoElegido = null;
+    var paso = esc_actual.pasos[i];
+    trazos.forEach(function (tr, k) {
+      tr.setAttribute('visibility', k <= i ? 'visible' : 'hidden');
+      tr.setAttribute('data-ahora', k === i ? 'true' : 'false');
+      tr.setAttribute('data-pasada', k < i ? 'true' : 'false');
+    });
+    gAristas.appendChild(trazos[i]);
+    Object.keys(gNodo).forEach(function (id) {
+      gNodo[id].setAttribute('data-ahora', id === paso.de || id === paso.a ? 'true' : 'false');
+      gNodo[id].setAttribute('data-elegido', 'false');
+    });
+    var botones = $('pasos').querySelectorAll('button');
+    botones.forEach(function (b, k) {
+      if (k === i) { b.setAttribute('aria-current', 'step'); b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } else b.removeAttribute('aria-current');
+    });
+    $('panel').innerHTML = '<div class="ruta">' + esc(NODOS[paso.de].t) + ' → ' + esc(NODOS[paso.a].t) + '</div><h3>' + (i + 1) + '. ' + esc(paso.t) + '</h3><p>' + esc(paso.d) + '</p><dl><div><dt>Qué viaja</dt><dd>' + esc(paso.dato) + '</dd></div>' + (paso.f ? '<div><dt>Dónde está en el código</dt><dd><code>' + esc(paso.f) + '</code></dd></div>' : '') + '</dl>';
+    $('estado').textContent = 'Paso ' + (i + 1) + ' de ' + esc_actual.pasos.length;
+    $('anterior').disabled = i === 0;
+    $('siguiente').disabled = i === esc_actual.pasos.length - 1;
+    if (animar && !reducido.matches) mover(trazos[i]); else { cancelAnimationFrame(marcoAnim); particula.setAttribute('visibility', 'hidden'); }
+  }
+
+  /* El punto recorre el trazo del paso: la vista sigue al dato en vez de buscarlo. */
+  function mover(trazo) {
+    cancelAnimationFrame(marcoAnim);
+    var largo = trazo.getTotalLength(), inicio = null, duracion = 900;
+    particula.setAttribute('visibility', 'visible');
+    function cuadro(t) {
+      if (inicio === null) inicio = t;
+      var f = Math.min((t - inicio) / duracion, 1), suave = 1 - Math.pow(1 - f, 3), q = trazo.getPointAtLength(largo * suave);
+      particula.setAttribute('cx', q.x);
+      particula.setAttribute('cy', q.y);
+      if (f < 1) marcoAnim = requestAnimationFrame(cuadro); else particula.setAttribute('visibility', 'hidden');
+    }
+    marcoAnim = requestAnimationFrame(cuadro);
+  }
+
+  function parar() {
+    reproduciendo = false;
+    clearTimeout(temporizador);
+    $('reproducir').textContent = 'Reproducir';
+  }
+  function tic() {
+    if (!reproduciendo) return;
+    if (indice >= esc_actual.pasos.length - 1) { parar(); return; }
+    irA(indice + 1, true);
+    temporizador = setTimeout(tic, 2300);
+  }
+  function reproducir() {
+    if (reproduciendo) { parar(); return; }
+    reproduciendo = true;
+    $('reproducir').textContent = 'Pausar';
+    if (indice >= esc_actual.pasos.length - 1) irA(0, true); else irA(indice, true);
+    temporizador = setTimeout(tic, 2300);
+  }
+  function elegirEscenario(e) {
+    parar();
+    esc_actual = e;
+    dibujarEscenario();
+    irA(0);
+  }
+  function elegirNodo(id) {
+    parar();
+    nodoElegido = id;
+    var n = NODOS[id];
+    Object.keys(gNodo).forEach(function (k) { gNodo[k].setAttribute('data-elegido', k === id ? 'true' : 'false'); gNodo[k].setAttribute('data-ahora', 'false'); gNodo[k].setAttribute('data-parte', 'true'); });
+    trazos.forEach(function (tr) { tr.setAttribute('visibility', 'hidden'); });
+    $('pasos').querySelectorAll('button').forEach(function (b) { b.removeAttribute('aria-current'); });
+    var en = ESCENARIOS.filter(function (e) { return e.pasos.some(function (q) { return q.de === id || q.a === id; }); });
+    var html = '<div class="ruta">Componente</div><h3>' + esc(n.t) + '</h3><p>' + esc(n.d) + '</p><dl>' + (n.f ? '<div><dt>Dónde está en el código</dt><dd><code>' + esc(n.f) + '</code></dd></div>' : '') + '<div><dt>Participa en</dt><dd id="en-recorridos"></dd></div></dl>';
+    $('panel').innerHTML = html;
+    var cont = $('en-recorridos');
+    en.forEach(function (e, i) {
+      var a = document.createElement('a');
+      a.href = '#flujo-de-datos';
+      a.textContent = e.t;
+      a.addEventListener('click', function (ev) { ev.preventDefault(); elegirEscenario(e); });
+      cont.appendChild(a);
+      if (i < en.length - 1) cont.appendChild(document.createTextNode(' · '));
+    });
+    $('estado').textContent = 'Elegí un recorrido para seguir';
+  }
+
+  ESCENARIOS.forEach(function (e) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.id = e.id;
+    b.textContent = e.t;
+    b.addEventListener('click', function () { elegirEscenario(e); });
+    $('escenarios').appendChild(b);
+  });
+  $('reproducir').addEventListener('click', reproducir);
+  $('anterior').addEventListener('click', function () { parar(); if (nodoElegido) return irA(indice); if (indice > 0) irA(indice - 1, true); });
+  $('siguiente').addEventListener('click', function () { parar(); if (nodoElegido) return irA(indice); if (indice < esc_actual.pasos.length - 1) irA(indice + 1, true); });
+  elegirEscenario(ESCENARIOS[3]);
+
+  /* Tabla de la API */
+  var cuerpo = document.querySelector('#tabla-api tbody');
+  API.forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + esc(r[0]) + '</td><td><code>' + esc(r[1]) + '</code></td><td>' + esc(r[2]) + '</td>';
+    cuerpo.appendChild(tr);
+  });
+  $('filtro-api').addEventListener('input', function (e) {
+    var q = e.target.value.toLowerCase();
+    Array.prototype.forEach.call(cuerpo.children, function (tr) { tr.hidden = q !== '' && tr.textContent.toLowerCase().indexOf(q) < 0; });
+  });
+
+  /* Marca en el menú la sección que se está leyendo */
+  var enlaces = Array.prototype.slice.call(document.querySelectorAll('.menu nav a'));
+  if ('IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        enlaces.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + e.target.id ? 'true' : 'false'); });
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    document.querySelectorAll('section[id], header[id]').forEach(function (s) { obs.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>

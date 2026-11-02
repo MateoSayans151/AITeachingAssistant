@@ -427,7 +427,7 @@ export default function DetalleRespuestaExamenPage() {
         );
       })}
 
-      <div className="field">
+      <div className="field" data-guia="revision-comentario">
         <label htmlFor="feedback">Feedback general para el alumno (editable)</label>
         <textarea id="feedback" value={feedbackFinal} onChange={(e) => setFeedbackFinal(e.target.value)} style={{ minHeight: 160 }} />
       </div>
@@ -446,7 +446,7 @@ export default function DetalleRespuestaExamenPage() {
         </div>
       )}
 
-      <div className="barra-acciones">
+      <div className="barra-acciones" data-guia="revision-acciones">
         <button
           className="btn btn-primary"
           onClick={handleAceptar}

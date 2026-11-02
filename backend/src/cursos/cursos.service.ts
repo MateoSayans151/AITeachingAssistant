@@ -30,6 +30,8 @@ export class CursosService {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { comisiones: true, examenes: true, equipo: true } },
+        // Lo mínimo para que «Primeros pasos» sepa hasta dónde llegó el docente.
+        examenes: { select: { estado: true, feedbackLiberadoEn: true } },
       },
     });
   }

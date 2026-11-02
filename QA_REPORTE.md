@@ -1,5 +1,10 @@
 # QA y fricción UX — AI Teaching Assistant
 
+> **Documento histórico:** es la foto de la sesión del 26/10/2026 y no se actualiza. Desde entonces cambiaron tres cosas que acá figuran como pendientes:
+> los **Trabajos Prácticos se quitaron** del producto (migración `20261031_quitar_trabajos_practicos.sql`); **QA-010 quedó resuelto**, porque una pregunta
+> abierta sin criterios ya vale (se guarda con un criterio general); y el asistente de examen pasó a *Preguntas → Ajustes → Publicar*, así que el guion de
+> demo tiene los nombres de botones viejos. El **estado actual** está en el [README](./README.md) y en [`DOCUMENTACION.html`](./DOCUMENTACION.html).
+
 Sesión del 26/10/2026. Entorno de prueba: front `:3000`, back `:3002`, Supabase **local** en Docker con `supabase/schema.sql` (la red de UADE bloquea el protocolo de Postgres hacia Supabase), mails en modo prueba (`delivered@resend.dev`). Todo lo creado lleva el prefijo `QA-` o `qa.`. Cada arreglo es un commit con su ID; la suite del backend pasó de 477 a **501 tests** y `next build` + `tsc` de ambos proyectos compilan sin errores.
 
 ## Resumen

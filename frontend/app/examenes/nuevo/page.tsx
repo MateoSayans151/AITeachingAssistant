@@ -403,7 +403,7 @@ function NuevoExamenForm() {
     <div className="page page-asistente">
       <header className="page-header">
         <div className="eyebrow">Nuevo examen</div>
-        <div className="page-header-fila">
+        <div className="page-header-fila" data-guia="examen-titulo">
           <TituloEditable
             valor={datos.titulo}
             onCambiar={(titulo) => patchDatos({ titulo })}
@@ -545,7 +545,7 @@ function NuevoExamenForm() {
       )}
 
       {paso !== PASO_PUBLICAR && (
-        <div className="pie-asistente">
+        <div className="pie-asistente" data-guia="examen-pie">
           <nav className="progreso" aria-label="Pasos del examen">
             {PASOS.map((label, i) => {
               const estado = i < paso ? 'done' : i === paso ? 'current' : 'pending';

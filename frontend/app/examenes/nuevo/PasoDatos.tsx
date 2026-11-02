@@ -135,7 +135,7 @@ export function PasoDatos({ parte, datos, onChange, cursos, ajustesAbierto, onTo
         </div>
       )}
       {verIntegridad && (
-        <section className={estilos.integridad} aria-labelledby="integridad-titulo">
+        <section className={estilos.integridad} aria-labelledby="integridad-titulo" data-guia="examen-ajustes">
           <div className={estilos.integridadCabecera}>
             <div className={estilos.integridadTexto}>
               <h2 id="integridad-titulo" className={estilos.integridadTitulo}>

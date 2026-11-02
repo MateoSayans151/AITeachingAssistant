@@ -166,9 +166,9 @@ export default function ExamenDetallePage() {
         )}
       </header>
 
-      <div className="examen-barra">
+      <div className="examen-barra" data-guia="examen-pestanas">
         <TabsExamen examenId={examen.id} activa="examen" cantidadRespuestas={examen._count?.respuestas ?? 0} />
-        <div className="examen-barra-acciones">
+        <div className="examen-barra-acciones" data-guia="examen-acciones">
           <Link href={`/examenes/nuevo?desde=${examen.id}`} className="btn btn-secondary">
             Duplicar y editar
           </Link>

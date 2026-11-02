@@ -42,7 +42,7 @@ export default function MatricesPage() {
       </header>
 
       <div style={{ marginBottom: 24 }}>
-        <Link href="/matrices/nueva" className="btn btn-primary">
+        <Link href="/matrices/nueva" className="btn btn-primary" data-guia="matrices-nueva">
           + Nueva matriz
         </Link>
       </div>

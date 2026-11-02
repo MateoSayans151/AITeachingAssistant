@@ -71,8 +71,7 @@ punto 2.
 
 El repo no tenía ningún `.gitignore` (ni raíz ni por carpeta). Riesgo real: el primer `git add .`
 después de crear `backend/.env` (con la contraseña de la DB y la API key de Google adentro) lo
-hubiera subido al repo. Ya se agregó uno en la raíz que ignora `node_modules/`, `.env*`, builds,
-etc. — hay que commitearlo.
+hubiera subido al repo. Ya está agregado en la raíz e ignora `node_modules/`, `.env*`, builds, etc.
 
 **Importante para el equipo:** nunca se pasa el `.env` real por Discord/WhatsApp/mail — cada uno
 arma el suyo desde `.env.example` con sus propias claves.
@@ -116,6 +115,13 @@ se agregan tablas); el README tiene el `curl` para verificar que quedó bien.
   `migrate dev` sí se generan archivos de migración que deberían commitearse, así que si migran a
   ese approach hay que decidir quién los genera.
 
+## 8. `node_modules` viejos: los tests fallan como si el código estuviera roto
+
+Al volver al proyecto (2026-11-01) `npm test` fallaba y `tsc` no encontraba `@supabase/supabase-js`, aunque estaba en `package.json`: las dependencias
+instaladas eran anteriores al último `git pull`. El mensaje (`TS2307: Cannot find module`) confunde porque apunta al código. Solución: `npm ci` en
+`backend/` y en `frontend/` (instala exactamente lo del lockfile) y, en el backend, `npx prisma generate`. Si `tsc` en el front se queja de
+`.next/types/app/trabajos/...`, es una compilación vieja: borrá `.next`.
+
 ## Resumen: qué requiere acción
 
 | Ítem | Impacto | Acción sugerida |
@@ -123,7 +129,8 @@ se agregan tablas); el README tiene el `curl` para verificar que quedó bien.
 | Split `DATABASE_URL`/`DIRECT_URL` (punto 2) | Alto — evita el cuelgue de `db push` | Pendiente: editar `schema.prisma` + `.env.example` y avisar al equipo (ver punto 2) |
 | Actualizar `.env.example` (punto 3) | Alto — evita los 3 errores de conexión | Ya resuelto |
 | RLS en todas las tablas (punto 6) | Alto (seguridad) | Correr la migración `20261004` en cada base y verificar con el `curl` del README |
-| `.gitignore` | Alto (seguridad) | Ya resuelto, falta commitear |
+| `.gitignore` | Alto (seguridad) | Ya resuelto |
+| `node_modules` viejos (punto 8) | Medio — errores confusos | `npm ci` en las dos carpetas después de cada `git pull` que toque dependencias |
 | Correr Prisma desde `backend/` | Medio — evita error confuso | Solo difundirlo al equipo |
 | Pin de versión de Node | Bajo | Agregar `engines` o `.nvmrc` |
 | Script `prisma:push` | Bajo (comodidad) | Agregar línea a `package.json` |

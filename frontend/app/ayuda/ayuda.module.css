@@ -1,0 +1,206 @@
+.pagina {
+  max-width: 760px;
+}
+
+.indice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+}
+
+.indice a {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  font-size: var(--text-sm);
+}
+
+.indice a:hover {
+  border-color: var(--color-text);
+}
+
+.seccion {
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-4);
+  scroll-margin-top: var(--space-4);
+}
+
+.seccion h2 {
+  margin-bottom: var(--space-4);
+  font-size: var(--text-lg);
+}
+
+.intro {
+  margin-bottom: var(--space-4);
+  color: var(--color-text-secondary);
+}
+
+/* El camino se enciende una vez, de izquierda a derecha, y termina en el docente: es la idea que importa que quede. */
+.camino {
+  --ease-salida: cubic-bezier(0.22, 1, 0.36, 1);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  list-style: none;
+}
+
+.etapa {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  animation: encender 0.5s calc(var(--orden) * 0.42s + 0.15s) var(--ease-salida) both;
+}
+
+.etapa strong {
+  font-size: var(--text-md);
+}
+
+.etapa[data-final='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-100);
+}
+
+.etapaNumero {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-bottom: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-neutral-200);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.etapa[data-final='true'] .etapaNumero {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.promesa {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.plegable {
+  border-bottom: 1px solid var(--color-border);
+  scroll-margin-top: var(--space-4);
+}
+
+.plegable summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  position: relative;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-8) var(--space-3) 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+.plegable summary::-webkit-details-marker {
+  display: none;
+}
+
+/* El "+" dice que se abre; al abrirse gira y queda como "×". */
+.plegable summary::after {
+  content: '+';
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 24px;
+  line-height: 1.3;
+  transition: transform 0.2s ease;
+}
+
+.plegable[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.plegableTitulo {
+  font-weight: 600;
+}
+
+.plegableResumen {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.instrucciones {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0 0 var(--space-4) var(--space-6);
+}
+
+.plegable[open] > :not(summary) {
+  animation: desplegar 0.24s ease-out both;
+}
+
+.nota {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+
+.respuesta {
+  padding-bottom: var(--space-4);
+}
+
+.glosario {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.glosario dt {
+  font-weight: 600;
+}
+
+.glosario dd {
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 640px) {
+  .camino {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@keyframes encender {
+  from {
+    opacity: 0.25;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes desplegar {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .etapa,
+  .plegable[open] > :not(summary) {
+    animation: none;
+  }
+
+  .plegable summary::after {
+    transition: none;
+  }
+}

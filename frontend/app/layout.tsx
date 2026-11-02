@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { SideNav } from './components/SideNav';
 import { ConfirmarProvider } from './components/Confirmar';
+import { RecorridoProvider } from './components/Recorrido';
 
 export const metadata: Metadata = {
   title: 'AI Teaching Assistant',
@@ -13,10 +14,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body>
         <ConfirmarProvider>
-          <div className="app-shell">
-            <SideNav />
-            <main className="app-main">{children}</main>
-          </div>
+          <RecorridoProvider>
+            <div className="app-shell">
+              <SideNav />
+              <main className="app-main">{children}</main>
+            </div>
+          </RecorridoProvider>
         </ConfirmarProvider>
       </body>
     </html>

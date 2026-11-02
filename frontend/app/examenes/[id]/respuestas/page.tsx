@@ -275,7 +275,7 @@ export default function RespuestasExamenPage() {
       <TabsExamen examenId={examen.id} activa="respuestas" cantidadRespuestas={respuestas.length} />
 
       {respuestas.length > 0 && (
-        <div className="filtros-respuestas">
+        <div className="filtros-respuestas" data-guia="respuestas-filtros">
           <div className="filtros" role="group" aria-label="Filtrar respuestas">
             {filtros.map((f) => (
               <button key={f.valor} type="button" className="filtro" aria-pressed={filtro === f.valor} onClick={() => setFiltro(f.valor)}>
@@ -294,7 +294,7 @@ export default function RespuestasExamenPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }} data-guia="respuestas-acciones">
         {primeraParaRevisar && (
           <Link href={`/examenes/${examen.id}/respuestas/${primeraParaRevisar.id}`} className="btn btn-primary">
             Empezar a revisar ({paraRevisar})
@@ -339,7 +339,7 @@ export default function RespuestasExamenPage() {
       {respuestas.length === 0 && <div className="empty-state">Todavía no hay respuestas para este examen.</div>}
 
       {respuestas.length > 0 && (
-        <div className="card" style={{ overflowX: 'auto' }}>
+        <div className="card" style={{ overflowX: 'auto' }} data-guia="respuestas-lista">
           <table className="table">
             <thead>
               <tr>
@@ -402,7 +402,7 @@ export default function RespuestasExamenPage() {
         </div>
       )}
 
-      <div className="card" style={{ marginTop: 24 }}>
+      <div className="card" style={{ marginTop: 24 }} data-guia="respuestas-publicar">
         <div className="card-title" style={{ marginBottom: 8 }}>
           Notas para los alumnos
         </div>

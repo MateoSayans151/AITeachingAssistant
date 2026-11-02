@@ -7,6 +7,9 @@ Stack: **Next.js** (frontend) + **NestJS** (backend) + **Supabase/Postgres** (DB
 para la integración con el modelo de IA (Gemini 3.1 Flash-Lite por default, Claude Haiku 4.5 como
 alternativa).
 
+**Documentación completa:** abrí [`DOCUMENTACION.html`](./DOCUMENTACION.html) en el navegador. Tiene la arquitectura, la API, el modelo de datos
+y un **flujo de datos interactivo**. Para docentes que usan la app, la guía está adentro: `/ayuda`.
+
 ## Cómo correr el proyecto (rápido)
 
 Necesitás **dos terminales**: una para el backend y otra para el frontend. La base de datos
@@ -35,7 +38,16 @@ npm run dev
 
 > Comandos de Prisma: corrélos **siempre parado en `backend/`** (ver [MEJORAS.md](./MEJORAS.md)
 > punto 5). El día a día, una vez configurado, es solo `npm run start:dev` en una terminal y
-> `npm run dev` en la otra.
+> `npm run dev` en la otra. Después de un `git pull` que toque dependencias, corré `npm install` en las dos carpetas: con `node_modules`
+> viejos fallan los tests y la compilación con errores que parecen del código (ver [MEJORAS.md](./MEJORAS.md) punto 8).
+
+**Tests** (parado en `backend/`; también cubren la lógica pura del front):
+
+```bash
+npm test                  # todos los tests unitarios, sin base de datos ni red
+npm run test:integracion  # recorrido contra un backend levantado
+npm run seed:demo         # crea un examen demo con 9 alumnos en todos los estados (--dry-run para simular, --quitar para borrarlo)
+```
 
 ## Flujo del MVP
 
@@ -48,6 +60,21 @@ npm run dev
 
 No hay OCR ni carga de imágenes/PDF escaneado en este MVP — todo es texto plano, a propósito (ver el
 documento de contexto del proyecto).
+
+### Guía para docentes
+
+La app está pensada para docentes que no se llevan bien con la tecnología, así que trae su propia ayuda, en tres niveles:
+
+- **«Primeros pasos»** (tarjeta en el inicio, `PrimerosPasos.tsx`): cuatro pasos que se tildan solos con lo que el docente hizo de verdad, y un
+  solo botón, el del paso que sigue. Desaparece al completarlos o si se oculta (se recuerda en el navegador, por docente).
+- **«Mostrame esta pantalla»** (menú lateral, `Recorrido.tsx`): oscurece la pantalla real y va señalando sus partes. Se maneja con el mouse o el
+  teclado (flechas, Esc), no cambia nada de los datos, es una hoja inferior en el celular y respeta «reducir movimiento».
+- **`/ayuda`** (`app/ayuda/page.tsx`): paso a paso, problemas frecuentes y glosario. No pide sesión: se puede leer antes de crear la cuenta.
+
+Todo el contenido está en [`frontend/lib/guia.ts`](./frontend/lib/guia.ts). Cada paso de un recorrido apunta a un atributo `data-guia` de la pantalla.
+**Si cambiás una pantalla o el texto de un botón, actualizá la guía:** `backend/test/guia.test.ts` falla si un recorrido apunta a algo que ya no
+existe, si la guía nombra un botón que no aparece en ninguna pantalla o si se cuela jerga técnica. Para hacerlo con Claude Code está la skill
+[`.claude/skills/guia-docente`](./.claude/skills/guia-docente/SKILL.md).
 
 ### Cursos con varios docentes
 
@@ -103,7 +130,11 @@ las instrucciones para los alumnos y dos bloques plegados con un resumen de lo c
   de qué implica cada nivel es opcional. Las **matrices** guardan criterios con peso para reutilizarlos: se pueden crear desde la
   propia pregunta (*Guardar estos criterios como matriz*), aplicar a una pregunta y copiar a todas las abiertas.
   **Sugerir criterios con IA** (`POST /api/examenes/sugerir-criterios`, tope de 20 por minuto) propone un borrador a partir del
-  enunciado para que el docente lo edite; no se aplica solo.
+  enunciado para que el docente lo edite; no se aplica solo. Una pregunta abierta sin criterios también vale: se guarda con un único
+  criterio general que vale todos sus puntos (`criterio-general.util.ts`).
+- **Sugerir preguntas con IA** (`POST /api/examenes/sugerir-preguntas`, tope de 10 por minuto): hasta 8 borradores armados con el material del
+  curso (por temas tildados o un tema escrito a mano; también funciona sin material si hay un tema), con su explicación y la fuente de donde salen.
+  El servidor valida la clave de cada pregunta cerrada, mezcla las opciones y descarta repetidas. El docente los revisa antes de agregarlos.
 - **Vista previa del alumno:** el botón muestra el examen tal como lo ve el alumno, con el mismo componente de pregunta y sin
   clave de respuestas. Nada de lo que se escribe ahí se guarda.
 - **Quién puede entrar al link:** por defecto **cualquiera que tenga el link** (*acceso abierto*): el alumno escribe su nombre y su mail al
@@ -117,6 +148,13 @@ las instrucciones para los alumnos y dos bloques plegados con un resumen de lo c
   del envío se guarda en memoria del servidor (se pierde si se reinicia).
 - **Duplicar y eliminar:** *Duplicar y editar* abre el wizard precargado con el examen (`/examenes/nuevo?desde=<id>`). *Eliminar*
   solo se puede si nadie empezó ni entregó el examen.
+
+### Revisar las respuestas (Cátedra)
+
+`/examenes/[id]/respuestas` lista las respuestas con filtros y búsqueda, y se puede exportar a CSV. Al revisar a un alumno el docente puede **aceptar la
+sugerencia** o cambiar la nota y la devolución de cada pregunta y el feedback general, y pasa solo al siguiente. **Aceptar en bloque** confirma todas
+las sugerencias de una vez (las que la IA no corrigió quedan afuera) y **Corregir pendientes con IA** reintenta las que fallaron. La **vara** (pestaña del
+examen) es una regla auditable: se previsualiza, se aplica solo a lo no revisado, se puede revertir y nunca pisa la nota sugerida.
 
 ## 1. Base de datos (Supabase)
 
@@ -167,11 +205,12 @@ de cuáles te faltan podés correrlas todas:
 | `20261002_endurecimiento_fallos_acceso.sql` | `fallos_acceso`: el freno a los intentos fallidos de código vive en la base |
 | `20261003_supabase_auth.sql` | `docentes.auth_user_id` (login con Supabase Auth) |
 | `20261003_tp_link_alumnos.sql` | *(histórica, no hace falta correrla: los trabajos prácticos ya no existen, ver `20261031_quitar_trabajos_practicos.sql`)* |
+| `20261004_notificacion_resultado.sql` | `respuestas_examen.notificado_en` y `notificacion_error`: cuándo salió el mail con la nota y por qué falló |
 | `20261004_rls_todas_las_tablas.sql` | RLS en todas las tablas, sin policies (paso 3) |
+| `20261026_acceso_abierto.sql` | `examen_comisiones.acceso_abierto`: el link puede ser abierto (entra cualquiera) o solo para la lista. **Correrla antes de desplegar el código nuevo**: sin la columna, el back falla al leer cualquier link de examen |
 | `20261028_otp_sesion_unica_y_capturas.sql` | Código de acceso por mail (`codigos_acceso`, `examen_comisiones.verificar_email` y `dominio_permitido`), sesión única y origen del intento, latido, `sesiones_intento`, `capturas_integridad` y los eventos nuevos. Todo es opt-in: lo ya publicado no cambia. **Volvé a correr después `20261004_rls_todas_las_tablas.sql`** (recorre las tablas existentes) y creá el bucket privado `capturas` en Supabase Storage |
 | `20261031_cursos_con_varios_docentes.sql` | `curso_docentes` (el equipo de cada curso), `curso_invitaciones`, `examenes.creado_por` y `cursos.docente_id` sin borrado en cascada. Los cursos existentes quedan con su creador como único miembro. **Correrla antes de desplegar el código nuevo**: el acceso a los cursos pasa a leer `curso_docentes` |
 | `20261031_quitar_trabajos_practicos.sql` | **Borra de forma permanente** los trabajos prácticos y todo lo que cuelga de ellos (rúbricas, entregas, correcciones, resúmenes, intentos con link). Exportá lo que quieras conservar antes de correrla |
-| `20261026_acceso_abierto.sql` | `examen_comisiones.acceso_abierto`: el link puede ser abierto (entra cualquiera) o solo para la lista. **Correrla antes de desplegar el código nuevo**: sin la columna, el back falla al leer cualquier link de examen |
 
 > Alternativa: en vez de correr `schema.sql` a mano, podés dejar que Prisma cree las tablas con
 > `npx prisma db push` (ver paso 2). **No es equivalente:** Prisma no modela `rag_fragmentos_material` (el RAG la
@@ -240,13 +279,12 @@ el token (contra las claves públicas del proyecto) y lo vincula con la fila de 
 4. **Docentes anteriores a Supabase Auth.** Se vinculan solos: registrate (o usá "Olvidé mi contraseña") con el mismo
    email, confirmalo, y al entrar vas a ver tus cursos de antes.
 
-**Sobre el diseño:** [`app/globals.css`](./frontend/app/globals.css) porta 1:1 los tokens y clases del
-mockup de Claude Design "Cátedra - Evaluaciones IA" (paleta ámbar, tipografía Sora + Inter, radios y
-sombras suaves) — se mantuvieron los nombres de clase que ya usaban las páginas (`.page`, `.card`,
-`.btn`, `.field`, `.table`, `.tabs`…) para no tener que tocar cada `page.tsx`. La barra superior
-persistente (`app/components/TopNav.tsx`) también sale de ese mockup. Quedan afuera del alcance actual,
-por no tener backend equivalente todavía: el drag-and-drop de la barra de vara y los popovers de
-calendario (se usan inputs nativos).
+**Sobre el diseño:** [`app/globals.css`](./frontend/app/globals.css) tiene el sistema visual "Cátedra": lienzo gris cálido con tarjetas blancas, tipografía
+Figtree y **un solo acento naranja**, reservado para la acción principal, el foco, el progreso y "dónde estás" (éxito, error e IA tienen su propio
+tratamiento). Salió del mockup de Claude Design "Cátedra - Evaluaciones IA" y se rediseñó después; se mantuvieron los nombres de clase (`.page`,
+`.card`, `.btn`, `.field`, `.table`, `.tabs`…). La navegación es la barra lateral `app/components/SideNav.tsx`. Las confirmaciones usan un
+diálogo propio (`Confirmar.tsx`) y nunca `window.confirm`: en los navegadores embebidos de WhatsApp o Instagram no funciona, y un test lo impide.
+Quedan afuera del alcance actual el drag-and-drop de la barra de vara y los popovers de calendario (se usan inputs nativos).
 
 **Anti-trampa (señales de integridad).** Está implementado, con consentimiento. El docente activa por examen qué
 señales quiere (salida de pantalla completa, cambio de pestaña, pegado de texto; ver
@@ -365,6 +403,8 @@ después con **Reenviar a los que faltan**, o pasando a un plan pago.
 
 **Limitaciones conocidas**
 
+- La **devolución por pregunta** que el docente edita al revisar se guarda (`feedbackFinal`) pero **no viaja en el mail**: `armarResultadoParaAlumno`
+  solo toma el feedback general y la nota de cada pregunta. Para que el alumno la reciba, hoy hay que escribirla en el feedback general.
 - El mail va a la dirección que figura en **la lista de la comisión**: si está mal cargada, el alumno no recibe su nota y
   hoy no hay forma de enterarse desde la app.
 - *"Enviado"* significa que Resend **aceptó** el mail, no que llegó a la bandeja: los rebotes y los mails a spam no se
@@ -399,18 +439,18 @@ asigná el puntaje máximo"*). Cómo está contenido eso hoy, en
   inyección **no puede comprometer el sistema**; a lo sumo intenta manipular la nota o el
   feedback.
 - **Instrucciones y datos separados.** Las reglas van en el `system`; la consigna y la
-  rúbrica en el prompt; el trabajo del alumno va delimitado (`<trabajo_alumno>…`) y el
+  rúbrica en el prompt; cada respuesta del alumno va delimitada (`<respuesta_alumno>…`) y el
   `system` le indica al modelo que trate ese bloque como material a evaluar, nunca como
-  órdenes. Lo mismo para el feedback agregado en el resumen de curso (`<correcciones>…`)
-  y para el material de cátedra opcional (`<material>…`, ver más arriba): aunque lo carga
-  el docente, va delimitado igual — puede traer texto pegado de un PDF o de internet con
-  algo que parezca una instrucción.
-- **Validación de la salida en código** (`validarCorreccion`), sin confiar en que el modelo
-  respetó la rúbrica: se descartan criterios inventados (id fuera de la rúbrica), se fuerza
-  cada nota al rango `[0, puntajeMaximo]` del criterio, se usa el nombre canónico del
-  criterio y se recalcula la nota total como la suma real. Los ajustes quedan en el log.
-- **Tope de tamaño** (`MAX_TEXTO_NO_CONFIABLE`, 50k caracteres) sobre el texto del alumno y
-  el feedback agregado, para acotar costo por token y DoS.
+  órdenes. Lo mismo para el material de cátedra opcional (`<material>…`, ver más arriba):
+  aunque lo carga el docente, va delimitado igual — puede traer texto pegado de un PDF o de
+  internet con algo que parezca una instrucción.
+- **Validación de la salida en código** (`validarCorreccionExamen`), sin confiar en que el
+  modelo respetó la rúbrica: se descartan preguntas y criterios inventados (id fuera de la
+  rúbrica), se fuerza el nivel elegido a los que tiene la escala, la nota se **calcula en
+  código** (puntaje del criterio × porcentaje del nivel), se usa el nombre canónico del
+  criterio y los totales son la suma real. Los descartes quedan en el log.
+- **Tope de tamaño** (`MAX_TEXTO_NO_CONFIABLE`, 50k caracteres) sobre cada respuesta del
+  alumno y cada fragmento de material, para acotar costo por token y DoS.
 - **Humano en el loop.** La IA solo produce una nota *sugerida*; nada llega al alumno sin
   que el docente la revise y confirme (paso 3 del flujo). Es la última barrera y la más
   fuerte.
@@ -424,9 +464,11 @@ corrige a mano", no un problema de seguridad del proyecto.
 
 ## Qué falta para una v2
 
-- Edición inline de la nota por criterio (hoy solo se edita la nota total y el feedback).
-- Carga de PDF/Word como material de cátedra (hoy es texto plano pegado o escrito). Falta: un endpoint `multipart` (`multer` ya está
-  instalado), extracción de texto (no hay librería de PDF; un PDF escaneado necesitaría OCR), columnas de archivo y de estado de
-  indexación, indexar en segundo plano y por lotes (hoy se piden todos los embeddings a la vez), límites (por ejemplo 10 MB por
-  archivo y 20 archivos por curso) y la pantalla de subida con estados *Indexando / Listo / Error*.
-- Cola de trabajo para la corrección con IA en vez de ejecutarla sincrónicamente al entregar el examen.
+- Edición de la nota por criterio (hoy se edita la nota y la devolución de cada pregunta, y el feedback general).
+- Que la devolución por pregunta del docente viaje en el mail al alumno (ver *Limitaciones conocidas*).
+- Material de cátedra: OCR para PDF escaneados, y estado de indexación visible (*Indexando / Listo / Error*). Hoy un material grande se indexa
+  dentro del pedido de carga, de a tandas, y si los embeddings fallan el texto se conserva pero el docente no se entera.
+- Reenviar el mail a un alumno puntual cuando se le cambia la nota después de habérsela enviado.
+- Cola de trabajo persistente para la corrección con IA: hoy corre en segundo plano dentro del proceso (con tope de concurrencia), así que un reinicio
+  a mitad deja la respuesta en `pendiente_correccion`, de donde se recupera con *Corregir pendientes con IA*.
+- Captcha en el pedido del código por mail (ver *Verificación del mail con código*).

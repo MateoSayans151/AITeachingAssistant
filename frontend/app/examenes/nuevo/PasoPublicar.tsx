@@ -246,7 +246,7 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
       )}
 
       {!publicado && (
-        <div className="card">
+        <div className="card" data-guia="examen-publicar">
           <div className="card-title" style={{ marginBottom: 8 }}>
             ¿Quiénes lo rinden?
           </div>
