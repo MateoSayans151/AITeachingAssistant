@@ -23,6 +23,7 @@ import { CapturaDto, EventoIntegridadDto, IniciarIntentoDto, LatidoDto, Solicita
 import { generarCodigoAcceso } from '../comisiones/comisiones.service';
 import { CodigosAccesoService, emailEnDominio, normalizarDominio } from './codigos-acceso.service';
 import { EventoServidor, IntegridadService } from './integridad.service';
+import { FilaEnVivo, contarRespondidas, estadoDeConexion, ordenarEnVivo, ultimaActividad } from './en-vivo.util';
 
 /** De dónde viene un pedido: la IP la saca Nest; el navegador y el id de pestaña los manda el cliente (son indicios, no pruebas). */
 export interface Origen {
@@ -64,6 +65,8 @@ export function nombreDesdeEmail(email: string): string {
   const local = email.split('@')[0].replace(/[._-]+/g, ' ').trim() || email;
   return local.replace(/(^|\s)(\S)/g, (_, espacio: string, letra: string) => espacio + letra.toUpperCase());
 }
+
+export const MENSAJE_EXAMEN_CERRADO = 'El docente cerró este examen: ya no se pueden iniciar nuevos intentos.';
 
 @Injectable()
 export class IntentosService implements OnModuleInit, OnModuleDestroy {
@@ -107,7 +110,8 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
   async info(slug: string) {
     const ec = await this.examenComision(slug);
     const ahora = new Date();
-    const ventana = ec.fechaFin && ahora > ec.fechaFin ? 'cerrada' : ec.fechaInicio && ahora < ec.fechaInicio ? 'no_abierta' : 'abierta';
+    const ventana =
+      ec.examen.estado === 'cerrado' || (ec.fechaFin && ahora > ec.fechaFin) ? 'cerrada' : ec.fechaInicio && ahora < ec.fechaInicio ? 'no_abierta' : 'abierta';
     return {
       examen: {
         titulo: ec.examen.titulo,
@@ -162,6 +166,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
 
     if (!intento) {
       this.validarVentana(ec);
+      this.validarAbierto(ec);
       const cfg = antiCheatActivo(ec.examen.antiCheat);
       if (cfg && dto.consentimiento !== true) {
         throw new BadRequestException('Tenés que aceptar el aviso de qué se monitorea durante el examen para poder empezar');
@@ -206,7 +211,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
    *  - si no, se rechaza, y el freno por IP limita que alguien pruebe emails al azar para ver quién está en la comisión.
    */
   async resolverAlumno(
-    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null; dominioPermitido?: string | null },
+    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null; dominioPermitido?: string | null; examen?: { estado: string } },
     dto: IniciarIntentoDto,
     claveIp: string,
   ) {
@@ -222,6 +227,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
 
     // Un examen cerrado o que todavía no abrió no suma alumnos nuevos.
     this.validarVentana(ec);
+    this.validarAbierto(ec);
     if (!emailEnDominio(dto.alumnoEmail, ec.dominioPermitido)) {
       throw new BadRequestException(`Para rendir este examen tenés que usar un mail de @${normalizarDominio(ec.dominioPermitido)}.`);
     }
@@ -369,6 +375,110 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     return this.respuestas.crearDesdeContenido(intento.examenId, intento.alumnoId, final);
   }
 
+  /**
+   * El docente cerró el examen y eligió entregar lo que los alumnos tengan: cada intento en curso se entrega con su último
+   * autoguardado (y se corrige como cualquier otro). Devuelve cuántos se entregaron.
+   */
+  async entregarEnCurso(examenId: string): Promise<number> {
+    const enCurso = await this.prisma.intentoExamen.findMany({ where: { examenId, estado: 'en_curso' }, select: { id: true } });
+    let entregados = 0;
+    for (const i of enCurso) {
+      try {
+        if (await this.finalizar(i.id, undefined, 'entregado')) entregados += 1;
+      } catch (e) {
+        this.logger.error(`No se pudo entregar el intento ${i.id} al cerrar el examen`, e as Error);
+      }
+    }
+    return entregados;
+  }
+
+  /** Cuántos alumnos están rindiendo ahora mismo (el diálogo de cierre lo muestra antes de que el docente elija). */
+  async cantidadEnCurso(examenId: string): Promise<number> {
+    await this.cerrarVencidos(examenId);
+    return this.prisma.intentoExamen.count({ where: { examenId, estado: 'en_curso' } });
+  }
+
+  /**
+   * Foto de cómo va el examen ahora: quién está rindiendo (con su avance y las señales de integridad), cuántos ya entregaron y
+   * cuántos de la lista todavía no empezaron. Primero se cierran los intentos vencidos para que no figuren como "rindiendo".
+   */
+  async enVivo(examenId: string) {
+    await this.cerrarVencidos(examenId);
+    const ahora = new Date();
+    const examen = await this.prisma.examen.findUniqueOrThrow({
+      where: { id: examenId },
+      select: {
+        estado: true,
+        titulo: true,
+        antiCheat: true,
+        modalidad: true,
+        duracionMinutos: true,
+        preguntas: { select: { id: true } },
+        comisiones: { select: { id: true, comision: { select: { nombre: true, _count: { select: { alumnos: true } } } } } },
+      },
+    });
+    const preguntaIds = examen.preguntas.map((p) => p.id);
+
+    const intentos = await this.prisma.intentoExamen.findMany({
+      where: { examenId },
+      select: {
+        id: true,
+        estado: true,
+        inicioEn: true,
+        expiraEn: true,
+        entregadoEn: true,
+        borrador: true,
+        borradorActualizadoEn: true,
+        ultimoLatidoEn: true,
+        alumno: { select: { id: true, nombre: true, email: true, comision: { select: { nombre: true } } } },
+        _count: { select: { capturas: true } },
+      },
+      orderBy: { inicioEn: 'asc' },
+    });
+    const enCurso = intentos.filter((i) => i.estado === 'en_curso');
+    const eventos = enCurso.length
+      ? await this.prisma.eventoIntegridad.groupBy({ by: ['intentoId', 'tipo'], where: { intentoId: { in: enCurso.map((i) => i.id) } }, _count: { _all: true } })
+      : [];
+    const senalesPorIntento = new Map<string, Record<string, number>>();
+    for (const e of eventos) senalesPorIntento.set(e.intentoId, { ...(senalesPorIntento.get(e.intentoId) ?? {}), [e.tipo]: e._count._all });
+
+    const filas: FilaEnVivo[] = enCurso.map((i) => {
+      const ultima = ultimaActividad(i);
+      const senales = senalesPorIntento.get(i.id) ?? {};
+      return {
+        intentoId: i.id,
+        alumnoId: i.alumno.id,
+        nombre: i.alumno.nombre,
+        email: i.alumno.email,
+        comision: i.alumno.comision.nombre,
+        inicioEn: i.inicioEn,
+        expiraEn: i.expiraEn,
+        ultimaActividad: ultima,
+        conexion: estadoDeConexion(ultima, ahora),
+        respondidas: contarRespondidas(i.borrador, preguntaIds),
+        totalPreguntas: preguntaIds.length,
+        senales,
+        totalSenales: Object.values(senales).reduce((a, b) => a + b, 0),
+        capturas: i._count.capturas,
+      };
+    });
+
+    const empezaron = new Set(intentos.map((i) => i.alumno.id)).size;
+    const enLista = examen.comisiones.reduce((suma, c) => suma + c.comision._count.alumnos, 0);
+    return {
+      ahora,
+      examen: { titulo: examen.titulo, estado: examen.estado, modalidad: examen.modalidad, duracionMinutos: examen.duracionMinutos, monitoreado: !!antiCheatActivo(examen.antiCheat) },
+      resumen: {
+        rindiendo: enCurso.length,
+        entregaron: intentos.filter((i) => i.estado !== 'en_curso').length,
+        // Los de la lista que todavía no abrieron el examen. Con acceso abierto la lista crece sola, así que es un piso.
+        sinEmpezar: Math.max(enLista - empezaron, 0),
+        sinSenal: filas.filter((f) => f.conexion === 'sin_senal').length,
+      },
+      alumnos: ordenarEnVivo(filas),
+    };
+  }
+
   /** Cierra los intentos vencidos (pasado el margen). Lo llama el barrido y la vista del docente. */
   async cerrarVencidos(examenId?: string) {
     const limite = new Date(Date.now() - GRACIA_ENTREGA_MS);
@@ -473,6 +583,11 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     const ahora = new Date();
     if (ec.fechaInicio && ahora < ec.fechaInicio) throw new BadRequestException('Todavía no se abrió la ventana de entrega de este examen');
     if (ec.fechaFin && ahora > ec.fechaFin) throw new BadRequestException('La ventana de entrega de este examen ya cerró');
+  }
+
+  /** El docente puede cerrar el examen a mano: nadie nuevo puede empezar (quien ya empezó sigue o no, según cómo se cerró). */
+  private validarAbierto(ec: { examen?: { estado: string } }) {
+    if (ec.examen?.estado === 'cerrado') throw new BadRequestException(MENSAJE_EXAMEN_CERRADO);
   }
 
   private estaVencido(intento: { expiraEn: Date | null }, margenMs = 0): boolean {

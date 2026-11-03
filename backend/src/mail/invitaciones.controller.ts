@@ -20,10 +20,17 @@ export class InvitacionesController {
     return this.invitaciones.estado(id);
   }
 
+  // La lista de alumnos a los que se puede invitar, con quién ya la recibió (y cuántas veces): lo que el docente tilda antes de enviar.
+  @Get(':id/invitaciones/destinatarios')
+  async destinatarios(@DocenteId() docenteId: string, @Param('id') id: string) {
+    await this.acceso.examen(docenteId, id);
+    return this.invitaciones.destinatarios(id);
+  }
+
   // Lanza en segundo plano el envío a los alumnos (de una publicación, o de todas) y responde con cuántos mails salen.
   @Post(':id/invitaciones')
   async invitar(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto?: InvitarAlumnosDto) {
     await this.acceso.examen(docenteId, id);
-    return this.invitaciones.invitar(id, dto?.examenComisionId);
+    return this.invitaciones.invitar(id, dto?.examenComisionId, dto?.alumnoIds);
   }
 }

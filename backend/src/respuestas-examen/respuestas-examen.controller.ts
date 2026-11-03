@@ -63,6 +63,13 @@ export class RespuestasExamenController {
     return this.service.revisar(examenId, id, dto);
   }
 
+  // Vuelve una respuesta ya aceptada o editada a «pendiente de revisión» (para mirarla de nuevo).
+  @Post(':id/reabrir')
+  async reabrir(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string) {
+    await this.acceso.respuestaExamen(docenteId, examenId, id);
+    return this.service.reabrirRevision(examenId, id);
+  }
+
   @Post(':id/recorregir')
   async recorregir(@DocenteId() docenteId: string, @Param('examenId') examenId: string, @Param('id') id: string) {
     await this.acceso.respuestaExamen(docenteId, examenId, id);

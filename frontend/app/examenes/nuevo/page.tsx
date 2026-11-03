@@ -16,7 +16,7 @@ import { Cargando } from '@/app/components/Cargando';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { SinSesion } from '@/app/components/SinSesion';
 import { TituloEditable } from '@/app/components/TituloEditable';
-import { ApiError, createExamen, getExamen, listCursos, listMatricesRubrica, renombrarExamen } from '@/lib/api';
+import { ApiError, createExamen, getExamen, listCursos, listMatricesRubrica, reemplazarExamen, renombrarExamen } from '@/lib/api';
 import type { Curso, MatrizRubrica } from '@/lib/api';
 import { useSesion } from '@/lib/auth';
 import {
@@ -69,7 +69,11 @@ function NuevoExamenForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const cursoIdParam = searchParams.get('cursoId') ?? '';
-  const desdeParam = searchParams.get('desde') ?? ''; // id de un examen para duplicar
+  const duplicarParam = searchParams.get('desde') ?? ''; // id de un examen para duplicar
+  const editarParam = searchParams.get('editar') ?? ''; // id de un examen para editar (solo si nadie empezó)
+  // Duplicar y editar cargan el formulario igual, desde un examen existente; cambia qué pasa al final (crear uno nuevo o guardar sobre el mismo).
+  const desdeParam = editarParam || duplicarParam;
+  const modoEditar = Boolean(editarParam);
   const { docente, cargando } = useSesion();
   const confirmar = useConfirmar();
 
@@ -127,6 +131,11 @@ function NuevoExamenForm() {
     desdeIniciado.current = true;
     getExamen(desdeParam)
       .then((examen) => {
+        // Con alumnos adentro las preguntas no se pueden cambiar: se avisa en vez de dejar armar algo que el servidor va a rechazar.
+        if (modoEditar && ((examen._count?.respuestas ?? 0) > 0 || (examen._count?.intentos ?? 0) > 0)) {
+          setErrorDesde('Este examen ya tiene alumnos que empezaron o entregaron, así que no se pueden cambiar sus preguntas. Podés editar el título y la consigna desde el examen, o duplicarlo para armar una versión nueva.');
+          return;
+        }
         const d = examenAFormulario(examen);
         setDatos((prev) => ({
           ...prev,
@@ -151,16 +160,17 @@ function NuevoExamenForm() {
         // Un examen largo se abre con las preguntas plegadas (todas completas: vienen de uno ya creado).
         setPreguntas(d.preguntas.length > 3 ? plegarCompletas(d.preguntas) : d.preguntas);
         setDuplicandoTitulo(examen.titulo);
+        setErrorDesde(null);
       })
       .catch((err) => {
         setErrorDesde(
           err instanceof ApiError && err.status === 404
-            ? 'No encontramos el examen que querías duplicar (puede que ya no exista). Podés armar uno desde cero.'
-            : 'No pudimos cargar el examen que querías duplicar. Podés armar uno desde cero o volver a intentarlo más tarde.',
+            ? `No encontramos el examen que querías ${modoEditar ? 'editar' : 'duplicar'} (puede que ya no exista).${modoEditar ? '' : ' Podés armar uno desde cero.'}`
+            : `No pudimos cargar el examen que querías ${modoEditar ? 'editar' : 'duplicar'}. Probá de nuevo más tarde.`,
         );
       })
       .finally(() => setCargandoDesde(false));
-  }, [docente, desdeParam]);
+  }, [docente, desdeParam, modoEditar]);
 
   // Las matrices se vuelven a pedir al volver a esta pestaña: así aparece la que el docente creó en /matrices/nueva (otra pestaña).
   useEffect(() => {
@@ -176,7 +186,7 @@ function NuevoExamenForm() {
   useEffect(() => {
     if (!docente || borradorRevisado.current) return;
     borradorRevisado.current = true;
-    if (desdeParam) return; // duplicando: se parte del examen original, no de un borrador
+    if (desdeParam) return; // duplicando o editando: se parte del examen original, no de un borrador
     try {
       const b = leerBorrador(window.localStorage.getItem(claveBorrador(docente.id)));
       if (b && borradorTieneContenido(b.datos, b.preguntas)) setBorradorPendiente(b);
@@ -348,7 +358,7 @@ function NuevoExamenForm() {
     setLoading(true);
     try {
       const cursoId = datos.cursoElegido;
-      const examen = await createExamen({
+      const payload = {
         cursoId,
         titulo: datos.titulo.trim(),
         consigna: datos.consigna.trim() || CONSIGNA_POR_DEFECTO,
@@ -366,7 +376,14 @@ function NuevoExamenForm() {
           : undefined,
         // Red de seguridad: los niveles de cada criterio tienen que tener la forma de la escala (el servidor exige esa cantidad).
         preguntas: reconciliarNiveles(preguntas, datos.niveles).map(construirPregunta),
-      });
+      };
+      if (modoEditar) {
+        // Editar guarda sobre el mismo examen (sus links siguen iguales) y vuelve a su pantalla.
+        await reemplazarExamen(editarParam, payload);
+        router.push(`/examenes/${editarParam}`);
+        return;
+      }
+      const examen = await createExamen(payload);
       setExamenCreadoId(examen.id);
       setCursoDelExamenId(cursoId);
       try {
@@ -378,7 +395,7 @@ function NuevoExamenForm() {
     } catch (err) {
       const detalle = mensajesDelServidor(err);
       setErrorServidor([
-        'No pudimos crear el examen. Tus datos siguen acá: corregí lo que se indica y probá de nuevo.',
+        `No pudimos ${modoEditar ? 'guardar los cambios' : 'crear el examen'}. Tus datos siguen acá: corregí lo que se indica y probá de nuevo.`,
         ...detalle.slice(0, 5).map((d) => `Detalle: ${d}`),
       ]);
       mostrarErrores();
@@ -402,7 +419,7 @@ function NuevoExamenForm() {
   return (
     <div className="page page-asistente">
       <header className="page-header">
-        <div className="eyebrow">Nuevo examen</div>
+        <div className="eyebrow">{modoEditar ? 'Editar examen' : 'Nuevo examen'}</div>
         <div className="page-header-fila" data-guia="examen-titulo">
           <TituloEditable
             valor={datos.titulo}
@@ -415,9 +432,14 @@ function NuevoExamenForm() {
         </div>
       </header>
 
-      {duplicandoTitulo !== null && (
+      {duplicandoTitulo !== null && !modoEditar && (
         <div className="aviso-info">
           Estás duplicando «{duplicandoTitulo}». Revisá y ajustá lo que quieras: se crea como un examen nuevo y el original no cambia.
+        </div>
+      )}
+      {duplicandoTitulo !== null && modoEditar && (
+        <div className="aviso-info">
+          Estás editando «{duplicandoTitulo}». Los cambios se guardan sobre este mismo examen y los links ya publicados siguen funcionando.
         </div>
       )}
       {errorDesde && (
@@ -484,7 +506,7 @@ function NuevoExamenForm() {
             parte="encabezado"
             datos={datos}
             onChange={cambiarDatos}
-            cursos={cursos}
+            cursos={modoEditar ? (cursos ?? []).filter((c) => c.id === datos.cursoElegido) : cursos}
             ajustesAbierto={ajustesAbierto}
             onToggleAjustes={() => setAjustesAbierto((v) => !v)}
             avanzadoAbierto={avanzadoAbierto}
@@ -590,7 +612,7 @@ function NuevoExamenForm() {
                 </button>
               ) : (
                 <button type="button" className="btn btn-primary" onClick={handleCrearExamen} disabled={loading}>
-                  {loading ? 'Creando el examen…' : 'Crear examen'}
+                  {loading ? (modoEditar ? 'Guardando…' : 'Creando el examen…') : modoEditar ? 'Guardar cambios' : 'Crear examen'}
                 </button>
               )}
             </div>

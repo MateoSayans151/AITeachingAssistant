@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { armarResultadoParaAlumno, debeNotificarse } from '../respuestas-examen/resultado.util';
@@ -7,6 +8,27 @@ import { armarMailResultado } from './mail-resultado.util';
 
 export const MENSAJE_SIN_MAIL_PARA_PUBLICAR = 'Para publicar las notas falta configurar el envío de mails en el servidor: RESEND_API_KEY y EMAIL_FROM.';
 export const MENSAJE_SIN_MAIL_PARA_REENVIAR = 'Para reenviar los mails falta configurar el envío en el servidor: RESEND_API_KEY y EMAIL_FROM.';
+
+export const MENSAJE_SIN_SELECCION_NOTAS = 'Elegí al menos un alumno para mandarle su resultado.';
+export const MENSAJE_SELECCION_NOTAS_AJENA = 'Alguna de las respuestas elegidas no es de este examen.';
+export const MENSAJE_SELECCION_SIN_NOTA = 'Ninguno de los elegidos tiene todavía su respuesta revisada con las notas publicadas.';
+
+export interface DestinatarioNotificacion {
+  respuestaId: string;
+  nombre: string;
+  email: string;
+  notaFinal: number | null;
+  /** Cuándo se le mandó (null = todavía no) y el último error si el intento falló. */
+  enviadoEn: Date | null;
+  error: string | null;
+  enCamino: boolean;
+}
+
+export interface DestinatariosNotificacion {
+  destinatarios: DestinatarioNotificacion[];
+  /** Respuestas sin revisar (o con las notas sin publicar): no figuran en la lista porque todavía no les toca. */
+  aunNoLesToca: number;
+}
 
 /** Qué pasó con el mail de una respuesta. `omitido` = no correspondía mandarlo (o ya estaba mandado / en camino). */
 export type ResultadoNotificacion = 'enviado' | 'omitido' | 'error' | 'cuota';
@@ -69,17 +91,18 @@ export class NotificacionesService {
    * Dos llamadas simultáneas por la misma respuesta no duplican el mail: la segunda se omite, y además Resend
    * descarta repetidos con la misma Idempotency-Key.
    */
-  async notificarRespuesta(respuestaId: string): Promise<ResultadoNotificacion> {
+  async notificarRespuesta(respuestaId: string, forzar = false): Promise<ResultadoNotificacion> {
     if (!this.mail.configurado || this.enCurso.has(respuestaId)) return 'omitido';
     this.enCurso.add(respuestaId);
     try {
-      return await this.enviarUna(respuestaId);
+      return await this.enviarUna(respuestaId, forzar);
     } finally {
       this.enCurso.delete(respuestaId);
     }
   }
 
-  private async enviarUna(respuestaId: string): Promise<ResultadoNotificacion> {
+  /** `forzar`: el docente eligió a mano volver a mandarle el mail a alguien que ya lo recibió. */
+  private async enviarUna(respuestaId: string, forzar: boolean): Promise<ResultadoNotificacion> {
     const respuesta = await this.prisma.respuestaExamen.findUnique({
       where: { id: respuestaId },
       include: {
@@ -87,7 +110,7 @@ export class NotificacionesService {
         examen: { include: { preguntas: { orderBy: { orden: 'asc' } }, curso: { include: { docente: true } } } },
       },
     });
-    if (!respuesta || respuesta.notificadoEn || !debeNotificarse(respuesta, respuesta.examen)) return 'omitido';
+    if (!respuesta || (respuesta.notificadoEn && !forzar) || !debeNotificarse(respuesta, respuesta.examen)) return 'omitido';
 
     const { examen, alumno } = respuesta;
     const docente = examen.curso.docente;
@@ -106,7 +129,8 @@ export class NotificacionesService {
       // Resend la recuerda 24 h. Lleva un hash del contenido: si el envío falla, el docente cambia la nota y reintenta
       // dentro de ese día, la clave nueva deja pasar el mail corregido (con la misma clave y otro contenido Resend
       // respondería 409); y si el contenido es el mismo, el reintento no duplica un mail que sí había salido.
-      idempotencyKey: `resultado-${respuesta.id}-${createHash('sha256').update(`${subject}\n${html}`).digest('hex').slice(0, 12)}`,
+      // Un reenvío a propósito lleva la fecha del envío anterior: con la misma clave Resend lo descartaría en silencio (24 h).
+      idempotencyKey: `resultado-${respuesta.id}-${createHash('sha256').update(`${subject}\n${html}`).digest('hex').slice(0, 12)}${forzar && respuesta.notificadoEn ? `-reenvio-${respuesta.notificadoEn.getTime()}` : ''}`,
     });
 
     if (envio.ok) {
@@ -139,11 +163,82 @@ export class NotificacionesService {
     return { aEnviar: ids.length };
   }
 
+  /**
+   * Los alumnos a los que ya se les puede mandar su resultado (respuesta revisada y notas publicadas, o feedback inmediato), con
+   * si ya lo recibieron: es la lista que el docente tilda antes de enviar. Los que todavía no les toca solo se cuentan.
+   */
+  async destinatarios(examenId: string): Promise<DestinatariosNotificacion> {
+    const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
+    if (!examen) throw new NotFoundException(`Examen ${examenId} no encontrado`);
+    const respuestas = await this.prisma.respuestaExamen.findMany({
+      where: { examenId },
+      orderBy: [{ alumno: { nombre: 'asc' } }],
+      select: {
+        id: true,
+        estadoRevision: true,
+        notaTotalFinal: true,
+        notificadoEn: true,
+        notificacionError: true,
+        alumno: { select: { nombre: true, email: true } },
+      },
+    });
+    const enLista = respuestas.filter((r) => debeNotificarse(r, examen));
+    return {
+      destinatarios: enLista.map((r) => ({
+        respuestaId: r.id,
+        nombre: r.alumno.nombre,
+        email: r.alumno.email,
+        notaFinal: r.notaTotalFinal == null ? null : Number(r.notaTotalFinal),
+        enviadoEn: r.notificadoEn,
+        error: r.notificadoEn ? null : r.notificacionError,
+        enCamino: this.enLote.has(r.id) || this.enCurso.has(r.id),
+      })),
+      aunNoLesToca: respuestas.length - enLista.length,
+    };
+  }
+
+  /**
+   * Manda el resultado SOLO a las respuestas elegidas por el docente. Las que ya lo recibieron se vuelven a mandar (es lo que
+   * pidió al tildarlas). Rechaza las que no son de este examen o todavía no les toca; las que ya están en camino no se repiten.
+   * Responde enseguida con cuántos mails salen.
+   */
+  async notificarSeleccion(examenId: string, respuestaIds: string[]): Promise<{ aEnviar: number }> {
+    if (!this.mail.configurado) throw new ConflictException(MENSAJE_SIN_MAIL_PARA_REENVIAR);
+    const ids = [...new Set(respuestaIds)];
+    if (ids.length === 0) throw new ConflictException(MENSAJE_SIN_SELECCION_NOTAS);
+    if (!ids.every((id) => isUUID(id))) throw new NotFoundException(MENSAJE_SELECCION_NOTAS_AJENA);
+    const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
+    if (!examen) throw new NotFoundException(`Examen ${examenId} no encontrado`);
+    const filas = await this.prisma.respuestaExamen.findMany({ where: { examenId, id: { in: ids } }, select: { id: true, estadoRevision: true } });
+    if (filas.length !== ids.length) throw new NotFoundException(MENSAJE_SELECCION_NOTAS_AJENA);
+    const ahora = filas.filter((r) => debeNotificarse(r, examen)).map((r) => r.id);
+    if (ahora.length === 0) throw new ConflictException(MENSAJE_SELECCION_SIN_NOTA);
+    this.lanzarLote(examenId, ahora, true);
+    return { aEnviar: ahora.length };
+  }
+
+  /**
+   * Al publicar las notas: manda solo a las respuestas elegidas que no lo recibieron todavía (publicar nunca repite un mail ya
+   * enviado; para eso está `notificarSeleccion`). Una lista vacía no manda nada. Los ids ajenos al examen se descartan.
+   */
+  async notificarSeleccionAlPublicar(examenId: string, respuestaIds: string[]): Promise<{ aEnviar: number }> {
+    if (!this.mail.configurado || respuestaIds.length === 0) return { aEnviar: 0 };
+    const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
+    if (!examen) return { aEnviar: 0 };
+    const filas = await this.prisma.respuestaExamen.findMany({
+      where: { examenId, id: { in: respuestaIds.filter((id) => isUUID(id)) }, notificadoEn: null },
+      select: { id: true, estadoRevision: true },
+    });
+    const ids = filas.filter((r) => debeNotificarse(r, examen)).map((r) => r.id);
+    this.lanzarLote(examenId, ids);
+    return { aEnviar: ids.length };
+  }
+
   /** Lanza en segundo plano el envío de estas respuestas (las que otro lote ya tiene no se repiten). Nunca rechaza. */
-  lanzarLote(examenId: string, ids: string[]): void {
+  lanzarLote(examenId: string, ids: string[], forzar = false): void {
     const nuevas = ids.filter((id) => !this.enLote.has(id) && !this.enCurso.has(id));
     nuevas.forEach((id) => this.enLote.set(id, examenId));
-    void this.enviarLote(nuevas).catch((err) => this.logger.error(`Falló el envío de mails del examen ${examenId}`, err as Error));
+    void this.enviarLote(nuevas, forzar).catch((err) => this.logger.error(`Falló el envío de mails del examen ${examenId}`, err as Error));
   }
 
   /** Cuántos envíos de este examen hay en marcha. */
@@ -156,7 +251,7 @@ export class NotificacionesService {
    * con las demás; si Resend avisa que se agotó el cupo del plan se corta el lote entero (seguir solo gastaría
    * pedidos rechazados) y las que quedaron sin enviar guardan ese motivo para que el docente lo vea.
    */
-  private async enviarLote(ids: string[]): Promise<void> {
+  private async enviarLote(ids: string[], forzar = false): Promise<void> {
     const cola = [...ids];
     let cuotaAgotada = false;
     const trabajador = async () => {
@@ -164,7 +259,7 @@ export class NotificacionesService {
         const id = cola.shift();
         if (id === undefined) return;
         try {
-          if ((await this.notificarRespuesta(id)) === 'cuota') cuotaAgotada = true;
+          if ((await this.notificarRespuesta(id, forzar)) === 'cuota') cuotaAgotada = true;
         } catch (err) {
           this.logger.error(`Falló el envío del resultado de la respuesta ${id}`, err as Error);
         } finally {

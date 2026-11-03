@@ -11,7 +11,9 @@ import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { VerificadorSesion } from '../src/auth/verificador-sesion';
 import { NOMBRE_CRITERIO_GENERAL, conCriterioGeneral } from '../src/examenes/criterio-general.util';
 import { ExamenesController } from '../src/examenes/examenes.controller';
-import { ExamenesService, MENSAJE_EXAMEN_CON_ALUMNOS } from '../src/examenes/examenes.service';
+import { ControlExamenController } from '../src/respuestas-examen/control-examen.controller';
+import { MENSAJE_CONFIRMACION_NO_COINCIDE } from '../src/examenes/confirmar-nombre.util';
+import { ExamenesService } from '../src/examenes/examenes.service';
 import { mismoPuntaje, puntajeDeCriterios, puntajeEfectivo, puntajeTotalExamen, redondearPuntaje, validarNivelesEscala, validarPuntajes } from '../src/examenes/puntaje.util';
 
 // ---------------------------------------------------------------------------
@@ -236,18 +238,17 @@ test('findOne: incluye _count de respuestas e intentos sin sacar lo que ya devol
 });
 
 // ---------------------------------------------------------------------------
-// 4. ExamenesService.remove: solo si nadie empezó ni entregó, todo dentro de una transacción con la fila bloqueada
+// 4. ExamenesService.remove: con el nombre escrito como confirmación, todo dentro de una transacción con la fila bloqueada
 // ---------------------------------------------------------------------------
 const EX_LIMPIO = '11111111-1111-4111-8111-111111111111';
-const EX_CON_RESPUESTAS = '22222222-2222-4222-8222-222222222222';
-const EX_CON_INTENTOS = '33333333-3333-4333-8333-333333333333';
-const EX_CON_AMBOS = '44444444-4444-4444-8444-444444444444';
+const EX_CON_ALUMNOS = '22222222-2222-4222-8222-222222222222';
 
 function prismaBorrado() {
   const estado = {
-    examenes: [EX_LIMPIO, EX_CON_RESPUESTAS, EX_CON_INTENTOS, EX_CON_AMBOS].map((id) => ({ id })),
-    respuestas: [{ examenId: EX_CON_RESPUESTAS }, { examenId: EX_CON_RESPUESTAS }, { examenId: EX_CON_AMBOS }],
-    intentos: [{ examenId: EX_CON_INTENTOS }, { examenId: EX_CON_AMBOS }],
+    examenes: [
+      { id: EX_LIMPIO, titulo: 'Parcial 1' },
+      { id: EX_CON_ALUMNOS, titulo: 'Final de Álgebra' },
+    ],
   };
   const llamadas: string[] = [];
   // Solo la transacción tiene tablas: si el servicio consultara fuera de ella, el doble explota (no hay bloqueo ni atomicidad).
@@ -255,13 +256,7 @@ function prismaBorrado() {
     $queryRaw: async (strings: TemplateStringsArray, ...valores: unknown[]) => {
       assert.match(strings.join('?'), /FROM examenes WHERE id = \?::uuid FOR UPDATE/, 'bloquea la fila del examen');
       llamadas.push('lock');
-      return estado.examenes.filter((e) => e.id === valores[0]).map((e) => ({ id: e.id }));
-    },
-    respuestaExamen: {
-      count: async ({ where }: any) => (llamadas.push('count:respuestas'), estado.respuestas.filter((r) => r.examenId === where.examenId).length),
-    },
-    intentoExamen: {
-      count: async ({ where }: any) => (llamadas.push('count:intentos'), estado.intentos.filter((i) => i.examenId === where.examenId).length),
+      return estado.examenes.filter((e) => e.id === valores[0]);
     },
     examen: {
       delete: async ({ where }: any) => {
@@ -270,66 +265,70 @@ function prismaBorrado() {
       },
     },
   };
-  const prisma = { $transaction: async (fn: (tx: any) => Promise<unknown>) => fn(tx) } as any;
+  const prisma = { $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } as any;
   return { svc: new ExamenesService(prisma, {} as any), estado, llamadas };
 }
 
-test('remove: borra un examen limpio (bloquea la fila, cuenta respuestas e intentos y recién ahí borra, en ese orden)', async () => {
+test('remove: con el nombre bien escrito bloquea la fila y borra, aunque el examen tenga alumnos (ya no hay restricción)', async () => {
   const { svc, estado, llamadas } = prismaBorrado();
-  assert.equal(await svc.remove(EX_LIMPIO), undefined);
-  assert.deepEqual(llamadas, ['lock', 'count:respuestas', 'count:intentos', 'delete']);
-  assert.deepEqual(estado.examenes.map((e) => e.id).sort(), [EX_CON_RESPUESTAS, EX_CON_INTENTOS, EX_CON_AMBOS].sort(), 'solo se fue ese');
+  assert.equal(await svc.remove(EX_CON_ALUMNOS, 'Final de Álgebra'), undefined);
+  assert.deepEqual(llamadas, ['lock', 'delete']);
+  assert.deepEqual(estado.examenes.map((e) => e.id), [EX_LIMPIO], 'solo se fue ese');
 });
 
-test('remove: con respuestas responde 409 con el motivo y no borra nada', async () => {
+test('remove: el nombre se compara sin espacios de más pero distinguiendo mayúsculas', async () => {
+  const { svc, estado } = prismaBorrado();
+  await assert.rejects(() => svc.remove(EX_LIMPIO, 'parcial 1'), BadRequestException);
+  await assert.rejects(() => svc.remove(EX_LIMPIO, ''), BadRequestException);
+  await assert.rejects(() => svc.remove(EX_LIMPIO, 'Parcial'), BadRequestException);
+  assert.equal(estado.examenes.length, 2, 'nada se borró');
+  await svc.remove(EX_LIMPIO, '   Parcial   1  ');
+  assert.deepEqual(estado.examenes.map((e) => e.id), [EX_CON_ALUMNOS]);
+});
+
+test('remove: con el nombre equivocado responde 400 con el motivo y no borra nada', async () => {
   const { svc, estado, llamadas } = prismaBorrado();
   await assert.rejects(
-    () => svc.remove(EX_CON_RESPUESTAS),
-    (err: unknown) =>
-      err instanceof ConflictException &&
-      (err.getResponse() as any).message === 'Este examen ya tiene alumnos que empezaron o entregaron: no se puede borrar para no perder sus respuestas.',
+    () => svc.remove(EX_CON_ALUMNOS, 'otro nombre'),
+    (err: unknown) => err instanceof BadRequestException && (err.getResponse() as any).message === MENSAJE_CONFIRMACION_NO_COINCIDE,
   );
-  assert.equal(MENSAJE_EXAMEN_CON_ALUMNOS, 'Este examen ya tiene alumnos que empezaron o entregaron: no se puede borrar para no perder sus respuestas.');
   assert.ok(!llamadas.includes('delete'));
-  assert.equal(estado.examenes.length, 4);
-});
-
-test('remove: con intentos (alumnos que empezaron y todavía no entregaron) responde 409 y no borra nada', async () => {
-  const { svc, estado, llamadas } = prismaBorrado();
-  await assert.rejects(() => svc.remove(EX_CON_INTENTOS), ConflictException);
-  await assert.rejects(() => svc.remove(EX_CON_AMBOS), ConflictException);
-  assert.ok(!llamadas.includes('delete'));
-  assert.equal(estado.examenes.length, 4);
+  assert.equal(estado.examenes.length, 2);
 });
 
 test('remove: un examen que no existe (o un id que no es UUID) responde 404 sin intentar borrar', async () => {
   const { svc, llamadas } = prismaBorrado();
-  await assert.rejects(() => svc.remove('99999999-9999-4999-8999-999999999999'), NotFoundException);
+  await assert.rejects(() => svc.remove('99999999-9999-4999-8999-999999999999', 'x'), NotFoundException);
   assert.deepEqual(llamadas, ['lock']);
   llamadas.length = 0;
-  await assert.rejects(() => svc.remove('no-es-uuid'), NotFoundException);
+  await assert.rejects(() => svc.remove('no-es-uuid', 'x'), NotFoundException);
   assert.deepEqual(llamadas, [], 'ni siquiera abre la transacción');
 });
 
 // ---------------------------------------------------------------------------
-// 5. ExamenesController.remove: DELETE /examenes/:id → 204, con el chequeo de acceso antes de borrar
+// 5. ControlExamenController.remove: DELETE /examenes/:examenId → 204, valida el nombre ANTES de tocar las imágenes de las capturas
 // ---------------------------------------------------------------------------
 function controladorConDobles() {
   const llamadas: string[] = [];
   const acceso = { examen: async (docenteId: string, examenId: string) => void llamadas.push(`acceso:${docenteId}:${examenId}`) };
-  const service = { remove: async (id: string) => void llamadas.push(`remove:${id}`) };
-  return { controller: new ExamenesController(service as any, {} as any, acceso as any, {} as any), acceso, service, llamadas };
+  const examenes = {
+    validarConfirmacion: async (id: string, c: string) => void llamadas.push(`validar:${id}:${c}`),
+    remove: async (id: string, c: string) => void llamadas.push(`remove:${id}:${c}`),
+  };
+  const integridad = { borrarImagenesDeExamen: async (id: string) => void llamadas.push(`imagenes:${id}`) };
+  const controller = new ControlExamenController(examenes as any, {} as any, integridad as any, acceso as any);
+  return { controller, acceso, examenes, integridad, llamadas };
 }
 
-test('DELETE /examenes/:id: es DELETE, responde 204 y no es público', () => {
-  const remove = ExamenesController.prototype.remove;
+test('DELETE /examenes/:examenId: es DELETE, responde 204 y no es público', () => {
+  const remove = ControlExamenController.prototype.remove;
   assert.equal(Reflect.getMetadata('method', remove), RequestMethod.DELETE);
-  assert.equal(Reflect.getMetadata('path', remove), ':id');
   assert.equal(Reflect.getMetadata('__httpCode__', remove), 204);
-  assert.ok(!Reflect.getMetadata(IS_PUBLIC_KEY, remove) && !Reflect.getMetadata(IS_PUBLIC_KEY, ExamenesController), 'exige sesión de docente');
+  assert.equal(Reflect.getMetadata('path', ControlExamenController), 'examenes/:examenId');
+  assert.ok(!Reflect.getMetadata(IS_PUBLIC_KEY, remove) && !Reflect.getMetadata(IS_PUBLIC_KEY, ControlExamenController), 'exige sesión de docente');
 });
 
-test('DELETE /examenes/:id: sin token responde 401 (la ruta pasa por el AuthGuard de siempre)', async () => {
+test('DELETE /examenes/:examenId: sin token responde 401 (la ruta pasa por el AuthGuard de siempre)', async () => {
   const guard = new AuthGuard(
     new VerificadorSesion({ get: (k: string) => ({ SUPABASE_URL: 'https://proyecto-test.supabase.co', SUPABASE_JWT_SECRET: 's'.repeat(40) })[k] } as any),
     { resolver: async () => 'doc-1' } as any,
@@ -337,38 +336,36 @@ test('DELETE /examenes/:id: sin token responde 401 (la ruta pasa por el AuthGuar
   );
   const req: any = { headers: {} };
   const ctx = {
-    getHandler: () => ExamenesController.prototype.remove,
-    getClass: () => ExamenesController,
+    getHandler: () => ControlExamenController.prototype.remove,
+    getClass: () => ControlExamenController,
     switchToHttp: () => ({ getRequest: () => req }),
   } as unknown as ExecutionContext;
   await assert.rejects(() => guard.canActivate(ctx), UnauthorizedException);
 });
 
-test('DELETE /examenes/:id: exige el acceso al examen ANTES de borrar y no devuelve cuerpo', async () => {
+test('DELETE /examenes/:examenId: accede, valida el nombre, borra las imágenes y recién ahí el examen (en ese orden)', async () => {
   const { controller, llamadas } = controladorConDobles();
-  assert.equal(await controller.remove('doc-1', 'ex-1'), undefined);
-  assert.deepEqual(llamadas, ['acceso:doc-1:ex-1', 'remove:ex-1']);
+  assert.equal(await controller.remove('doc-1', 'ex-1', { confirmacion: 'Parcial 1' }), undefined);
+  assert.deepEqual(llamadas, ['acceso:doc-1:ex-1', 'validar:ex-1:Parcial 1', 'imagenes:ex-1', 'remove:ex-1:Parcial 1']);
 });
 
-test('DELETE /examenes/:id: un examen ajeno o inexistente responde 404 y no se borra nada', async () => {
+test('DELETE /examenes/:examenId: un examen ajeno o inexistente responde 404 y no se borra nada', async () => {
   const { controller, acceso, llamadas } = controladorConDobles();
   acceso.examen = async (docenteId: string, examenId: string) => {
     llamadas.push(`acceso:${docenteId}:${examenId}`);
     throw new NotFoundException('Examen no encontrado');
   };
-  await assert.rejects(() => controller.remove('doc-2', 'ex-1'), NotFoundException);
+  await assert.rejects(() => controller.remove('doc-2', 'ex-1', { confirmacion: 'x' }), NotFoundException);
   assert.deepEqual(llamadas, ['acceso:doc-2:ex-1'], 'el servicio ni se entera');
 });
 
-test('DELETE /examenes/:id: el 409 del servicio le llega tal cual al docente', async () => {
-  const { controller, service } = controladorConDobles();
-  service.remove = async () => {
-    throw new ConflictException(MENSAJE_EXAMEN_CON_ALUMNOS);
+test('DELETE /examenes/:examenId: con el nombre mal escrito NO se borran las imágenes de las capturas', async () => {
+  const { controller, examenes, llamadas } = controladorConDobles();
+  examenes.validarConfirmacion = async () => {
+    throw new BadRequestException(MENSAJE_CONFIRMACION_NO_COINCIDE);
   };
-  await assert.rejects(
-    () => controller.remove('doc-1', 'ex-1'),
-    (err: unknown) => err instanceof ConflictException && (err.getResponse() as any).message === MENSAJE_EXAMEN_CON_ALUMNOS,
-  );
+  await assert.rejects(() => controller.remove('doc-1', 'ex-1', { confirmacion: 'mal' }), BadRequestException);
+  assert.deepEqual(llamadas, ['acceso:doc-1:ex-1']);
 });
 
 // ---------------------------------------------------------------------------

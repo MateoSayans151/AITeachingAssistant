@@ -11,6 +11,8 @@ export const MENSAJE_INVITACIONES_EN_CURSO = 'Ya hay un envío en curso para est
 export const MENSAJE_SIN_PUBLICACIONES = 'Este examen todavía no está publicado en ninguna comisión: publicalo primero para poder invitar a los alumnos.';
 export const MENSAJE_PUBLICACION_AJENA = 'Esa publicación no pertenece a este examen.';
 export const MENSAJE_VENTANA_CERRADA = 'La ventana de entrega ya cerró: no tiene sentido invitar a los alumnos a rendir.';
+export const MENSAJE_SIN_SELECCION = 'Elegí al menos un alumno para mandarle la invitación.';
+export const MENSAJE_SELECCION_AJENA = 'Alguno de los alumnos elegidos no figura en las comisiones donde está publicado este examen.';
 export const MENSAJE_SIN_ALUMNOS = 'No hay alumnos con email cargado en la comisión donde está publicado el examen: cargalos primero.';
 
 export interface EstadoInvitaciones {
@@ -44,6 +46,20 @@ interface Invitacion {
   alumnoId: string;
   nombreAlumno: string;
   email: string;
+  /** Cuántas veces se le mandó antes (0 = nunca): el reenvío intencional lleva otra clave de idempotencia. */
+  veces: number;
+}
+
+/** Un alumno al que se le puede mandar la invitación, con si ya la recibió (lo que muestra la lista para elegir). */
+export interface DestinatarioInvitacion {
+  alumnoId: string;
+  nombre: string;
+  email: string;
+  comision: string;
+  examenComisionId: string;
+  /** Última vez que se le mandó (null = nunca) y cuántas veces. */
+  invitadoEn: Date | null;
+  veces: number;
 }
 
 /** Lo que es igual para todas las invitaciones del lote. */
@@ -110,7 +126,7 @@ export class InvitacionesService {
    * publicación `examenComisionId`). Responde enseguida con cuántos mails salen; el avance se consulta con `estado`.
    * 409 si el envío no está configurado, si ya hay un lote en curso para este examen, o si no hay a quién mandarle.
    */
-  async invitar(examenId: string, examenComisionId?: string): Promise<{ aEnviar: number }> {
+  async invitar(examenId: string, examenComisionId?: string, alumnoIds?: string[]): Promise<{ aEnviar: number }> {
     if (!this.mail.configurado) throw new ConflictException(MENSAJE_SIN_MAIL_PARA_INVITAR);
     if (this.estados.get(examenId)?.enCurso) throw new ConflictException(MENSAJE_INVITACIONES_EN_CURSO);
 
@@ -123,7 +139,7 @@ export class InvitacionesService {
     let contexto: ContextoExamen;
     let invitaciones: Invitacion[];
     try {
-      ({ contexto, invitaciones } = await this.armarInvitaciones(examenId, examenComisionId));
+      ({ contexto, invitaciones } = await this.armarInvitaciones(examenId, examenComisionId, alumnoIds));
     } catch (err) {
       if (previo) this.estados.set(examenId, previo);
       else this.estados.delete(examenId);
@@ -139,7 +155,14 @@ export class InvitacionesService {
   }
 
   /** Lee el examen con sus publicaciones y alumnos y arma qué mail va a quién. Tira 404/409 si no se puede. */
-  private async armarInvitaciones(examenId: string, examenComisionId?: string): Promise<{ contexto: ContextoExamen; invitaciones: Invitacion[] }> {
+  private async armarInvitaciones(
+    examenId: string,
+    examenComisionId?: string,
+    alumnoIds?: string[],
+  ): Promise<{ contexto: ContextoExamen; invitaciones: Invitacion[] }> {
+    // Una selección vacía no es "todos": el docente tiene que haber elegido a alguien.
+    if (alumnoIds !== undefined && alumnoIds.length === 0) throw new ConflictException(MENSAJE_SIN_SELECCION);
+    if (alumnoIds !== undefined && !alumnoIds.every((id) => isUUID(id))) throw new NotFoundException(MENSAJE_SELECCION_AJENA);
     // Un id que no es UUID no puede existir (y a Prisma le sale un 500): se trata igual que una publicación ajena.
     if (examenComisionId !== undefined && !isUUID(examenComisionId)) throw new NotFoundException(MENSAJE_PUBLICACION_AJENA);
 
@@ -177,8 +200,11 @@ export class InvitacionesService {
     // en dos comisiones: gana la primera publicación en la que aparece.
     const vistos = new Set<string>();
     const invitaciones: Invitacion[] = [];
+    const previas = await this.previas(examenId);
+    const elegidos = alumnoIds ? new Set(alumnoIds) : null;
     for (const p of vigentes) {
       for (const a of p.comision.alumnos) {
+        if (elegidos && !elegidos.has(a.id)) continue;
         const email = (a.email ?? '').trim();
         const clave = email.toLowerCase();
         if (!email || vistos.has(clave)) continue;
@@ -191,8 +217,14 @@ export class InvitacionesService {
           alumnoId: a.id,
           nombreAlumno: a.nombre,
           email,
+          veces: previas.get(a.id)?.veces ?? 0,
         });
       }
+    }
+    // Eligió a alguien que no está en las comisiones publicadas: se rechaza en vez de mandarle solo a una parte.
+    if (elegidos) {
+      const deLasComisiones = new Set(vigentes.flatMap((p) => p.comision.alumnos.map((a) => a.id)));
+      if ([...elegidos].some((id) => !deLasComisiones.has(id))) throw new NotFoundException(MENSAJE_SELECCION_AJENA);
     }
     if (invitaciones.length === 0) throw new ConflictException(MENSAJE_SIN_ALUMNOS);
 
@@ -207,6 +239,71 @@ export class InvitacionesService {
       },
       invitaciones,
     };
+  }
+
+  /** A quién se le mandó ya la invitación de este examen (alumnoId -> cuándo y cuántas veces). */
+  private async previas(examenId: string): Promise<Map<string, { enviadoEn: Date; veces: number }>> {
+    const filas = await this.prisma.invitacionEnviada.findMany({ where: { examenId }, select: { alumnoId: true, enviadoEn: true, veces: true } });
+    return new Map(filas.map((f) => [f.alumnoId, { enviadoEn: f.enviadoEn, veces: f.veces }]));
+  }
+
+  /** Anota que salió la invitación. Un fallo acá no cuenta como fallo del envío (el mail ya salió): se loguea y sigue. */
+  private async registrarEnvio(examenId: string, alumnoId: string): Promise<void> {
+    try {
+      const ahora = this.ahora();
+      await this.prisma.invitacionEnviada.upsert({
+        where: { examenId_alumnoId: { examenId, alumnoId } },
+        create: { examenId, alumnoId, enviadoEn: ahora, veces: 1 },
+        update: { enviadoEn: ahora, veces: { increment: 1 } },
+      });
+    } catch (err) {
+      this.logger.warn(`No se pudo anotar la invitación enviada (examen ${examenId}, alumno ${alumnoId}): ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Los alumnos a los que se puede mandar la invitación de este examen (los de las comisiones donde está publicado y con la
+   * ventana vigente), cada uno con si ya la recibió. Es la lista que el docente tilda antes de enviar.
+   */
+  async destinatarios(examenId: string): Promise<DestinatarioInvitacion[]> {
+    const examen = await this.prisma.examen.findUnique({
+      where: { id: examenId },
+      select: {
+        comisiones: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            fechaFin: true,
+            comision: { select: { nombre: true, alumnos: { orderBy: { nombre: 'asc' }, select: { id: true, nombre: true, email: true } } } },
+          },
+        },
+      },
+    });
+    if (!examen) throw new NotFoundException(`Examen ${examenId} no encontrado`);
+    const ahora = this.ahora();
+    const previas = await this.previas(examenId);
+    const vistos = new Set<string>();
+    const lista: DestinatarioInvitacion[] = [];
+    for (const p of examen.comisiones) {
+      if (p.fechaFin && p.fechaFin.getTime() < ahora.getTime()) continue;
+      for (const a of p.comision.alumnos) {
+        const email = (a.email ?? '').trim();
+        const clave = email.toLowerCase();
+        if (!email || vistos.has(clave)) continue;
+        vistos.add(clave);
+        const previa = previas.get(a.id);
+        lista.push({
+          alumnoId: a.id,
+          nombre: a.nombre,
+          email,
+          comision: p.comision.nombre,
+          examenComisionId: p.id,
+          invitadoEn: previa?.enviadoEn ?? null,
+          veces: previa?.veces ?? 0,
+        });
+      }
+    }
+    return lista;
   }
 
   private tandaActual(): string {
@@ -249,10 +346,13 @@ export class InvitacionesService {
             html,
             text,
             replyTo: contexto.emailDocente,
-            idempotencyKey: `invitacion-${inv.examenComisionId}-${inv.alumnoId}-${tanda}`,
+            // Un reenvío intencional (ya se le había mandado) lleva otra clave: con la misma Resend lo descartaría en silencio dentro
+            // de las 24 h. Un doble clic no cambia `veces` hasta que el primer envío termina, así que sigue sin duplicar.
+            idempotencyKey: `invitacion-${inv.examenComisionId}-${inv.alumnoId}-${inv.veces}-${tanda}`,
           });
           if (envio.ok) {
             estado.enviados += 1;
+            await this.registrarEnvio(examenId, inv.alumnoId);
           } else {
             // (El proyecto compila sin strictNullChecks: TypeScript no estrecha el resultado por `ok`.)
             const { motivo, cuota } = envio as EnvioFallido;

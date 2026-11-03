@@ -214,9 +214,10 @@ model Alumno {
   codigoAcceso String   @map("codigo_acceso")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  comision   Comision          @relation(fields: [comisionId], references: [id], onDelete: Cascade)
-  respuestas RespuestaExamen[]
-  intentos   IntentoExamen[]
+  comision     Comision            @relation(fields: [comisionId], references: [id], onDelete: Cascade)
+  respuestas   RespuestaExamen[]
+  intentos     IntentoExamen[]
+  invitaciones InvitacionEnviada[]
 
   @@unique([comisionId, email])
   @@map("alumnos")
@@ -275,13 +276,14 @@ model Examen {
   creadoPorId          String?         @map("creado_por") @db.Uuid
   createdAt            DateTime        @default(now()) @map("created_at")
 
-  curso       Curso             @relation(fields: [cursoId], references: [id], onDelete: Cascade)
-  creadoPor   Docente?          @relation("ExamenCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
-  preguntas   Pregunta[]
-  comisiones  ExamenComision[]
-  respuestas  RespuestaExamen[]
-  intentos    IntentoExamen[]
-  ajustesVara AjusteVara[]
+  curso        Curso               @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  creadoPor    Docente?            @relation("ExamenCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  preguntas    Pregunta[]
+  comisiones   ExamenComision[]
+  respuestas   RespuestaExamen[]
+  intentos     IntentoExamen[]
+  ajustesVara  AjusteVara[]
+  invitaciones InvitacionEnviada[]
 
   @@index([cursoId])
   @@index([creadoPorId])
@@ -479,6 +481,21 @@ model AjusteVaraDetalle {
 }
 
 // Intentos fallidos de entrar a un examen con un email que no está en la comisión (freno a la fuerza bruta). Se purgan pasada la ventana.
+// A quién se le mandó ya la invitación a un examen y cuántas veces (para elegir a quiénes (re)enviarla).
+model InvitacionEnviada {
+  examenId  String   @map("examen_id") @db.Uuid
+  alumnoId  String   @map("alumno_id") @db.Uuid
+  enviadoEn DateTime @default(now()) @map("enviado_en")
+  veces     Int      @default(1)
+
+  examen Examen @relation(fields: [examenId], references: [id], onDelete: Cascade)
+  alumno Alumno @relation(fields: [alumnoId], references: [id], onDelete: Cascade)
+
+  @@id([examenId, alumnoId])
+  @@index([alumnoId])
+  @@map("invitaciones_enviadas")
+}
+
 model FalloAcceso {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clave      String

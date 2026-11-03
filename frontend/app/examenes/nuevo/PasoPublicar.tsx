@@ -18,8 +18,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { useConfirmar } from '@/app/components/Confirmar';
-import { createComision, getEstadoInvitaciones, invitarAlumnos, listComisionesPorCurso, publicarExamenAComision } from '@/lib/api';
+import { SelectorDestinatarios } from '@/app/components/SelectorDestinatarios';
+import { createComision, getDestinatariosInvitacion, getEstadoInvitaciones, invitarAlumnos, listComisionesPorCurso, publicarExamenAComision } from '@/lib/api';
+import type { DestinatarioLista } from '@/lib/destinatarios';
 import type { Comision, EstadoInvitaciones } from '@/lib/api';
 import { resumenPublicacion, siguienteNombreComision, sugerirCorreccionDominio, validarFechasPublicacion } from '@/lib/alumnos';
 import { fechaLocalAIso } from '@/lib/fechas';
@@ -640,7 +641,6 @@ export function InvitarPorMail({
   /** Botones que van en la misma fila que «Enviar por mail» (por ejemplo «Copiar link»): las dos formas de mandar el link, juntas. */
   acciones?: ReactNode;
 }) {
-  const confirmar = useConfirmar();
   const [estado, setEstado] = useState<EstadoInvitaciones | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -701,33 +701,38 @@ export function InvitarPorMail({
     };
   }, [sondeando, examenId]);
 
-  async function enviar() {
-    const cuantos = cantidadAlumnos !== null ? plural(cantidadAlumnos, 'mail', 'mails') : 'un mail por alumno';
-    const modoPrueba = estado?.modoPrueba
-      ? `El servidor está en modo prueba: todos los mails van a ${estado.modoPrueba} y no llegan a los alumnos.`
-      : 'Si el servidor está en modo prueba, todos los mails van a una sola casilla y no llegan a los alumnos.';
-    const confirmado = await confirmar({
-      titulo: '¿Mandar el link por mail a los alumnos?',
-      mensaje:
-        `Se van a mandar ${cuantos} (uno a cada alumno de la lista) con el link para rendir.\n\n` +
-        `El plan gratuito de Resend permite 100 mails por día: si te pasás, el resto no sale.\n\n${modoPrueba}`,
-      textoConfirmar: 'Mandar mails',
-    });
-    if (!confirmado) return;
+  // La lista para tildar: se pide al abrir, porque lo que importa es quién la recibió hasta este momento.
+  const [lista, setLista] = useState<DestinatarioLista[] | null>(null);
 
+  async function abrirSelector() {
     setError(null);
-    setCortado(false);
     setEnviando(true);
     try {
-      const { aEnviar } = await invitarAlumnos(examenId, examenComisionId);
-      setEstado((prev) => ({ configurado: true, modoPrueba: prev?.modoPrueba ?? null, total: aEnviar, enviados: 0, conError: 0, enCurso: true, ultimoError: null }));
-      setSondeando(true);
+      const todos = await getDestinatariosInvitacion(examenId);
+      // Solo los de esta publicación: cada comisión tiene su propio link (y su propio botón).
+      setLista(
+        todos
+          .filter((d) => d.examenComisionId === examenComisionId)
+          .map((d) => ({ id: d.alumnoId, nombre: d.nombre, email: d.email, detalle: d.comision, enviadoEn: d.invitadoEn, veces: d.veces })),
+      );
     } catch (err) {
-      // El servidor explica el motivo en `message` (no hay configuración, ya hay un envío en curso, no hay a quién mandarle…).
-      setError(mensajesDelServidor(err)[0] ?? 'No se pudieron mandar los mails. Probá de nuevo en un rato.');
-      void refrescar();
+      setError(mensajesDelServidor(err)[0] ?? 'No se pudo cargar la lista de alumnos. Probá de nuevo en un rato.');
     } finally {
       setEnviando(false);
+    }
+  }
+
+  async function enviar(alumnoIds: string[]) {
+    setCortado(false);
+    try {
+      const { aEnviar } = await invitarAlumnos(examenId, examenComisionId, alumnoIds);
+      setEstado((prev) => ({ configurado: true, modoPrueba: prev?.modoPrueba ?? null, total: aEnviar, enviados: 0, conError: 0, enCurso: true, ultimoError: null }));
+      setSondeando(true);
+      setLista(null);
+    } catch (err) {
+      // El servidor explica el motivo en `message` (no hay configuración, ya hay un envío en curso, no hay a quién mandarle…).
+      void refrescar();
+      throw new Error(mensajesDelServidor(err)[0] ?? 'No se pudieron mandar los mails. Probá de nuevo en un rato.');
     }
   }
 
@@ -747,11 +752,11 @@ export function InvitarPorMail({
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={enviar}
+          onClick={abrirSelector}
           disabled={enCurso || sinConfigurar}
           aria-describedby={sinConfigurar ? 'sinMailAyuda' : undefined}
         >
-          {enCurso ? 'Enviando…' : 'Enviar por mail a los alumnos'}
+          {enCurso ? 'Enviando…' : 'Enviar por mail a los alumnos…'}
         </button>
       </div>
       <p className="muted" style={{ fontSize: 'var(--text-xs)', marginTop: 8 }}>
@@ -767,6 +772,22 @@ export function InvitarPorMail({
         <p className={styles.errorEnvio} role="alert">
           {error}
         </p>
+      )}
+
+      {lista && (
+        <SelectorDestinatarios
+          titulo="¿A quiénes les mandamos el link?"
+          explicacion={
+            lista.length === 0
+              ? 'Todavía no hay alumnos con mail cargados en esta comisión.'
+              : 'Tildá a quienes querés mandarles el link por mail. A quien ya lo recibió se le vuelve a mandar si lo dejás tildado.'
+          }
+          lista={lista}
+          verbo={{ lo: 'la invitación', yaLo: 'Invitado' }}
+          avisoModoPrueba={estado?.modoPrueba}
+          onEnviar={enviar}
+          onCancelar={() => setLista(null)}
+        />
       )}
 
       <div className={styles.estadoEnvio} aria-live="polite">

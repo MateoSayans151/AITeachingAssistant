@@ -271,6 +271,16 @@ exception when duplicate_object then null; end $$;
 -- { umbralAprobacion, aprobadosEsperadosPct } — lo que el docente espera del examen; precarga la vara.
 alter table examenes add column if not exists distribucion_esperada jsonb;
 
+-- A quién se le mandó ya la invitación a un examen (y cuántas veces): el docente ve quién la recibió y elige a quiénes (re)enviarla.
+create table if not exists invitaciones_enviadas (
+  examen_id uuid not null references examenes(id) on delete cascade,
+  alumno_id uuid not null references alumnos(id) on delete cascade,
+  enviado_en timestamptz not null default now(),
+  veces integer not null default 1,
+  primary key (examen_id, alumno_id)
+);
+create index if not exists idx_invitaciones_enviadas_alumno on invitaciones_enviadas(alumno_id);
+
 create table if not exists ajustes_vara (
   id uuid primary key default gen_random_uuid(),
   examen_id uuid not null references examenes(id) on delete cascade,

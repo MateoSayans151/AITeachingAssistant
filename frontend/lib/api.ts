@@ -330,6 +330,8 @@ export interface RespuestaExamen {
   estado: EstadoEntrega;
   estadoRevision: EstadoRevision;
   revisadoEn: string | null;
+  /** Cuándo se le mandó por mail su resultado (null = todavía no). */
+  notificadoEn?: string | null;
   createdAt: string;
   alumno?: Alumno;
   examen?: Examen;
@@ -358,6 +360,21 @@ export const createCurso = (data: { nombre: string; materia?: string }) =>
 export const listCursos = () => request<Curso[]>('/cursos');
 
 export const getCurso = (id: string) => request<Curso>(`/cursos/${id}`);
+
+/** Cambia el nombre y/o la materia del curso (la materia vacía la quita). Cualquiera del equipo puede. */
+export const actualizarCurso = (id: string, data: { nombre?: string; materia?: string }) =>
+  request<Curso>(`/cursos/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+/** Lo que se perdería al eliminar el curso (para el aviso del diálogo). */
+export const getQueSePierdeCurso = (id: string) =>
+  request<{ examenes: number; comisiones: number; materiales: number; respuestas: number }>(`/cursos/${id}/que-se-pierde`);
+
+/**
+ * Elimina el curso con todo lo que tiene (exámenes, respuestas, comisiones, material). Solo el último docente del equipo: con más, 409
+ * y lo que corresponde es salir del curso. Exige el nombre del curso escrito (`confirmacion`); 400 si no coincide.
+ */
+export const eliminarCurso = (id: string, confirmacion: string) =>
+  request<void>(`/cursos/${id}`, { method: 'DELETE', body: JSON.stringify({ confirmacion }) });
 
 // ---- Equipo docente de un curso: todos los docentes del curso tienen los mismos permisos ----
 
@@ -484,8 +501,74 @@ export const listExamenesPorRevisar = () => request<ExamenPorRevisar[]>('/examen
 
 export const getExamen = (id: string) => request<Examen>(`/examenes/${id}`);
 
-/** Borra un examen que nadie empezó ni entregó (si no, 409 con el motivo). Se van con él sus preguntas y los links publicados. */
-export const deleteExamen = (id: string) => request<void>(`/examenes/${id}`, { method: 'DELETE' });
+/**
+ * Borra el examen con todo lo que cuelga de él: preguntas, links publicados, y las respuestas, notas y capturas de los alumnos. No se
+ * puede deshacer, por eso el servidor exige el nombre del examen escrito (`confirmacion`); 400 si no coincide.
+ */
+export const deleteExamen = (id: string, confirmacion: string) =>
+  request<void>(`/examenes/${id}`, { method: 'DELETE', body: JSON.stringify({ confirmacion }) });
+
+/** Reemplaza todo el contenido del examen (preguntas, rúbricas, escala, modalidad...). 409 si ya hay alumnos que empezaron o entregaron. */
+export const reemplazarExamen = (id: string, data: Parameters<typeof createExamen>[0]) =>
+  request<Examen>(`/examenes/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+/** Cuántos alumnos empezaron o entregaron: con alguno, las preguntas ya no se pueden cambiar y borrar se lleva sus respuestas. */
+export const getAlumnosQueRindieron = (id: string) =>
+  request<{ intentos: number; respuestas: number; empezaron: number }>(`/examenes/${id}/alumnos-que-rindieron`);
+
+/** Datos que se pueden cambiar con alumnos rindiendo (no tocan ninguna nota): título, consigna y cuándo se libera el feedback. */
+export const actualizarDatosExamen = (id: string, data: { titulo: string; consigna?: string; feedbackModo?: FeedbackModo }) =>
+  request<{ id: string; titulo: string }>(`/examenes/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+/** Cambia las fechas de apertura y cierre de un link ya publicado (null quita la fecha). No afecta a quien ya empezó. */
+export const actualizarPublicacion = (examenId: string, examenComisionId: string, data: { fechaInicio?: string | null; fechaFin?: string | null }) =>
+  request<{ id: string; fechaInicio: string | null; fechaFin: string | null }>(`/examenes/${examenId}/comisiones/${examenComisionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+
+/** Cuántos alumnos están rindiendo ahora (el diálogo de cierre lo muestra antes de elegir). */
+export const getEnCurso = (examenId: string) => request<{ enCurso: number }>(`/examenes/${examenId}/en-curso`);
+
+/**
+ * Cierra el examen: nadie nuevo puede empezar. `entregarEnCurso` true entrega ahora lo que tengan los que están rindiendo (se corrige
+ * como cualquier entrega); false los deja terminar. Devuelve cuántos se entregaron y cuántos siguen rindiendo.
+ */
+export const cerrarExamen = (examenId: string, entregarEnCurso: boolean) =>
+  request<{ id: string; estado: EstadoExamen; entregados: number; siguenRindiendo: number }>(`/examenes/${examenId}/cerrar`, {
+    method: 'POST',
+    body: JSON.stringify({ entregarEnCurso }),
+  });
+
+export const reabrirExamen = (examenId: string) => request<{ id: string; estado: EstadoExamen }>(`/examenes/${examenId}/reabrir`, { method: 'POST' });
+
+// ---- Panel "En vivo": quién está rindiendo ahora ----
+export interface AlumnoEnVivo {
+  intentoId: string;
+  alumnoId: string;
+  nombre: string;
+  email: string;
+  comision: string;
+  inicioEn: string;
+  expiraEn: string | null;
+  ultimaActividad: string;
+  conexion: 'activo' | 'sin_senal';
+  respondidas: number;
+  totalPreguntas: number;
+  /** Señales de integridad por tipo (solo las que ocurrieron). */
+  senales: Record<string, number>;
+  totalSenales: number;
+  capturas: number;
+}
+
+export interface EnVivo {
+  ahora: string;
+  examen: { titulo: string; estado: EstadoExamen; modalidad: ModalidadExamen; duracionMinutos: number | null; monitoreado: boolean };
+  resumen: { rindiendo: number; entregaron: number; sinEmpezar: number; sinSenal: number };
+  alumnos: AlumnoEnVivo[];
+}
+
+export const getEnVivo = (examenId: string) => request<EnVivo>(`/examenes/${examenId}/en-vivo`);
 
 /** Cambia el nombre de un examen ya creado (se puede en cualquier momento, aunque haya alumnos rindiendo). */
 export const renombrarExamen = (id: string, titulo: string) =>
@@ -617,8 +700,11 @@ export const explicarVaraRespuesta = (examenId: string, respuestaId: string) =>
  */
 export type ExamenConPendientes = Examen & { pendientesDeRevision: number; aEnviar: number };
 
-export const liberarFeedback = (examenId: string) =>
-  request<ExamenConPendientes>(`/examenes/${examenId}/liberar-feedback`, { method: 'POST' });
+export const liberarFeedback = (examenId: string, respuestaIds?: string[]) =>
+  request<ExamenConPendientes>(`/examenes/${examenId}/liberar-feedback`, {
+    method: 'POST',
+    body: JSON.stringify(respuestaIds === undefined ? {} : { respuestaIds }),
+  });
 
 // ---- Mails con la nota (los manda el backend con Resend) ----
 
@@ -641,6 +727,25 @@ export interface ResumenNotificaciones {
 
 export const getResumenNotificaciones = (examenId: string) =>
   request<ResumenNotificaciones>(`/examenes/${examenId}/notificaciones`);
+
+export interface DestinatarioNotificacion {
+  respuestaId: string;
+  nombre: string;
+  email: string;
+  notaFinal: number | null;
+  /** Cuándo se le mandó (null = todavía no) y el último error si el intento falló. */
+  enviadoEn: string | null;
+  error: string | null;
+  enCamino: boolean;
+}
+
+/** Los alumnos a los que ya se les puede mandar su resultado (revisado y con las notas publicadas), con quién ya lo recibió. */
+export const getDestinatariosNotas = (examenId: string) =>
+  request<{ destinatarios: DestinatarioNotificacion[]; aunNoLesToca: number }>(`/examenes/${examenId}/notificaciones/destinatarios`);
+
+/** Manda el resultado solo a los elegidos; a quien ya lo recibió se lo vuelve a mandar. 409 si no hay envío configurado. */
+export const enviarNotas = (examenId: string, respuestaIds: string[]) =>
+  request<{ aEnviar: number }>(`/examenes/${examenId}/notificaciones/enviar`, { method: 'POST', body: JSON.stringify({ respuestaIds }) });
 
 /** Reintenta en segundo plano el mail de los alumnos que todavía no lo recibieron. 409 si el envío no está configurado. */
 export const reenviarNotificaciones = (examenId: string) =>
@@ -752,6 +857,10 @@ export const revisarRespuestaExamen = (
 export const recorregirRespuestaExamen = (examenId: string, id: string) =>
   request<RespuestaExamen>(`/examenes/${examenId}/respuestas/${id}/recorregir`, { method: 'POST' });
 
+/** Devuelve una respuesta ya aceptada o editada a «pendiente de revisión» (conserva lo que escribiste; quita la nota final). */
+export const reabrirRevisionRespuesta = (examenId: string, id: string) =>
+  request<RespuestaExamen>(`/examenes/${examenId}/respuestas/${id}/reabrir`, { method: 'POST' });
+
 export const bulkAceptarRespuestas = (examenId: string) =>
   request<RespuestaExamen[]>(`/examenes/${examenId}/respuestas/bulk-aceptar`, { method: 'POST' });
 
@@ -786,11 +895,25 @@ export interface EstadoInvitaciones {
  * está publicado si no se pasa. Responde enseguida con cuántos mails salen. 409 si el envío no está configurado, si ya hay un envío
  * en curso para este examen o si no hay a quién mandarle; 404 si la publicación no es de este examen.
  */
-export const invitarAlumnos = (examenId: string, examenComisionId?: string) =>
+export const invitarAlumnos = (examenId: string, examenComisionId?: string, alumnoIds?: string[]) =>
   request<{ aEnviar: number }>(`/examenes/${examenId}/invitaciones`, {
     method: 'POST',
-    body: JSON.stringify(examenComisionId ? { examenComisionId } : {}),
+    body: JSON.stringify({ ...(examenComisionId ? { examenComisionId } : {}), ...(alumnoIds ? { alumnoIds } : {}) }),
   });
+
+export interface DestinatarioInvitacion {
+  alumnoId: string;
+  nombre: string;
+  email: string;
+  comision: string;
+  examenComisionId: string;
+  /** Última vez que se le mandó la invitación (null = nunca) y cuántas veces. */
+  invitadoEn: string | null;
+  veces: number;
+}
+
+/** Los alumnos a los que se puede invitar (de las comisiones donde el examen está publicado), con quién ya la recibió. */
+export const getDestinatariosInvitacion = (examenId: string) => request<DestinatarioInvitacion[]>(`/examenes/${examenId}/invitaciones/destinatarios`);
 
 export const getEstadoInvitaciones = (examenId: string) => request<EstadoInvitaciones>(`/examenes/${examenId}/invitaciones`);
 

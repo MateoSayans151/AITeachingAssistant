@@ -1,9 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { AccesoService } from '../acceso/acceso.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCursoDto } from './dto/create-curso.dto';
+import { UpdateCursoDto } from './dto/update-curso.dto';
+import { coincideNombre, MENSAJE_CONFIRMACION_NO_COINCIDE } from '../examenes/confirmar-nombre.util';
 import { RESUMEN_VACIO, resumenesDeExamenes } from '../examenes/resumen-respuestas.util';
+
+export const MENSAJE_CURSO_CON_OTROS_DOCENTES =
+  'Este curso lo comparten otros docentes: no se puede eliminar para no sacárselo. Podés salir del curso y lo siguen usando ellos.';
 
 export const MENSAJE_ULTIMO_DOCENTE = 'El curso tiene que quedar con al menos un docente.';
 
@@ -22,6 +27,60 @@ export class CursosService {
   /** El curso nace con su creador como único miembro del equipo. */
   create(docenteId: string, dto: CreateCursoDto) {
     return this.prisma.curso.create({ data: { ...dto, docenteId, equipo: { create: { docenteId, agregadoPor: docenteId } } } });
+  }
+
+  /** Cambia el nombre y la materia. Cualquiera del equipo puede (lo chequea el controller). */
+  async actualizar(id: string, dto: UpdateCursoDto) {
+    if (!isUUID(id)) throw new NotFoundException(`Curso ${id} no encontrado`);
+    const data: { nombre?: string; materia?: string | null } = {};
+    if (dto.nombre !== undefined) data.nombre = dto.nombre;
+    if (dto.materia !== undefined) data.materia = dto.materia === '' ? null : dto.materia;
+    if (Object.keys(data).length === 0) throw new BadRequestException('No hay nada para cambiar.');
+    const { count } = await this.prisma.curso.updateMany({ where: { id }, data });
+    if (count === 0) throw new NotFoundException(`Curso ${id} no encontrado`);
+    return this.prisma.curso.findUniqueOrThrow({ where: { id } });
+  }
+
+  /**
+   * Las reglas para eliminar un curso (sin borrar nada): solo puede quien es el ÚLTIMO docente del equipo (si hay más, lo que
+   * corresponde es salir del curso) y tiene que escribir el nombre del curso. Devuelve cuánto se pierde, para avisarlo.
+   */
+  async validarEliminacion(cursoId: string, docenteId: string, confirmacion: string) {
+    if (!isUUID(cursoId)) throw new NotFoundException(`Curso ${cursoId} no encontrado`);
+    const curso = await this.prisma.curso.findUnique({
+      where: { id: cursoId },
+      select: { nombre: true, equipo: { select: { docenteId: true } } },
+    });
+    if (!curso) throw new NotFoundException(`Curso ${cursoId} no encontrado`);
+    if (curso.equipo.length !== 1 || curso.equipo[0].docenteId !== docenteId) throw new ConflictException(MENSAJE_CURSO_CON_OTROS_DOCENTES);
+    if (!coincideNombre(confirmacion, curso.nombre)) throw new BadRequestException(MENSAJE_CONFIRMACION_NO_COINCIDE);
+  }
+
+  /** Lo que se pierde al eliminar el curso (el aviso del diálogo): exámenes, alumnos que rindieron, comisiones y materiales. */
+  async queSePierde(cursoId: string) {
+    const [examenes, comisiones, materiales, respuestas] = await Promise.all([
+      this.prisma.examen.count({ where: { cursoId } }),
+      this.prisma.comision.count({ where: { cursoId } }),
+      this.prisma.materialCurso.count({ where: { cursoId } }),
+      this.prisma.respuestaExamen.count({ where: { examen: { cursoId } } }),
+    ]);
+    return { examenes, comisiones, materiales, respuestas };
+  }
+
+  /**
+   * Elimina el curso con todo lo que cuelga de él (comisiones, alumnos, exámenes, respuestas, material y su índice RAG, por
+   * cascada). Las reglas se vuelven a chequear dentro de la transacción: si entró otro docente mientras tanto, no se borra.
+   */
+  async eliminar(cursoId: string, docenteId: string, confirmacion: string) {
+    if (!isUUID(cursoId)) throw new NotFoundException(`Curso ${cursoId} no encontrado`);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM cursos WHERE id = ${cursoId}::uuid FOR UPDATE`;
+      const curso = await tx.curso.findUnique({ where: { id: cursoId }, select: { nombre: true, equipo: { select: { docenteId: true } } } });
+      if (!curso) throw new NotFoundException(`Curso ${cursoId} no encontrado`);
+      if (curso.equipo.length !== 1 || curso.equipo[0].docenteId !== docenteId) throw new ConflictException(MENSAJE_CURSO_CON_OTROS_DOCENTES);
+      if (!coincideNombre(confirmacion, curso.nombre)) throw new BadRequestException(MENSAJE_CONFIRMACION_NO_COINCIDE);
+      await tx.curso.delete({ where: { id: cursoId } });
+    });
   }
 
   findAll(docenteId: string) {

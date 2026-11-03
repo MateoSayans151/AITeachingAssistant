@@ -1,8 +1,11 @@
-import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, ConflictException, Controller, Get, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ExamenesService } from './examenes.service';
 import { CreateExamenDto } from './dto/create-examen.dto';
 import { UpdateExamenDto } from './dto/update-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
+import { ActualizarPublicacionDto } from './dto/actualizar-publicacion.dto';
+import { EnviarNotasDto } from './dto/enviar-notas.dto';
+import { LiberarFeedbackDto } from './dto/liberar-feedback.dto';
 import { ReglaVaraDto } from './dto/vara.dto';
 import { VaraService } from './vara.service';
 import { DocenteId } from '../auth/docente-id.decorator';
@@ -21,9 +24,14 @@ export class ExamenesController {
   @Post()
   async create(@DocenteId() docenteId: string, @Body() dto: CreateExamenDto) {
     await this.acceso.curso(docenteId, dto.cursoId);
-    // Una matriz de origen ajena no se puede referenciar (leería su contenido por el examen). Si un docente duplica o rehace el examen
-    // de un compañero, sus criterios traen la matriz PERSONAL de ese compañero como origen: el contenido ya está copiado en cada
-    // criterio, así que el origen se descarta (queda como criterio suelto) en vez de rechazar todo el examen con 404.
+    await this.sanearMatrices(docenteId, dto);
+    return this.service.create(dto, docenteId);
+  }
+
+  // Una matriz de origen ajena no se puede referenciar (leería su contenido por el examen). Si un docente duplica, edita o rehace el
+  // examen de un compañero, sus criterios traen la matriz PERSONAL de ese compañero como origen: el contenido ya está copiado en cada
+  // criterio, así que el origen se descarta (queda como criterio suelto) en vez de rechazar todo el examen con 404.
+  private async sanearMatrices(docenteId: string, dto: CreateExamenDto) {
     const matrizIds = [...new Set(dto.preguntas.flatMap((p) => (p.criterios ?? []).map((c) => c.matrizOrigenId)))];
     const propias = new Set<string>();
     for (const id of matrizIds) {
@@ -38,7 +46,6 @@ export class ExamenesController {
     for (const p of dto.preguntas) {
       for (const c of p.criterios ?? []) if (c.matrizOrigenId && !propias.has(c.matrizOrigenId)) c.matrizOrigenId = undefined;
     }
-    return this.service.create(dto, docenteId);
   }
 
   @Get()
@@ -59,19 +66,39 @@ export class ExamenesController {
     return this.service.findOne(id);
   }
 
-  // Cambiar el título (el nombre del examen) se puede en cualquier momento, también con alumnos rindiendo: no toca ninguna nota.
+  // Título, consigna y feedback se pueden cambiar en cualquier momento, también con alumnos rindiendo: no tocan ninguna nota.
   @Patch(':id')
-  async rename(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto: UpdateExamenDto) {
+  async actualizarDatos(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto: UpdateExamenDto) {
     await this.acceso.examen(docenteId, id);
-    return this.service.renombrar(id, dto.titulo);
+    return this.service.actualizarDatos(id, dto);
   }
 
-  // Solo si nadie empezó ni entregó (si no, 409): preguntas, criterios, links y ajustes de vara se van con el examen.
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@DocenteId() docenteId: string, @Param('id') id: string) {
+  // Reemplaza todo el contenido (preguntas, rúbricas, escala, modalidad...). Solo si nadie empezó ni entregó (si no, 409).
+  @Put(':id')
+  async reemplazarContenido(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto: CreateExamenDto) {
     await this.acceso.examen(docenteId, id);
-    await this.service.remove(id);
+    await this.acceso.curso(docenteId, dto.cursoId);
+    await this.sanearMatrices(docenteId, dto);
+    return this.service.reemplazarContenido(id, dto);
+  }
+
+  // Cuántos alumnos empezaron o entregaron: lo que decide qué se puede editar y qué se pierde al borrar.
+  @Get(':id/alumnos-que-rindieron')
+  async alumnosQueRindieron(@DocenteId() docenteId: string, @Param('id') id: string) {
+    await this.acceso.examen(docenteId, id);
+    return this.service.alumnosQueRindieron(id);
+  }
+
+  // Fechas de apertura y cierre de un link ya publicado (extender el plazo, por ejemplo).
+  @Patch(':id/comisiones/:examenComisionId')
+  async actualizarPublicacion(
+    @DocenteId() docenteId: string,
+    @Param('id') id: string,
+    @Param('examenComisionId') examenComisionId: string,
+    @Body() dto: ActualizarPublicacionDto,
+  ) {
+    await this.acceso.examen(docenteId, id);
+    return this.service.actualizarPublicacion(id, examenComisionId, dto);
   }
 
   @Post(':id/comisiones')
@@ -107,9 +134,9 @@ export class ExamenesController {
   }
 
   @Post(':id/liberar-feedback')
-  async liberarFeedback(@DocenteId() docenteId: string, @Param('id') id: string) {
+  async liberarFeedback(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto?: LiberarFeedbackDto) {
     await this.acceso.examen(docenteId, id);
-    return this.service.liberarFeedback(id);
+    return this.service.liberarFeedback(id, dto?.respuestaIds);
   }
 
   // Cómo va el envío de las notas por mail: cuántos salieron, cuántos fallaron y por qué.
@@ -117,6 +144,20 @@ export class ExamenesController {
   async resumenNotificaciones(@DocenteId() docenteId: string, @Param('id') id: string) {
     await this.acceso.examen(docenteId, id);
     return this.notificaciones.resumen(id);
+  }
+
+  // Los alumnos a los que ya se les puede mandar el resultado, con quién ya lo recibió: la lista que el docente tilda.
+  @Get(':id/notificaciones/destinatarios')
+  async destinatariosNotificaciones(@DocenteId() docenteId: string, @Param('id') id: string) {
+    await this.acceso.examen(docenteId, id);
+    return this.notificaciones.destinatarios(id);
+  }
+
+  // Manda el resultado solo a los elegidos (también a quienes ya lo recibieron, si se los tilda de nuevo).
+  @Post(':id/notificaciones/enviar')
+  async enviarNotificaciones(@DocenteId() docenteId: string, @Param('id') id: string, @Body() dto: EnviarNotasDto) {
+    await this.acceso.examen(docenteId, id);
+    return this.notificaciones.notificarSeleccion(id, dto.respuestaIds);
   }
 
   // Reintenta en segundo plano el mail de los alumnos que todavía no lo recibieron (los que fallaron o quedaron sin enviar).
