@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiError,
+  AvisoDocente,
   AntiCheatConfig,
   EstadoIntentoRendir,
   MotivoCaptura,
   TipoEventoCliente,
   enviarLatido,
   entregarIntento,
+  getEstadoRendir,
   guardarBorrador,
   registrarEvento,
   subirCaptura,
@@ -34,6 +36,8 @@ const esDemasiadoGrande = (e: unknown) => e instanceof ApiError && (e.status ===
 
 const AUTOGUARDADO_DEBOUNCE_MS = 1500;
 const REINTENTO_MS = 5000;
+// Cada cuánto el navegador consulta el vencimiento y el aviso del docente (aunque el alumno no esté escribiendo).
+const ESTADO_MS = 15_000;
 /** Cada cuánto avisa el navegador que sigue vivo (y recibe la marca y los pedidos de captura). */
 const LATIDO_MS = 15_000;
 /** Después de un evento sospechoso se toman dos capturas: cuando la otra ventana ya está al frente, y unos segundos más tarde. */
@@ -115,7 +119,18 @@ export default function ExamenEnCurso({
 
   // Diferencia entre el reloj del servidor y el de este dispositivo.
   const desfase = useRef(new Date(inicial.ahora).getTime() - Date.now());
-  const vencimiento = expiraEn ? new Date(expiraEn).getTime() : null;
+  // El vencimiento y el aviso los puede cambiar el docente mientras se rinde (tiempo extra, otra duración, un cartel): se actualizan
+  // con lo que llega del servidor en cada autoguardado y en una consulta liviana cada pocos segundos.
+  const [vencimiento, setVencimiento] = useState<number | null>(expiraEn ? new Date(expiraEn).getTime() : null);
+  const [aviso, setAviso] = useState<AvisoDocente | null>(inicial.aviso ?? null);
+  const [avisoVisto, setAvisoVisto] = useState<string | null>(null);
+  const aplicarDelServidor = useCallback((r: { expiraEn?: string | null; aviso?: AvisoDocente | null }) => {
+    if (r.expiraEn !== undefined) {
+      const v = r.expiraEn ? new Date(r.expiraEn).getTime() : null;
+      setVencimiento((previo) => (previo === v ? previo : v));
+    }
+    if (r.aviso !== undefined) setAviso((previo) => (previo?.enviadoEn === r.aviso?.enviadoEn && previo?.texto === r.aviso?.texto ? previo : r.aviso ?? null));
+  }, []);
   const [restanteMs, setRestanteMs] = useState<number | null>(vencimiento ? vencimiento - (Date.now() + desfase.current) : null);
 
   const respuestasRef = useRef(respuestas);
@@ -152,6 +167,7 @@ export default function ExamenEnCurso({
       if (respuestasRef.current === enviado) sucio.current = false; // no cambió mientras se guardaba
       setUltimoGuardado(new Date(r.guardadoEn));
       setGuardado(sucio.current ? 'pendiente' : 'guardado');
+      aplicarDelServidor(r);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         terminar('vencido'); // el servidor ya cerró el intento
@@ -169,7 +185,21 @@ export default function ExamenEnCurso({
     } finally {
       guardandoAhora.current = false;
     }
-  }, [slug, token, terminar]);
+  }, [slug, token, terminar, aplicarDelServidor]);
+
+  // Consulta liviana: aunque el alumno esté pensando (sin escribir), se entera del tiempo extra o del aviso en unos segundos.
+  useEffect(() => {
+    const t = setInterval(async () => {
+      if (terminando.current) return;
+      try {
+        aplicarDelServidor(await getEstadoRendir(slug, token));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) terminar('vencido'); // el servidor ya cerró el intento (lo entregó el docente, por ejemplo)
+        /* sin conexión: se reintenta en la próxima vuelta */
+      }
+    }, ESTADO_MS);
+    return () => clearInterval(t);
+  }, [slug, token, terminar, aplicarDelServidor]);
 
   function cambiarRespuesta(preguntaId: string, valor: unknown) {
     const siguiente = { ...respuestasRef.current, [preguntaId]: valor };
@@ -238,7 +268,11 @@ export default function ExamenEnCurso({
 
   // ---------------------------------------------------------------- reloj
   useEffect(() => {
-    if (!vencimiento) return;
+    if (!vencimiento) {
+      setRestanteMs(null);
+      return;
+    }
+    setRestanteMs(vencimiento - (Date.now() + desfase.current)); // enseguida, sin esperar el primer segundo (cambió el vencimiento)
     const t = setInterval(() => setRestanteMs(vencimiento - (Date.now() + desfase.current)), 1000);
     return () => clearInterval(t);
   }, [vencimiento]);
@@ -487,6 +521,18 @@ export default function ExamenEnCurso({
           </strong>
         )}
       </div>
+
+      {aviso && avisoVisto !== aviso.enviadoEn && (
+        <div className="aviso-docente" role="status" aria-live="polite" data-testid="aviso-docente">
+          <div>
+            <strong>Aviso de tu docente</strong>
+            <p>{aviso.texto}</p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={() => setAvisoVisto(aviso.enviadoEn)}>
+            Entendido
+          </button>
+        </div>
+      )}
 
       {sesionReemplazada && (
         <div className="error-box" role="alert" data-testid="sesion-reemplazada" style={{ marginBottom: 16 }}>

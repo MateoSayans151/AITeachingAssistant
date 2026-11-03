@@ -141,7 +141,7 @@ export function LiberarNotasButton({
         const confirmado = await confirmar({
           titulo: '¿Publicar las notas?',
           mensaje:
-            'Todavía no revisaste ninguna respuesta, así que por ahora no sale ningún mail. Cada alumno va a recibir su nota apenas revises su examen.\n\nLas notas publicadas no se pueden retirar.',
+            'Todavía no revisaste ninguna respuesta, así que por ahora no hay nada que mandar. Cuando revises, vas a poder mandar cada nota con «Elegir a quién enviar».\n\nLas notas publicadas no se pueden retirar.',
           textoConfirmar: 'Publicar',
         });
         if (confirmado) await publicar([]);
@@ -210,9 +210,9 @@ export function LiberarNotasButton({
         selector.modo === 'publicar'
           ? `Las notas quedan publicadas (no se pueden retirar) y se mandan ahora por mail a los alumnos que tildes.${
               selector.sinRevisar > 0
-                ? ` Hay ${selector.sinRevisar === 1 ? '1 respuesta sin revisar' : `${selector.sinRevisar} respuestas sin revisar`}: ${selector.sinRevisar === 1 ? 'ese alumno recibe' : 'esos alumnos reciben'} su mail apenas ${selector.sinRevisar === 1 ? 'la revises' : 'las revises'}.`
+                ? ` Hay ${selector.sinRevisar === 1 ? '1 respuesta sin revisar' : `${selector.sinRevisar} respuestas sin revisar`}: ${selector.sinRevisar === 1 ? 'ese alumno todavía no tiene' : 'esos alumnos todavía no tienen'} nota que mandar.`
                 : ''
-            } A quien no tildes se lo podés mandar después con «Elegir a quién enviar».`
+            } Nada sale solo después: a quien no tildes, y a quien revises más tarde, se lo mandás cuando quieras con «Elegir a quién enviar».`
           : 'Tildá a quienes querés mandarles su nota. A quien ya la recibió se le vuelve a mandar si lo dejás tildado, por ejemplo si cambiaste algo.'
       }
       lista={selector.lista}
@@ -312,8 +312,8 @@ export function LiberarNotasButton({
         <div role="status">
           <strong>Notas publicadas el {formatearFecha(fecha)}</strong>
           <p className="muted" style={{ marginTop: 8 }}>
-            Cada alumno recibe su nota por mail apenas revisás su examen
-            {faltanRevisar ? `: todavía te ${faltanRevisar === 1 ? 'queda 1 respuesta' : `quedan ${faltanRevisar} respuestas`} sin revisar` : ''}.
+            Los mails no salen solos: los mandás vos con «Elegir a quién enviar», cuando quieras y a quienes quieras
+            {faltanRevisar ? `. Todavía te ${faltanRevisar === 1 ? 'queda 1 respuesta' : `quedan ${faltanRevisar} respuestas`} sin revisar` : ''}.
           </p>
         </div>
         {envios}

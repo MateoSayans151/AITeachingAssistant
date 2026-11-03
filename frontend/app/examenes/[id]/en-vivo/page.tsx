@@ -5,7 +5,10 @@ import { Cargando } from '@/app/components/Cargando';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { EnVivo, getEnVivo } from '@/lib/api';
+import { AvisoModal, CierreProgramadoModal, DuracionModal, TiempoExtraModal } from '@/app/components/ControlTiempo';
+import { useConfirmar } from '@/app/components/Confirmar';
+import { EnVivo, entregarIntentoAlumno, getEnVivo } from '@/lib/api';
+import { mensajeDeError } from '@/lib/errores';
 import { haceCuanto, porcentajeAvance, resumenSenales, tiempoRestante, tiempoTranscurrido } from '@/lib/en-vivo';
 import { plural } from '@/lib/texto';
 
@@ -20,6 +23,12 @@ export default function EnVivoPage() {
   const [ultimaVez, setUltimaVez] = useState<Date | null>(null);
   const [auto, setAuto] = useState(true);
   const montado = useRef(true);
+  const confirmar = useConfirmar();
+  // Qué diálogo está abierto, y el aviso de lo último que se hizo.
+  const [dialogo, setDialogo] = useState<'aviso' | 'cierre' | 'duracion' | null>(null);
+  const [extraDe, setExtraDe] = useState<{ intentoId: string; nombre: string } | null>(null);
+  const [entregando, setEntregando] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setActualizando(true);
@@ -57,6 +66,34 @@ export default function EnVivoPage() {
     };
   }, [auto, cargar]);
 
+  function listo(mensaje: string) {
+    setDialogo(null);
+    setExtraDe(null);
+    setResultado(mensaje);
+    void cargar();
+  }
+
+  async function entregarAlumno(a: { intentoId: string; nombre: string }) {
+    const ok = await confirmar({
+      titulo: `¿Entregar el examen de ${a.nombre}?`,
+      mensaje: 'Se cierra su examen ahora: se entrega lo último que tenía autoguardado y la IA lo corrige. No puede seguir escribiendo.',
+      textoConfirmar: 'Entregar su examen',
+      peligrosa: true,
+    });
+    if (!ok) return;
+    setEntregando(a.intentoId);
+    setResultado(null);
+    try {
+      await entregarIntentoAlumno(params.id, a.intentoId);
+      setResultado(`Se entregó el examen de ${a.nombre}.`);
+      await cargar();
+    } catch (err) {
+      setError(mensajeDeError(err, 'No se pudo entregar su examen. Probá de nuevo.'));
+    } finally {
+      setEntregando(null);
+    }
+  }
+
   if (!datos) {
     return <div className="page">{error ? <div className="error-box">{error}</div> : <Cargando variante="pagina" />}</div>;
   }
@@ -91,7 +128,39 @@ export default function EnVivoPage() {
         </div>
       </div>
 
+      <div className="vivo-acciones" style={{ marginBottom: 'var(--space-3)' }}>
+        <button type="button" className="btn btn-secondary" onClick={() => setDialogo('aviso')}>
+          Avisar a los alumnos
+        </button>
+        {examen.modalidad === 'sesion_tiempo' && (
+          <button type="button" className="btn btn-secondary" onClick={() => setDialogo('duracion')}>
+            Cambiar la duración
+          </button>
+        )}
+        {!cerrado && (
+          <button type="button" className="btn btn-secondary" onClick={() => setDialogo('cierre')}>
+            {examen.cierreProgramadoEn ? 'Cambiar el cierre automático' : 'Programar cierre automático'}
+          </button>
+        )}
+      </div>
+
       {error && <div className="error-box">{error}</div>}
+      {resultado && (
+        <div className="aviso-ok" role="status">
+          {resultado}
+        </div>
+      )}
+      {examen.cierreProgramadoEn && !cerrado && (
+        <div className="vivo-estado-cierre" role="status">
+          <strong>Se cierra solo el {new Date(examen.cierreProgramadoEn).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}.</strong>{' '}
+          {examen.cierreEntregarEnCurso ? 'A esa hora se entrega lo que tengan escrito los que sigan rindiendo.' : 'Los que sigan rindiendo a esa hora pueden terminar.'}
+        </div>
+      )}
+      {examen.aviso && (
+        <div className="vivo-estado-cierre" role="status">
+          <strong>Aviso activo para los alumnos:</strong> {examen.aviso.texto}
+        </div>
+      )}
       {cerrado && (
         <p className="muted" role="status">
           El examen está cerrado: nadie nuevo puede empezar{resumen.rindiendo > 0 ? ', pero quienes ya estaban rindiendo pueden terminar' : ''}.
@@ -160,6 +229,23 @@ export default function EnVivoPage() {
                       <div>{tiempoTranscurrido(a.inicioEn, datos.ahora)}</div>
                       <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
                         {a.expiraEn ? `Quedan ${tiempoRestante(a.expiraEn, datos.ahora)}` : 'Sin límite de tiempo'}
+                        {a.minutosExtra > 0 ? ` · +${a.minutosExtra} min extra` : ''}
+                      </div>
+                      <div className="vivo-fila-acciones">
+                        {a.expiraEn && (
+                          <button type="button" className="btn btn-secondary btn-chico" onClick={() => setExtraDe({ intentoId: a.intentoId, nombre: a.nombre })} title="Sumarle minutos solo a este alumno">
+                            + Tiempo
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-chico btn-peligro"
+                          onClick={() => entregarAlumno({ intentoId: a.intentoId, nombre: a.nombre })}
+                          disabled={entregando === a.intentoId}
+                          title="Cierra el examen de este alumno: se entrega lo que tenga escrito"
+                        >
+                          {entregando === a.intentoId ? 'Entregando…' : 'Entregar'}
+                        </button>
                       </div>
                     </td>
                     <td>
@@ -192,6 +278,19 @@ export default function EnVivoPage() {
           </table>
         </div>
       )}
+      {dialogo === 'aviso' && <AvisoModal examenId={params.id} avisoActual={examen.aviso?.texto ?? null} onListo={listo} onCancelar={() => setDialogo(null)} />}
+      {dialogo === 'cierre' && (
+        <CierreProgramadoModal
+          examenId={params.id}
+          actual={examen.cierreProgramadoEn}
+          entregarActual={examen.cierreEntregarEnCurso}
+          onListo={listo}
+          onCancelar={() => setDialogo(null)}
+        />
+      )}
+      {dialogo === 'duracion' && <DuracionModal examenId={params.id} minutosActuales={examen.duracionMinutos} onListo={listo} onCancelar={() => setDialogo(null)} />}
+      {extraDe && <TiempoExtraModal examenId={params.id} alumno={extraDe} onListo={listo} onCancelar={() => setExtraDe(null)} />}
+
       <p className="muted" style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)' }}>
         Las señales de integridad son información para tu criterio: no bloquean el examen ni cambian ninguna nota. «Sin señal» no significa que esté copiando; muchas veces
         es solo internet.

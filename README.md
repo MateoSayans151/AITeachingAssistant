@@ -156,6 +156,15 @@ las instrucciones para los alumnos y dos bloques plegados con un resumen de lo c
   rendir de nuevo aunque se reabra. Sin migración: usa el estado `cerrado` que ya existía.
 - **En vivo** (`/examenes/[id]/en-vivo`, pestaña del examen): quién está rindiendo, su avance (preguntas con algo respondido), tiempo, última actividad (**sin señal** pasados
   2 minutos del último latido o autoguardado) y señales de integridad. Se actualiza solo cada 10 s. `GET /api/examenes/:id/en-vivo`. Las señales son información, no prueba.
+- **Durante el examen** (botones de la pestaña *En vivo*):
+  - **Cierre automático.** `PUT /api/examenes/:id/cierre-programado`: a esa hora el examen se cierra solo y se elige qué pasa con quien siga rindiendo (entregar lo que tenga, o dejarlo terminar).
+    Lo ejecuta el barrido del servidor (cada pocos segundos) y los links dejan de aceptar alumnos desde la hora exacta, aunque el barrido no haya pasado. *Volver a abrir* quita el cierre programado.
+  - **Duración editable** (`PUT .../duracion`, solo exámenes por sesión). Vale para los que empiecen **y para los que ya están rindiendo**: su vencimiento pasa a ser inicio + nueva duración (más el tiempo
+    extra que ya tuvieran; sin pasarse del cierre del link). Antes de confirmar se ve a quiénes se les cortaría (`GET .../duracion/vista-previa`): si el docente la baja por debajo de lo que alguien
+    ya lleva, tiene que tildar que lo entiende, y a esos alumnos el barrido les entrega lo que tengan. A todos les aparece un aviso automático.
+  - **Tiempo extra por alumno** (`POST .../intentos/:id/tiempo-extra`, 1 a 240 min): alarga solo su reloj. **Entregar** (`POST .../intentos/:id/entregar`): cierra el examen de un alumno con lo último que autoguardó.
+  - **Aviso a todos** (`PUT/DELETE .../aviso`): un cartel de hasta 500 caracteres dentro del examen de los que están rindiendo (el último reemplaza al anterior). No usa mail. El navegador del alumno
+    consulta `GET /api/rendir/:slug/estado` cada 15 s (vencimiento y aviso), escriba o no; el autoguardado también los trae. **Migración:** `20261104_control_tiempo_y_avisos.sql`.
 - **Editar.** Título, consigna y cuándo se libera el feedback se cambian siempre (`PATCH /api/examenes/:id`); las fechas de cada link también (`PATCH .../comisiones/:id`).
   Preguntas, rúbricas y ajustes se reemplazan con `PUT /api/examenes/:id` (asistente en `?editar=<id>`) **solo si nadie empezó**; con alumnos adentro es 409 y la salida es *Duplicar y editar*.
   Los cursos se editan (nombre y materia) con `PATCH /api/cursos/:id`.
@@ -164,7 +173,8 @@ las instrucciones para los alumnos y dos bloques plegados con un resumen de lo c
   se borran del almacenamiento antes que las filas.
 - **Aceptar con un clic más.** Aceptar una corrección (una por una o en bloque) pide confirmar que la nota se da por cerrada. *Volver a pendiente* (`POST .../respuestas/:id/reabrir`)
   la devuelve a «para revisar» conservando lo escrito. Si el alumno ya recibió el mail, no se retira ni se repite solo.
-- **Mails a quienes se elija.** Las invitaciones (`GET/POST /api/examenes/:id/invitaciones`, con `alumnoIds`) y las notas (`GET .../notificaciones/destinatarios`, `POST .../notificaciones/enviar`)
+- **Mails a quienes se elija.** Nada sale solo en el modo de notas «cuando yo publique»: ni al publicar (solo a los tildados) ni al revisar después. El modo *feedback inmediato* sí manda cada nota al revisarla, porque eso es lo que promete.
+   Las invitaciones (`GET/POST /api/examenes/:id/invitaciones`, con `alumnoIds`) y las notas (`GET .../notificaciones/destinatarios`, `POST .../notificaciones/enviar`)
   muestran una lista para tildar, con *Marcar todos*, búsqueda y quién ya lo recibió; a quien ya lo recibió se le puede volver a mandar (otra clave de idempotencia para que Resend no lo
   descarte). Publicar las notas manda solo a los tildados. **Migración:** `20261103_invitaciones_enviadas.sql` (quién recibió qué invitación y cuántas veces).
 - **CSV para Excel.** UTF-8 con BOM, separador `;`, notas con coma, fechas `dd/mm/aaaa hh:mm`, una columna por pregunta, y texto que empieza con `=`, `+`, `-` o `@` neutralizado
@@ -231,6 +241,7 @@ de cuáles te faltan podés correrlas todas:
 | `20261026_acceso_abierto.sql` | `examen_comisiones.acceso_abierto`: el link puede ser abierto (entra cualquiera) o solo para la lista. **Correrla antes de desplegar el código nuevo**: sin la columna, el back falla al leer cualquier link de examen |
 | `20261028_otp_sesion_unica_y_capturas.sql` | Código de acceso por mail (`codigos_acceso`, `examen_comisiones.verificar_email` y `dominio_permitido`), sesión única y origen del intento, latido, `sesiones_intento`, `capturas_integridad` y los eventos nuevos. Todo es opt-in: lo ya publicado no cambia. **Volvé a correr después `20261004_rls_todas_las_tablas.sql`** (recorre las tablas existentes) y creá el bucket privado `capturas` en Supabase Storage |
 | `20261031_cursos_con_varios_docentes.sql` | `curso_docentes` (el equipo de cada curso), `curso_invitaciones`, `examenes.creado_por` y `cursos.docente_id` sin borrado en cascada. Los cursos existentes quedan con su creador como único miembro. **Correrla antes de desplegar el código nuevo**: el acceso a los cursos pasa a leer `curso_docentes` |
+| `20261104_control_tiempo_y_avisos.sql` | `examenes.cierre_programado_en`, `cierre_entregar_en_curso`, `aviso_texto`, `aviso_en` e `intentos_examen.minutos_extra`: cierre automático, cartel de aviso y tiempo extra por alumno. **Correrla antes de desplegar el código nuevo** |
 | `20261103_invitaciones_enviadas.sql` | `invitaciones_enviadas`: a quién se le mandó la invitación de un examen y cuántas veces (para elegir a quiénes reenviarla). **Correrla antes de desplegar el código nuevo** |
 | `20261031_quitar_trabajos_practicos.sql` | **Borra de forma permanente** los trabajos prácticos y todo lo que cuelga de ellos (rúbricas, entregas, correcciones, resúmenes, intentos con link). Exportá lo que quieras conservar antes de correrla |
 

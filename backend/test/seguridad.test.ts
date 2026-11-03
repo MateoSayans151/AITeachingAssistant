@@ -84,6 +84,7 @@ test('las únicas rutas públicas son las de rendir (el login es de Supabase, no
     'RendirController.codigo',
     'RendirController.latido',
     'RendirController.entregar',
+    'RendirController.estado',
     'RendirController.evento',
     'RendirController.info',
     'RendirController.intento',

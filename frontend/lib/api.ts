@@ -559,16 +559,56 @@ export interface AlumnoEnVivo {
   senales: Record<string, number>;
   totalSenales: number;
   capturas: number;
+  /** Minutos extra que el docente le dio (ya sumados a su vencimiento). */
+  minutosExtra: number;
 }
 
 export interface EnVivo {
   ahora: string;
-  examen: { titulo: string; estado: EstadoExamen; modalidad: ModalidadExamen; duracionMinutos: number | null; monitoreado: boolean };
+  examen: {
+    titulo: string;
+    estado: EstadoExamen;
+    modalidad: ModalidadExamen;
+    duracionMinutos: number | null;
+    monitoreado: boolean;
+    /** Si está, a esa hora el examen se cierra solo; `cierreEntregarEnCurso` dice qué pasa con quien siga rindiendo. */
+    cierreProgramadoEn: string | null;
+    cierreEntregarEnCurso: boolean;
+    aviso: AvisoDocente | null;
+  };
   resumen: { rindiendo: number; entregaron: number; sinEmpezar: number; sinSenal: number };
   alumnos: AlumnoEnVivo[];
 }
 
 export const getEnVivo = (examenId: string) => request<EnVivo>(`/examenes/${examenId}/en-vivo`);
+
+/** Programa el cierre automático del examen (o lo quita con `cierraEn: null`). Tiene que ser a futuro. */
+export const programarCierreExamen = (examenId: string, cierraEn: string | null, entregarEnCurso: boolean) =>
+  request<{ cierreProgramadoEn: string | null; cierreEntregarEnCurso: boolean }>(`/examenes/${examenId}/cierre-programado`, {
+    method: 'PUT',
+    body: JSON.stringify({ cierraEn, entregarEnCurso }),
+  });
+
+/** A quiénes se les cortaría el examen si la sesión durara `minutos` (se muestra antes de confirmar el cambio). */
+export const getVistaPreviaDuracion = (examenId: string, minutos: number) =>
+  request<{ rindiendo: number; seCortan: { intentoId: string; nombre: string }[] }>(`/examenes/${examenId}/duracion/vista-previa?minutos=${minutos}`);
+
+/** Cambia la duración de la sesión, también para quienes ya están rindiendo, y deja un aviso para todos. */
+export const cambiarDuracionExamen = (examenId: string, minutos: number) =>
+  request<{ duracionMinutos: number; actualizados: number; seCortan: number }>(`/examenes/${examenId}/duracion`, { method: 'PUT', body: JSON.stringify({ minutos }) });
+
+/** Le suma minutos al reloj de UN alumno que está rindiendo. */
+export const darTiempoExtra = (examenId: string, intentoId: string, minutos: number) =>
+  request<{ expiraEn: string; minutosExtra: number }>(`/examenes/${examenId}/intentos/${intentoId}/tiempo-extra`, { method: 'POST', body: JSON.stringify({ minutos }) });
+
+/** Cierra el examen de UN alumno: se entrega lo último que tenía autoguardado y la IA lo corrige. */
+export const entregarIntentoAlumno = (examenId: string, intentoId: string) =>
+  request<{ entregado: boolean }>(`/examenes/${examenId}/intentos/${intentoId}/entregar`, { method: 'POST' });
+
+/** Deja un cartel que ven dentro del examen todos los que están rindiendo (el último reemplaza al anterior). */
+export const enviarAviso = (examenId: string, texto: string) => request<{ aviso: string }>(`/examenes/${examenId}/aviso`, { method: 'PUT', body: JSON.stringify({ texto }) });
+
+export const quitarAviso = (examenId: string) => request<{ aviso: null }>(`/examenes/${examenId}/aviso`, { method: 'DELETE' });
 
 /** Cambia el nombre de un examen ya creado (se puede en cualquier momento, aunque haya alumnos rindiendo). */
 export const renombrarExamen = (id: string, titulo: string) =>
@@ -775,10 +815,17 @@ export interface PreguntaRendir {
   opciones: unknown;
 }
 
+/** Un cartel del docente que se ve dentro del examen. `enviadoEn` lo identifica: uno nuevo vuelve a mostrarse aunque el alumno haya cerrado el anterior. */
+export interface AvisoDocente {
+  texto: string;
+  enviadoEn: string;
+}
+
 export interface EstadoIntentoRendir {
   /** Hora del servidor: el cliente corrige la diferencia de reloj con esto. */
   ahora: string;
   expiraEn: string | null;
+  aviso?: AvisoDocente | null;
   borrador: Record<string, unknown>;
   antiCheat: AntiCheatConfig | null;
   preguntas: PreguntaRendir[];
@@ -798,8 +845,12 @@ export const iniciarIntento = (slug: string, data: { alumnoEmail: string; alumno
 export const getIntento = (slug: string, token: string) =>
   request<EstadoIntentoRendir>(`/rendir/${slug}/intento`, conToken(token));
 
+/** Vencimiento y aviso vigentes (el docente puede cambiarlos mientras el alumno rinde): se consulta cada pocos segundos, escriba o no. */
+export const getEstadoRendir = (slug: string, token: string) =>
+  request<{ ahora: string; expiraEn: string | null; aviso: AvisoDocente | null }>(`/rendir/${slug}/estado`, conToken(token));
+
 export const guardarBorrador = (slug: string, token: string, respuestas: Record<string, unknown>) =>
-  request<{ guardadoEn: string }>(`/rendir/${slug}/borrador`, {
+  request<{ guardadoEn: string; expiraEn?: string | null; aviso?: AvisoDocente | null }>(`/rendir/${slug}/borrador`, {
     method: 'PUT',
     body: JSON.stringify({ respuestas }),
     ...conToken(token),

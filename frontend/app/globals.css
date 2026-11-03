@@ -2111,3 +2111,47 @@ a.tab {
   height: 100%;
   background: var(--color-accent, var(--color-success));
 }
+
+/* Cartel del docente dentro del examen del alumno, y las acciones del panel En vivo */
+.aviso-docente {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent, #d9822b);
+  background: var(--color-accent-soft, #fff4e6);
+}
+
+.aviso-docente p {
+  margin: 4px 0 0;
+  white-space: pre-line;
+}
+
+.vivo-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.vivo-fila-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.btn-chico {
+  padding: 4px 10px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.vivo-estado-cierre {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-200);
+  margin-bottom: var(--space-3);
+}

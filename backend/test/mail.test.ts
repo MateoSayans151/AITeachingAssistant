@@ -898,11 +898,16 @@ test('revisar: en feedback inmediato dispara el mail de esa respuesta (en segund
   assert.deepEqual(lanzados, [{ examenId: 'ex-1', ids: ['r-1'] }]);
 });
 
-test('revisar: si el examen ya tenía las notas publicadas también notifica (editada incluida); si no, no', async () => {
+test('revisar: con las notas publicadas a mano (modo manual) NO sale ningún mail solo: el docente elige a quiénes; en feedback inmediato sí (editada incluida)', async () => {
   const publicado = servicioRevision([filaRevision('r-1')], { examen: { feedbackModo: 'manual', feedbackLiberadoEn: new Date() } });
   await publicado.svc.revisar('ex-1', 'r-1', { estadoRevision: 'editada', notaTotalFinal: 5, feedbackGeneralFinal: 'x' });
   await asentar();
-  assert.deepEqual(publicado.lanzados, [{ examenId: 'ex-1', ids: ['r-1'] }]);
+  assert.deepEqual(publicado.lanzados, [], 'publicar las notas no vuelve automático el envío de lo que se revise después');
+
+  const inmediato = servicioRevision([filaRevision('r-1')], { examen: { feedbackModo: 'inmediato', feedbackLiberadoEn: null } });
+  await inmediato.svc.revisar('ex-1', 'r-1', { estadoRevision: 'editada', notaTotalFinal: 5, feedbackGeneralFinal: 'x' });
+  await asentar();
+  assert.deepEqual(inmediato.lanzados, [{ examenId: 'ex-1', ids: ['r-1'] }]);
 
   const sinPublicar = servicioRevision([filaRevision('r-1')], { examen: { feedbackModo: 'manual', feedbackLiberadoEn: null } });
   await sinPublicar.svc.revisar('ex-1', 'r-1', { estadoRevision: 'aceptada' });
@@ -957,7 +962,7 @@ test('bulkAceptar: notifica a las que aceptó (una sola tanda) si corresponde; s
   const publicado = servicioRevision(filas(), { examen: { feedbackModo: 'manual', feedbackLiberadoEn: new Date() } });
   await publicado.svc.bulkAceptar('ex-1');
   await asentar();
-  assert.equal(publicado.lanzados.length, 1);
+  assert.equal(publicado.lanzados.length, 0, 'notas publicadas a mano: no sale nada solo, el docente elige a quiénes');
 
   const sinPublicar = servicioRevision(filas());
   await sinPublicar.svc.bulkAceptar('ex-1');

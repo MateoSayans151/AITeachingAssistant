@@ -380,7 +380,9 @@ export class RespuestasExamenService {
     try {
       if (!this.notificaciones.configurado) return;
       const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
-      if (!examen || !debeNotificarse({ estadoRevision }, examen)) return;
+      // Solo el modo «feedback inmediato» manda el mail al revisar (es lo que ese modo promete). Con las notas publicadas a mano, nada
+      // sale solo: el docente elige a quiénes mandárselo (ver NotificacionesService.notificarSeleccion).
+      if (!examen || examen.feedbackModo !== 'inmediato' || !debeNotificarse({ estadoRevision }, examen)) return;
       this.notificaciones.lanzarLote(examenId, ids);
     } catch (err) {
       this.logger.error(`No se pudo iniciar el envío de mails de la revisión (examen ${examenId})`, err as Error);

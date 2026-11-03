@@ -259,7 +259,8 @@ export class ExamenesService {
     if (!examen) throw new NotFoundException(`Examen ${id} no encontrado`);
     if (examen.estado !== 'cerrado') throw new ConflictException('El examen no está cerrado.');
     const estado = examen._count.comisiones > 0 ? ('publicado' as const) : ('borrador' as const);
-    await this.prisma.examen.update({ where: { id }, data: { estado } });
+    // Se quita también el cierre programado: si ya pasó, el barrido lo volvería a cerrar al instante.
+    await this.prisma.examen.update({ where: { id }, data: { estado, cierreProgramadoEn: null } });
     return { id, estado };
   }
 

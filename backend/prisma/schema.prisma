@@ -254,27 +254,33 @@ model CriterioMatriz {
 }
 
 model Examen {
-  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cursoId              String          @map("curso_id") @db.Uuid
-  titulo               String
-  consigna             String
-  modalidad            ModalidadExamen @default(ventana_dias)
-  duracionMinutos      Int?            @map("duracion_minutos")
-  escalaMin            Decimal         @default(0) @map("escala_min")
-  escalaMax            Decimal         @default(10) @map("escala_max")
-  niveles              Json
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cursoId               String          @map("curso_id") @db.Uuid
+  titulo                String
+  consigna              String
+  modalidad             ModalidadExamen @default(ventana_dias)
+  duracionMinutos       Int?            @map("duracion_minutos")
+  escalaMin             Decimal         @default(0) @map("escala_min")
+  escalaMax             Decimal         @default(10) @map("escala_max")
+  niveles               Json
   // Obsoleto desde la Fase 2 (la vara es una regla en AjusteVara); se conserva para no perder datos.
-  varaPorcentaje       Decimal         @default(0) @map("vara_porcentaje")
+  varaPorcentaje        Decimal         @default(0) @map("vara_porcentaje")
   // { umbralAprobacion, aprobadosEsperadosPct } — precarga la regla de la vara. null = sin expectativa.
-  distribucionEsperada Json?           @map("distribucion_esperada")
-  feedbackModo         FeedbackModo    @default(manual) @map("feedback_modo")
-  feedbackLiberadoEn   DateTime?       @map("feedback_liberado_en")
-  estado               EstadoExamen    @default(borrador)
+  distribucionEsperada  Json?           @map("distribucion_esperada")
+  feedbackModo          FeedbackModo    @default(manual) @map("feedback_modo")
+  feedbackLiberadoEn    DateTime?       @map("feedback_liberado_en")
+  estado                EstadoExamen    @default(borrador)
   // Anti-cheat nivel 1: { pantallaCompleta, cambioPestana, pegado } (booleans). null = sin controles.
-  antiCheat            Json?           @map("anti_cheat")
+  antiCheat             Json?           @map("anti_cheat")
   // Quién lo armó (los exámenes anteriores no lo tienen). Cualquiera del equipo del curso lo puede editar y corregir igual.
-  creadoPorId          String?         @map("creado_por") @db.Uuid
-  createdAt            DateTime        @default(now()) @map("created_at")
+  creadoPorId           String?         @map("creado_por") @db.Uuid
+  // Cierre automático: a esa hora el examen pasa a cerrado. `cierreEntregarEnCurso`: true entrega lo que tengan los que siguen rindiendo.
+  cierreProgramadoEn    DateTime?       @map("cierre_programado_en")
+  cierreEntregarEnCurso Boolean         @default(true) @map("cierre_entregar_en_curso")
+  // Último aviso del docente, que los alumnos que están rindiendo ven como un cartel dentro del examen.
+  avisoTexto            String?         @map("aviso_texto")
+  avisoEn               DateTime?       @map("aviso_en")
+  createdAt             DateTime        @default(now()) @map("created_at")
 
   curso        Curso               @relation(fields: [cursoId], references: [id], onDelete: Cascade)
   creadoPor    Docente?            @relation("ExamenCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
@@ -412,6 +418,8 @@ model IntentoExamen {
   // Código corto que la página muestra y que rota en cada latido: tiene que verse en las capturas.
   marcaActual           String?       @map("marca_actual")
   marcaAnterior         String?       @map("marca_anterior")
+  // Minutos extra que el docente le dio a este alumno (ya sumados a expiraEn).
+  minutosExtra          Int           @default(0) @map("minutos_extra")
 
   examen   Examen              @relation(fields: [examenId], references: [id], onDelete: Cascade)
   alumno   Alumno              @relation(fields: [alumnoId], references: [id], onDelete: Cascade)
