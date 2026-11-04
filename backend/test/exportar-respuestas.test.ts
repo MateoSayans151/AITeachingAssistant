@@ -221,3 +221,28 @@ test('armarCsvResumen: sin exámenes ni respuestas queda solo el encabezado; un 
   const csv = armarCsvResumen([{ titulo: '=SUMA(1;1)', escalaMax: 10, filas: [{ ...base, alumno: { nombre: 'x', email: 'x@mail.com' } }] }]);
   assert.ok(csv.slice(1).split('\r\n')[1].startsWith(`"'=SUMA(1;1)"`));
 });
+
+// ---------------------------------------------------------------------------
+// .zip con el CSV de cada examen (curso o comisión)
+// ---------------------------------------------------------------------------
+import JSZip from 'jszip';
+import { nombresDeArchivosPorExamen } from '../../frontend/lib/exportar-resumen';
+import { armarZip } from '../../frontend/lib/zip';
+
+test('nombresDeArchivosPorExamen: numerados en orden, sin tildes ni caracteres reservados, y únicos aunque dos exámenes se llamen igual', () => {
+  assert.deepEqual(nombresDeArchivosPorExamen(['Parcial 1: Álgebra', 'Final / oral', '???']), ['01_Parcial_1_Algebra.csv', '02_Final_oral.csv', '03_examen.csv']);
+  assert.deepEqual(nombresDeArchivosPorExamen(['Parcial', 'Parcial']), ['01_Parcial.csv', '02_Parcial.csv'], 'el número ya los distingue');
+  assert.ok(nombresDeArchivosPorExamen(['x'.repeat(200)])[0].length < 70);
+  assert.deepEqual(nombresDeArchivosPorExamen([]), []);
+});
+
+test('armarZip: los archivos salen tal cual (con tildes y el BOM del CSV) al abrir el .zip', async () => {
+  const bytes = await armarZip([
+    { nombre: '00_resumen.csv', contenido: '﻿Alumno;Nota\r\nÁngel;8,5\r\n' },
+    { nombre: '01_Parcial.csv', contenido: '﻿Alumno;Nota\r\nÑandú;7\r\n' },
+  ]);
+  const zip = await JSZip.loadAsync(bytes);
+  assert.deepEqual(Object.keys(zip.files).sort(), ['00_resumen.csv', '01_Parcial.csv']);
+  assert.equal(await zip.files['00_resumen.csv'].async('string'), '﻿Alumno;Nota\r\nÁngel;8,5\r\n');
+  assert.equal(await zip.files['01_Parcial.csv'].async('string'), '﻿Alumno;Nota\r\nÑandú;7\r\n');
+});
