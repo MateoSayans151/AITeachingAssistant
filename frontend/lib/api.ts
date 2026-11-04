@@ -361,6 +361,17 @@ export const listCursos = () => request<Curso[]>('/cursos');
 
 export const getCurso = (id: string) => request<Curso>(`/cursos/${id}`);
 
+/** Lo que se perdería al eliminar la comisión (el aviso del diálogo): sus alumnos, los links publicados y las respuestas de esos alumnos. */
+export const getQueSePierdeComision = (id: string) =>
+  request<{ alumnos: number; publicaciones: number; respuestas: number; rindiendo: number }>(`/comisiones/${id}/que-se-pierde`);
+
+/**
+ * Elimina la comisión con sus alumnos, los links publicados (dejan de funcionar) y las respuestas de esos alumnos. No se puede deshacer:
+ * el servidor exige el nombre de la comisión escrito (`confirmacion`); 400 si no coincide.
+ */
+export const eliminarComision = (id: string, confirmacion: string) =>
+  request<void>(`/comisiones/${id}`, { method: 'DELETE', body: JSON.stringify({ confirmacion }) });
+
 /** Cambia el nombre y/o la materia del curso (la materia vacía la quita). Cualquiera del equipo puede. */
 export const actualizarCurso = (id: string, data: { nombre?: string; materia?: string }) =>
   request<Curso>(`/cursos/${id}`, { method: 'PATCH', body: JSON.stringify(data) });

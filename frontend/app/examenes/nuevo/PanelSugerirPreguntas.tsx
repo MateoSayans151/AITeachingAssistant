@@ -1,5 +1,6 @@
 'use client';
 
+import { Desplegable } from '@/app/components/Desplegable';
 // PanelSugerirPreguntas: "Sugerir preguntas con IA", arriba de la lista del paso 2. El docente tilda de qué temas del material del
 // curso quiere preguntas, de qué tipos, cuántas y con qué dificultad; la IA propone BORRADORES que se ven en tarjetas aparte y que no
 // forman parte del examen hasta que el docente toca «Agregar». Cada tarjeta muestra la clave de respuesta, por qué es la correcta y
@@ -347,13 +348,13 @@ export function PanelSugerirPreguntas({ cursoId, preguntas, niveles, onAgregar, 
                   <label htmlFor={`${idBase}-cantidad`} className={s.grupoTitulo}>
                     Cantidad
                   </label>
-                  <select id={`${idBase}-cantidad`} className={s.input} value={cantidad} onChange={(e) => setCantidad(Number(e.target.value))}>
-                    {CANTIDADES.map((n) => (
-                      <option key={n} value={n}>
-                        {n} {n === 1 ? 'pregunta' : 'preguntas'}
-                      </option>
-                    ))}
-                  </select>
+                  <Desplegable
+                    id={`${idBase}-cantidad`}
+                    className={s.input}
+                    value={String(cantidad)}
+                    onChange={(valor) => setCantidad(Number(valor))}
+                    opciones={CANTIDADES.map((n) => ({ valor: String(n), etiqueta: `${n} ${n === 1 ? 'pregunta' : 'preguntas'}` }))}
+                  />
                 </div>
                 <fieldset className={s.grupo}>
                   <legend className={s.grupoTitulo}>Dificultad</legend>

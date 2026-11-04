@@ -1,5 +1,6 @@
 'use client';
 
+import { Desplegable } from './Desplegable';
 // PreguntaAlumno: cómo se ve y se responde UNA pregunta de examen del lado del alumno. Es presentacional y NO tiene estado
 // propio: muestra el `valor` que le pasan y avisa los cambios con `onChange`. Lo usan los dos lugares donde el alumno (o el
 // docente, en la vista previa) ve una pregunta: el examen en curso (`/rendir/[slug]/ExamenEnCurso`) y la vista previa del
@@ -124,22 +125,16 @@ export function PreguntaAlumno({ pregunta: p, valor, onChange, deshabilitado = f
           <div key={`${k}-${izq}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
             <div style={{ paddingTop: 12 }}>{izq}</div>
             <div className="field" style={{ marginBottom: 0 }}>
-              <select
-                aria-label={`Elegí la pareja de ${izq}`}
+              <Desplegable
+                ariaLabel={`Elegí la pareja de ${izq}`}
                 value={pares.find(([i]) => i === izq)?.[1] ?? ''}
-                onChange={(e) => {
+                onChange={(valor) => {
                   const resto = pares.filter(([i]) => i !== izq);
-                  onChange(e.target.value ? [...resto, [izq, e.target.value]] : resto);
+                  onChange(valor ? [...resto, [izq, valor]] : resto);
                 }}
                 disabled={deshabilitado}
-              >
-                <option value="">Elegí…</option>
-                {cfg.derecha.map((der, j) => (
-                  <option key={`${j}-${der}`} value={der}>
-                    {der}
-                  </option>
-                ))}
-              </select>
+                opciones={[{ valor: '', etiqueta: 'Elegí…' }, ...cfg.derecha.map((der) => ({ valor: der, etiqueta: der }))]}
+              />
             </div>
           </div>
         ))}

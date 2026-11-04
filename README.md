@@ -165,6 +165,11 @@ las instrucciones para los alumnos y dos bloques plegados con un resumen de lo c
   - **Tiempo extra por alumno** (`POST .../intentos/:id/tiempo-extra`, 1 a 240 min): alarga solo su reloj. **Entregar** (`POST .../intentos/:id/entregar`): cierra el examen de un alumno con lo último que autoguardó.
   - **Aviso a todos** (`PUT/DELETE .../aviso`): un cartel de hasta 500 caracteres dentro del examen de los que están rindiendo (el último reemplaza al anterior). No usa mail. El navegador del alumno
     consulta `GET /api/rendir/:slug/estado` cada 15 s (vencimiento y aviso), escriba o no; el autoguardado también los trae. **Migración:** `20261104_control_tiempo_y_avisos.sql`.
+- **Menús y fechas propios.** Los menús desplegables (`app/components/Desplegable.tsx`) y los selectores de fecha y hora (`SelectorFecha.tsx`) reemplazan a los del navegador, que abren una lista del sistema
+  que no se puede estilar. Se manejan con el teclado como los nativos (flechas, Inicio/Fin, escribir una letra, Enter, Esc; en el calendario, flechas, RePág/AvPág). La lista sale por un portal, así un diálogo con
+  scroll no la recorta. **No uses `<select>` ni `<input type="datetime-local">` en pantallas nuevas.**
+- **Eliminar una comisión.** `DELETE /api/comisiones/:id`, escribiendo su nombre. Se llevan sus alumnos, los links publicados a esa comisión y las respuestas, notas y capturas de esos alumnos; el diálogo
+  dice cuántos son (`GET /api/comisiones/:id/que-se-pierde`) y cuántos están rindiendo ahora.
 - **Editar.** Título, consigna y cuándo se libera el feedback se cambian siempre (`PATCH /api/examenes/:id`); las fechas de cada link también (`PATCH .../comisiones/:id`).
   Preguntas, rúbricas y ajustes se reemplazan con `PUT /api/examenes/:id` (asistente en `?editar=<id>`) **solo si nadie empezó**; con alumnos adentro es 409 y la salida es *Duplicar y editar*.
   Los cursos se editan (nombre y materia) con `PATCH /api/cursos/:id`.

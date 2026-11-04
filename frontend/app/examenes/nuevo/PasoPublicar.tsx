@@ -19,6 +19,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { SelectorDestinatarios } from '@/app/components/SelectorDestinatarios';
+import { Desplegable } from '@/app/components/Desplegable';
+import { SelectorFecha } from '@/app/components/SelectorFecha';
 import { createComision, getDestinatariosInvitacion, getEstadoInvitaciones, invitarAlumnos, listComisionesPorCurso, publicarExamenAComision } from '@/lib/api';
 import type { DestinatarioLista } from '@/lib/destinatarios';
 import type { Comision, EstadoInvitaciones } from '@/lib/api';
@@ -318,15 +320,13 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
           {modoPublicar === 'existente' ? (
             <div className="field">
               <label htmlFor="comision">Comisión</label>
-              <select id="comision" value={comisionSeleccionada} onChange={(e) => setComisionSeleccionada(e.target.value)}>
-                <option value="">Elegí una comisión…</option>
-                {(comisiones ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                    {c._count ? ` (${c._count.alumnos} alumnos)` : ''}
-                  </option>
-                ))}
-              </select>
+              <Desplegable
+                id="comision"
+                value={comisionSeleccionada}
+                onChange={setComisionSeleccionada}
+                placeholder="Elegí una comisión…"
+                opciones={(comisiones ?? []).map((c) => ({ valor: c.id, etiqueta: `${c.nombre}${c._count ? ` (${c._count.alumnos} alumnos)` : ''}` }))}
+              />
             </div>
           ) : (
             <>
@@ -476,17 +476,16 @@ export function PasoPublicar({ examenId, cursoId, duracionMinutos, onPublicado }
             <div className={styles.fechas}>
               <div className="field">
                 <label htmlFor="fechaInicio">Se habilita (opcional)</label>
-                <input id="fechaInicio" type="datetime-local" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+                <SelectorFecha id="fechaInicio" value={fechaInicio} onChange={setFechaInicio} />
               </div>
               <div className="field">
                 <label htmlFor="fechaFin">Cierra (opcional)</label>
-                <input
+                <SelectorFecha
                   id="fechaFin"
-                  type="datetime-local"
                   value={fechaFin}
-                  onChange={(e) => setFechaFin(e.target.value)}
-                  aria-invalid={errorFechas ? true : undefined}
-                  aria-describedby={errorFechas ? 'fechasError' : undefined}
+                  onChange={setFechaFin}
+                  ariaInvalid={!!errorFechas}
+                  ariaDescribedBy={errorFechas ? 'fechasError' : undefined}
                 />
               </div>
             </div>

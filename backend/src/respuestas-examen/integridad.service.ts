@@ -237,6 +237,13 @@ export class IntegridadService {
     return filas.length;
   }
 
+  /** Lo mismo para todos los alumnos de una comisión (al eliminar la comisión). */
+  async borrarImagenesDeComision(comisionId: string): Promise<number> {
+    const filas = await this.prisma.capturaIntegridad.findMany({ where: { intento: { alumno: { comisionId } } }, select: { ruta: true } });
+    for (const f of filas) await this.almacen.borrar(f.ruta);
+    return filas.length;
+  }
+
   /** Lo mismo para todos los exámenes de un curso (al eliminar el curso). */
   async borrarImagenesDeCurso(cursoId: string): Promise<number> {
     const filas = await this.prisma.capturaIntegridad.findMany({ where: { intento: { examen: { cursoId } } }, select: { ruta: true } });

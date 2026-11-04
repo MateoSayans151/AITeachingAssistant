@@ -1,5 +1,6 @@
 'use client';
 
+import { Desplegable } from '@/app/components/Desplegable';
 // PasoDatos: los datos y ajustes del examen. Se dibuja en partes (`parte`): el ENCABEZADO (el curso, que ya viene elegido: el examen se crea
 // desde la página de un curso y no se cambia acá), la INTEGRIDAD y los AJUSTES (instrucciones para los alumnos y dos bloques plegables, porque casi
 // siempre alcanzan los valores por defecto): "Cómo se rinde" (modalidad y duración, liberación del feedback, señales de integridad)
@@ -243,10 +244,15 @@ export function PasoDatos({ parte, datos, onChange, cursos, ajustesAbierto, onTo
           <div id="como-se-rinde" style={{ marginTop: 16 }}>
           <div className="field">
             <label htmlFor="modalidad">¿Cómo lo rinden?</label>
-            <select id="modalidad" value={datos.modalidad} onChange={(e) => onChange({ modalidad: e.target.value as ModalidadExamen })}>
-              <option value="ventana_dias">Cuando quieran, dentro de un rango de días</option>
-              <option value="sesion_tiempo">En una sola sesión, con tiempo límite</option>
-            </select>
+            <Desplegable
+              id="modalidad"
+              value={datos.modalidad}
+              onChange={(valor) => onChange({ modalidad: valor as ModalidadExamen })}
+              opciones={[
+                { valor: 'ventana_dias', etiqueta: 'Cuando quieran, dentro de un rango de días' },
+                { valor: 'sesion_tiempo', etiqueta: 'En una sola sesión, con tiempo límite' },
+              ]}
+            />
           </div>
           {datos.modalidad === 'sesion_tiempo' && (
             <div className="field">
@@ -256,10 +262,15 @@ export function PasoDatos({ parte, datos, onChange, cursos, ajustesAbierto, onTo
           )}
           <div className="field">
             <label htmlFor="feedbackModo">¿Cuándo ven su nota y sus comentarios?</label>
-            <select id="feedbackModo" value={datos.feedbackModo} onChange={(e) => onChange({ feedbackModo: e.target.value as FeedbackModo })}>
-              <option value="manual">Cuando yo los publique (recomendado)</option>
-              <option value="inmediato">Apenas reviso cada respuesta</option>
-            </select>
+            <Desplegable
+              id="feedbackModo"
+              value={datos.feedbackModo}
+              onChange={(valor) => onChange({ feedbackModo: valor as FeedbackModo })}
+              opciones={[
+                { valor: 'manual', etiqueta: 'Cuando yo los publique (recomendado)' },
+                { valor: 'inmediato', etiqueta: 'Apenas reviso cada respuesta' },
+              ]}
+            />
           </div>
           </div>
         )}
@@ -297,13 +308,12 @@ export function PasoDatos({ parte, datos, onChange, cursos, ajustesAbierto, onTo
             <div className={estilos.controles}>
               <div className={`field ${estilos.cantidad}`} style={{ marginBottom: 0 }}>
                 <label htmlFor="niveles-cantidad">Cantidad de niveles</label>
-                <select id="niveles-cantidad" value={niveles.length} onChange={(e) => cambiarCantidad(Number(e.target.value))}>
-                  {cantidades.map((c) => (
-                    <option key={c} value={c}>
-                      {c} niveles
-                    </option>
-                  ))}
-                </select>
+                <Desplegable
+                  id="niveles-cantidad"
+                  value={String(niveles.length)}
+                  onChange={(valor) => cambiarCantidad(Number(valor))}
+                  opciones={cantidades.map((c) => ({ valor: String(c), etiqueta: `${c} niveles` }))}
+                />
               </div>
               <button type="button" className="btn btn-secondary" onClick={repartir}>
                 Repartir porcentajes en partes iguales

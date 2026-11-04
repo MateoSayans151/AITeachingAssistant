@@ -540,3 +540,77 @@ test('notificarSeleccionAlPublicar: manda a los elegidos que no lo recibieron to
   assert.deepEqual(await svc.notificarSeleccionAlPublicar(EX, []), { aEnviar: 0 });
   assert.equal(lotes.length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// Eliminar una comisión: con el nombre escrito, y sin tocar las imágenes si el pedido se rechaza
+// ---------------------------------------------------------------------------
+import { ComisionesService } from '../src/comisiones/comisiones.service';
+import { ControlComisionController } from '../src/respuestas-examen/control-comision.controller';
+
+const COM = 'c1111111-1111-4111-8111-111111111111';
+
+function comisionesConNombre(nombre: string | null) {
+  const estado = { borrada: false };
+  const tx: any = {
+    $queryRaw: async () => [{ id: COM }],
+    comision: { findUnique: async () => (nombre === null || estado.borrada ? null : { nombre }), delete: async () => void (estado.borrada = true) },
+  };
+  const prisma: any = {
+    $transaction: async (fn: any) => fn(tx),
+    comision: { findUnique: async () => (nombre === null ? null : { nombre }) },
+    alumno: { count: async () => 12 },
+    examenComision: { count: async () => 2 },
+    respuestaExamen: { count: async () => 9 },
+    intentoExamen: { count: async () => 3 },
+  };
+  return { svc: new ComisionesService(prisma), estado };
+}
+
+test('eliminar comisión: con el nombre bien escrito la borra (con sus alumnos y respuestas, por cascada)', async () => {
+  const { svc, estado } = comisionesConNombre('Comisión A');
+  await svc.validarEliminacion(COM, ' Comisión   A ');
+  await svc.eliminar(COM, 'Comisión A');
+  assert.ok(estado.borrada);
+});
+
+test('eliminar comisión: con el nombre mal escrito es un 400 y no se borra; si no existe o no es UUID, 404', async () => {
+  const { svc, estado } = comisionesConNombre('Comisión A');
+  await assert.rejects(() => svc.validarEliminacion(COM, 'comision a'), BadRequestException);
+  await assert.rejects(() => svc.eliminar(COM, ''), BadRequestException);
+  assert.ok(!estado.borrada);
+  await assert.rejects(() => comisionesConNombre(null).svc.eliminar(COM, 'x'), NotFoundException);
+  await assert.rejects(() => comisionesConNombre(null).svc.validarEliminacion(COM, 'x'), NotFoundException);
+  await assert.rejects(() => svc.eliminar('no-es-uuid', 'x'), NotFoundException);
+  await assert.rejects(() => svc.queSePierde('no-es-uuid'), NotFoundException);
+});
+
+test('queSePierde de una comisión: alumnos, links publicados, respuestas y quiénes están rindiendo ahora', async () => {
+  assert.deepEqual(await comisionesConNombre('A').svc.queSePierde(COM), { alumnos: 12, publicaciones: 2, respuestas: 9, rindiendo: 3 });
+});
+
+test('DELETE /comisiones/:comisionId: accede, valida el nombre, borra las imágenes y recién ahí la comisión; con el nombre mal escrito las imágenes no se tocan', async () => {
+  const llamadas: string[] = [];
+  const acceso: any = { comision: async (d: string, c: string) => void llamadas.push(`acceso:${d}:${c}`) };
+  const comisiones: any = {
+    validarEliminacion: async (c: string, n: string) => void llamadas.push(`validar:${c}:${n}`),
+    eliminar: async (c: string, n: string) => void llamadas.push(`eliminar:${c}:${n}`),
+  };
+  const integridad: any = { borrarImagenesDeComision: async (c: string) => void llamadas.push(`imagenes:${c}`) };
+  const controller = new ControlComisionController(comisiones, integridad, acceso);
+  await controller.eliminar('doc-1', COM, { confirmacion: 'Comisión A' });
+  assert.deepEqual(llamadas, [`acceso:doc-1:${COM}`, `validar:${COM}:Comisión A`, `imagenes:${COM}`, `eliminar:${COM}:Comisión A`]);
+
+  llamadas.length = 0;
+  comisiones.validarEliminacion = async () => {
+    throw new BadRequestException('mal');
+  };
+  await assert.rejects(() => controller.eliminar('doc-1', COM, { confirmacion: 'x' }), BadRequestException);
+  assert.deepEqual(llamadas, [`acceso:doc-1:${COM}`]);
+
+  llamadas.length = 0;
+  acceso.comision = async () => {
+    throw new NotFoundException('Comisión no encontrada');
+  };
+  await assert.rejects(() => controller.eliminar('doc-2', COM, { confirmacion: 'x' }), NotFoundException);
+  assert.deepEqual(llamadas, [], 'un docente que no es del curso no llega ni a validar');
+});

@@ -2155,3 +2155,263 @@ a.tab {
   background: var(--color-neutral-200);
   margin-bottom: var(--space-3);
 }
+
+/* ---- menú desplegable propio (app/components/Desplegable.tsx) y selector de fecha (SelectorFecha.tsx) ----
+   La base va con :where() (especificidad cero): así las pantallas que le dan su propio tamaño con una clase (el tipo de pregunta, la matriz) mandan. */
+:where(.desplegable) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.desplegable > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desplegable-placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.desplegable:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
+}
+
+.desplegable:focus-visible,
+.desplegable-abierto {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.desplegable:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.desplegable[aria-invalid='true'] {
+  border-color: var(--color-error);
+  background: var(--color-error-soft);
+}
+
+.desplegable-flecha,
+.desplegable-tilde {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.desplegable-flecha {
+  transition: transform 0.15s ease;
+}
+
+.desplegable-abierto .desplegable-flecha {
+  transform: rotate(180deg);
+}
+
+.desplegable-lista {
+  position: fixed;
+  z-index: 70; /* por encima de los diálogos (40) */
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+}
+
+.desplegable-opcion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.desplegable-opcion-activa {
+  background: var(--color-surface);
+}
+
+.desplegable-opcion-elegida {
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
+  font-weight: 600;
+}
+
+.desplegable-opcion-off {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.desplegable-grupo {
+  padding: 10px 12px 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.desplegable-grupo:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+.desplegable-vacio {
+  padding: 12px;
+  color: var(--color-text-tertiary);
+}
+
+/* Selector de fecha y hora */
+.fecha-campo {
+  position: relative;
+}
+
+.fecha-calendario {
+  position: fixed;
+  z-index: 70;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-body);
+}
+
+.fecha-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.fecha-nav {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.fecha-nav:hover {
+  background: var(--color-surface);
+}
+
+.fecha-grilla {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.fecha-dia-semana {
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  padding: 4px 0;
+}
+
+.fecha-dia {
+  height: 40px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.fecha-dia:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.fecha-dia-otro-mes {
+  color: var(--color-text-tertiary);
+}
+
+.fecha-dia-hoy {
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+.fecha-dia-elegido,
+.fecha-dia-elegido:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.fecha-dia:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.fecha-dia:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.fecha-hora {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.fecha-hora input {
+  width: 64px;
+  min-height: 44px;
+  text-align: center;
+  font-size: var(--text-md);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+.fecha-hora input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.fecha-acciones {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
