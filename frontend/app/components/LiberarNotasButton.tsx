@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfirmar } from './Confirmar';
+import { SelectorDestinatarios } from './SelectorDestinatarios';
+import type { DestinatarioLista } from '@/lib/destinatarios';
 import {
   ApiError,
   ExamenConPendientes,
+  enviarNotas,
+  getDestinatariosNotas,
   FeedbackModo,
   ResumenNotificaciones,
   getResumenNotificaciones,
@@ -111,47 +115,114 @@ export function LiberarNotasButton({
     void refrescar();
   };
 
+  // Qué lista se está eligiendo: al publicar (los revisados) o después, para (re)enviar a quien se quiera.
+  const [selector, setSelector] = useState<null | { modo: 'publicar' | 'enviar'; lista: DestinatarioLista[]; sinRevisar: number }>(null);
+  const [abriendoSelector, setAbriendoSelector] = useState(false);
+
+  const detalleNota = (nota: number | string | null) => (nota === null ? undefined : `Nota: ${Number(nota).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`);
+
   async function handleClick() {
-    setLoading(true);
+    setAbriendoSelector(true);
     setError(null);
     try {
-      // Antes de confirmar se cuenta a quiénes les llega el mail ya y cuántos exámenes siguen sin revisar.
-      let aviso = '';
-      try {
-        const respuestas = await listRespuestasPorExamen(examenId);
-        const pendientes = respuestas.filter((r) => r.estadoRevision === 'pendiente').length;
-        const revisadasAhora = respuestas.length - pendientes;
-        aviso =
-          (revisadasAhora > 0
-            ? `Se van a enviar por mail las notas de ${revisadasAhora === 1 ? '1 alumno' : `${revisadasAhora} alumnos`} con el examen revisado.\n\n`
-            : 'Todavía no revisaste ninguna respuesta: por ahora no se envía ningún mail.\n\n') +
-          (pendientes > 0
-            ? `Hay ${pendientes === 1 ? '1 respuesta sin revisar' : `${pendientes} respuestas sin revisar`}: ${pendientes === 1 ? 'ese alumno recibe' : 'esos alumnos reciben'} su mail apenas ${pendientes === 1 ? 'la revises' : 'las revises'}.\n\n`
-            : '');
-      } catch {
-        /* si no se pudo contar, se confirma igual sin ese detalle */
+      // Antes de publicar se arma la lista de a quiénes les puede llegar el mail ya (los que tienen el examen revisado).
+      const respuestas = await listRespuestasPorExamen(examenId);
+      const revisadas = respuestas.filter((r) => r.estadoRevision !== 'pendiente');
+      const lista: DestinatarioLista[] = revisadas.map((r) => ({
+        id: r.id,
+        nombre: r.alumno?.nombre ?? '',
+        email: r.alumno?.email ?? '',
+        detalle: detalleNota(r.notaTotalFinal),
+        enviadoEn: r.notificadoEn ?? null,
+      }));
+      const faltanRevisar = respuestas.length - revisadas.length;
+      if (lista.length === 0) {
+        // Nadie para elegir: se publica con una confirmación simple.
+        const confirmado = await confirmar({
+          titulo: '¿Publicar las notas?',
+          mensaje:
+            'Todavía no revisaste ninguna respuesta, así que por ahora no hay nada que mandar. Cuando revises, vas a poder mandar cada nota con «Elegir a quién enviar».\n\nLas notas publicadas no se pueden retirar.',
+          textoConfirmar: 'Publicar',
+        });
+        if (confirmado) await publicar([]);
+        return;
       }
-      if (resumen?.modoPrueba) {
-        aviso += `Estás en modo prueba: los mails llegan a ${resumen.modoPrueba}, no a los alumnos.\n\n`;
-      }
-      const confirmado = await confirmar({
-        titulo: '¿Publicar las notas y enviarlas por mail?',
-        mensaje: `${aviso}Las notas publicadas no se pueden retirar.`,
-        textoConfirmar: 'Publicar y enviar',
-      });
-      if (!confirmado) return;
+      setSelector({ modo: 'publicar', lista, sinRevisar: faltanRevisar });
+    } catch (err) {
+      setError(mensajeDe(err, 'No se pudieron publicar las notas. Probá de nuevo.'));
+    } finally {
+      setAbriendoSelector(false);
+    }
+  }
 
-      const examen = await liberarFeedback(examenId);
+  async function publicar(respuestaIds: string[]) {
+    try {
+      const examen = await liberarFeedback(examenId, respuestaIds);
       setPublicadoEn(examen.feedbackLiberadoEn);
       setSinRevisar(examen.pendientesDeRevision);
       onChange(examen);
       seguirEnvios();
+      setSelector(null);
     } catch (err) {
-      setError(mensajeDe(err, 'No se pudieron publicar las notas. Probá de nuevo.'));
-    } finally {
-      setLoading(false);
+      throw new Error(mensajeDe(err, 'No se pudieron publicar las notas. Probá de nuevo.'));
     }
   }
+
+  async function abrirEnviar() {
+    setAbriendoSelector(true);
+    setErrorReenvio(null);
+    try {
+      const { destinatarios, aunNoLesToca } = await getDestinatariosNotas(examenId);
+      setSelector({
+        modo: 'enviar',
+        sinRevisar: aunNoLesToca,
+        lista: destinatarios.map((d) => ({
+          id: d.respuestaId,
+          nombre: d.nombre,
+          email: d.email,
+          detalle: detalleNota(d.notaFinal),
+          enviadoEn: d.enviadoEn,
+          error: d.error,
+          enCamino: d.enCamino,
+        })),
+      });
+    } catch (err) {
+      setErrorReenvio(mensajeDe(err, 'No se pudo cargar la lista de alumnos. Probá de nuevo.'));
+    } finally {
+      setAbriendoSelector(false);
+    }
+  }
+
+  async function enviarAElegidos(ids: string[]) {
+    try {
+      await enviarNotas(examenId, ids);
+      seguirEnvios();
+      setSelector(null);
+    } catch (err) {
+      throw new Error(mensajeDe(err, 'No se pudieron mandar los mails. Probá de nuevo.'));
+    }
+  }
+
+  const ventanaSelector = selector && (
+    <SelectorDestinatarios
+      titulo={selector.modo === 'publicar' ? 'Publicar las notas y enviarlas por mail' : 'Elegí a quién mandarle su nota'}
+      explicacion={
+        selector.modo === 'publicar'
+          ? `Las notas quedan publicadas (no se pueden retirar) y se mandan ahora por mail a los alumnos que tildes.${
+              selector.sinRevisar > 0
+                ? ` Hay ${selector.sinRevisar === 1 ? '1 respuesta sin revisar' : `${selector.sinRevisar} respuestas sin revisar`}: ${selector.sinRevisar === 1 ? 'ese alumno todavía no tiene' : 'esos alumnos todavía no tienen'} nota que mandar.`
+                : ''
+            } Nada sale solo después: a quien no tildes, y a quien revises más tarde, se lo mandás cuando quieras con «Elegir a quién enviar».`
+          : 'Tildá a quienes querés mandarles su nota. A quien ya la recibió se le vuelve a mandar si lo dejás tildado, por ejemplo si cambiaste algo.'
+      }
+      lista={selector.lista}
+      verbo={{ lo: 'su nota', yaLo: 'Enviada' }}
+      avisoModoPrueba={resumen?.modoPrueba}
+      onEnviar={selector.modo === 'publicar' ? (ids) => publicar(ids) : enviarAElegidos}
+      onCancelar={() => setSelector(null)}
+      alternativa={selector.modo === 'publicar' ? { texto: 'Publicar sin mandar mails todavía', onClick: () => publicar([]) } : undefined}
+    />
+  );
 
   async function handleReenviar() {
     setReenviando(true);
@@ -199,6 +270,11 @@ export function LiberarNotasButton({
           Último error: {resumen.ultimoError}
         </div>
       )}
+      <div style={{ marginTop: 8 }}>
+        <button className="btn btn-secondary" onClick={abrirEnviar} disabled={abriendoSelector || resumen.enCurso > 0 || sinMail}>
+          {abriendoSelector ? 'Cargando…' : 'Elegir a quién enviar'}
+        </button>
+      </div>
       {resumen.conError + resumen.sinEnviar > 0 && (
         <div style={{ marginTop: 8 }}>
           <button className="btn btn-secondary" onClick={handleReenviar} disabled={reenviando || resumen.enCurso > 0}>
@@ -223,6 +299,7 @@ export function LiberarNotasButton({
           publicar las notas.
         </p>
         {envios}
+        {ventanaSelector}
       </div>
     );
   }
@@ -235,11 +312,12 @@ export function LiberarNotasButton({
         <div role="status">
           <strong>Notas publicadas el {formatearFecha(fecha)}</strong>
           <p className="muted" style={{ marginTop: 8 }}>
-            Cada alumno recibe su nota por mail apenas revisás su examen
-            {faltanRevisar ? `: todavía te ${faltanRevisar === 1 ? 'queda 1 respuesta' : `quedan ${faltanRevisar} respuestas`} sin revisar` : ''}.
+            Los mails no salen solos: los mandás vos con «Elegir a quién enviar», cuando quieras y a quienes quieras
+            {faltanRevisar ? `. Todavía te ${faltanRevisar === 1 ? 'queda 1 respuesta' : `quedan ${faltanRevisar} respuestas`} sin revisar` : ''}.
           </p>
         </div>
         {envios}
+        {ventanaSelector}
       </div>
     );
   }
@@ -247,13 +325,14 @@ export function LiberarNotasButton({
   return (
     <div>
       {avisos}
+      {ventanaSelector}
       <button
         className="btn btn-primary"
         onClick={handleClick}
-        disabled={loading || sinMail}
+        disabled={abriendoSelector || sinMail}
         title={sinMail ? 'Primero hay que configurar el envío de mails en el servidor.' : undefined}
       >
-        {loading ? 'Publicando…' : 'Publicar notas y enviarlas por mail'}
+        {abriendoSelector ? 'Cargando…' : 'Publicar notas y enviarlas por mail'}
       </button>
       {error && (
         <div className="error-box" style={{ marginTop: 12 }}>

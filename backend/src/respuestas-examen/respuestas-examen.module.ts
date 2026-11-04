@@ -2,6 +2,9 @@ import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RespuestasExamenController } from './respuestas-examen.controller';
 import { RendirController } from './rendir.controller';
+import { ControlExamenController } from './control-examen.controller';
+import { ControlCursoController } from './control-curso.controller';
+import { CursosModule } from '../cursos/cursos.module';
 import { RespuestasExamenService } from './respuestas-examen.service';
 import { IntentosService } from './intentos.service';
 import { RagModule } from '../rag/rag.module';
@@ -13,8 +16,8 @@ import { IntegridadService } from './integridad.service';
 import { ALMACEN_CAPTURAS, AlmacenCapturas, AlmacenCapturasLocal, AlmacenCapturasSupabase } from './almacen-capturas';
 
 @Module({
-  imports: [RagModule, ExamenesModule, NotificacionesModule, MailModule],
-  controllers: [RespuestasExamenController, RendirController],
+  imports: [RagModule, ExamenesModule, NotificacionesModule, MailModule, CursosModule],
+  controllers: [RespuestasExamenController, RendirController, ControlExamenController, ControlCursoController],
   providers: [
     RespuestasExamenService,
     IntentosService,

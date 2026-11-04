@@ -14,6 +14,7 @@ import {
   explicarVaraRespuesta,
   getRespuestaExamen,
   listRespuestasPorExamen,
+  reabrirRevisionRespuesta,
   recorregirRespuestaExamen,
   revisarRespuestaExamen,
 } from '@/lib/api';
@@ -139,6 +140,7 @@ export default function DetalleRespuestaExamenPage() {
   const [feedbackFinal, setFeedbackFinal] = useState('');
   const [loading, setLoading] = useState(false);
   const [recorrigiendo, setRecorrigiendo] = useState(false);
+  const [reabriendo, setReabriendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -214,6 +216,18 @@ export default function DetalleRespuestaExamenPage() {
         : 'Para revisar';
 
   async function handleAceptar() {
+    // Un clic más, a propósito: aceptar da por cerrada la nota y es fácil apretar el botón sin querer.
+    const nota = respuesta?.notaConVara ?? respuesta?.notaTotalSugerida;
+    const confirmado = await confirmar({
+      titulo: '¿Aceptar la corrección de la IA?',
+      mensaje:
+        `Se da por cerrada la nota${nota != null ? ` de ${respuesta?.alumno?.nombre ?? 'este alumno'}: ${formatearNota(Number(nota))}${escalaMax ? ` de ${formatearNota(Number(escalaMax))}` : ''}` : ''}, con el feedback tal como lo sugirió la IA.
+
+` +
+        'Más adelante podés volver a editarla, o devolverla a «para revisar» si querés chequearla de nuevo.',
+      textoConfirmar: 'Aceptar y cerrar la nota',
+    });
+    if (!confirmado) return;
     setLoading(true);
     setError(null);
     try {
@@ -223,6 +237,31 @@ export default function DetalleRespuestaExamenPage() {
       setError('No se pudo confirmar la corrección.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVolverAPendiente() {
+    const confirmado = await confirmar({
+      titulo: '¿Volver a dejarla para revisar?',
+      mensaje:
+        `La nota deja de estar cerrada y la respuesta vuelve a la lista de pendientes. Se conservan tus cambios y comentarios para que sigas desde ahí.` +
+        (respuesta?.notificadoEn
+          ? `
+
+Ojo: a este alumno ya le llegó su nota por mail. El mail no se retira ni se repite solo; cuando termines podés reenviárselo desde «Respuestas».`
+          : ''),
+      textoConfirmar: 'Volver a pendiente',
+    });
+    if (!confirmado) return;
+    setReabriendo(true);
+    setError(null);
+    try {
+      const reabierta = await reabrirRevisionRespuesta(params.id, params.respuestaId);
+      setRespuesta((prev) => (prev ? { ...prev, ...reabierta, examen: prev.examen } : prev));
+    } catch {
+      setError('No se pudo volver a dejarla para revisar. Probá de nuevo.');
+    } finally {
+      setReabriendo(false);
     }
   }
 
@@ -458,7 +497,12 @@ export default function DetalleRespuestaExamenPage() {
         <button className="btn btn-secondary" onClick={handleGuardarEdicion} disabled={loading || recorrigiendo}>
           {nav.siguienteParaRevisarId ? 'Guardar mis cambios y seguir' : 'Guardar mis cambios'}
         </button>
-        <button className="btn btn-ghost" onClick={handleRecorregir} disabled={loading || recorrigiendo}>
+        {!sinCorregir && respuesta.estadoRevision !== 'pendiente' && (
+          <button className="btn btn-secondary" onClick={handleVolverAPendiente} disabled={loading || recorrigiendo || reabriendo} title="Deja de estar cerrada y vuelve a la lista de pendientes">
+            {reabriendo ? 'Volviendo…' : 'Volver a pendiente'}
+          </button>
+        )}
+        <button className="btn btn-ghost" onClick={handleRecorregir} disabled={loading || recorrigiendo || reabriendo}>
           {recorrigiendo ? (sinCorregir ? 'Corrigiendo…' : 'Re-corrigiendo…') : sinCorregir ? 'Corregir con IA' : 'Volver a correr la IA'}
         </button>
       </div>

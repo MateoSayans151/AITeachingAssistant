@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
+import { AjustesCurso } from '@/app/components/AjustesCurso';
 import { plural } from '@/lib/texto';
 import { caracteresLegibles, problemaDelArchivo, tamanoLegible } from '@/lib/material';
 import { useDocente } from '@/lib/auth';
@@ -69,6 +70,7 @@ export default function CursoDetallePage() {
         </Link>
         <div className="eyebrow">{curso.materia ?? 'Curso'}</div>
         <h1>{curso.nombre}</h1>
+        <AjustesCurso curso={curso} onCambio={recargar} />
       </header>
 
       <div className="tabs" data-guia="curso-pestanas">

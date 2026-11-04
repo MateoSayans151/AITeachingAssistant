@@ -351,6 +351,27 @@ export class RespuestasExamenService {
   }
 
   /**
+   * Devuelve una respuesta ya revisada (aceptada o editada) a «pendiente de revisión», para volver a mirarla. Se conserva lo que
+   * el docente escribió (notas y devoluciones por pregunta, feedback general): solo se quita la nota final y la fecha de revisión,
+   * así que la respuesta vuelve a la fila de pendientes y no se cuenta como cerrada. Si el alumno ya recibió su nota por mail,
+   * ese mail no se retira ni se repite solo (ver `notificadoEn`): el docente puede reenviarlo a mano cuando termine.
+   */
+  async reabrirRevision(examenId: string, id: string) {
+    const respuesta = await this.prisma.respuestaExamen.findUnique({ where: { id } });
+    if (!respuesta || respuesta.examenId !== examenId) throw new NotFoundException(`Respuesta ${id} no encontrada`);
+    if (respuesta.estadoRevision === 'pendiente') throw new ConflictException('Esta respuesta ya está pendiente de revisión.');
+    return this.prisma.respuestaExamen.update({
+      where: { id },
+      data: {
+        estadoRevision: 'pendiente',
+        estado: respuesta.notaTotalSugerida == null ? 'pendiente_correccion' : 'corregido',
+        notaTotalFinal: null,
+        revisadoEn: null,
+      },
+    });
+  }
+
+  /**
    * Manda en segundo plano el mail de las respuestas recién revisadas, si les toca ya (feedback inmediato o notas
    * publicadas) y el envío está configurado; si no, se omite en silencio y quedan como "sin enviar" en el resumen de
    * notificaciones. Nunca rechaza: la revisión ya se guardó y no se rompe por esto.
@@ -359,7 +380,9 @@ export class RespuestasExamenService {
     try {
       if (!this.notificaciones.configurado) return;
       const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { feedbackModo: true, feedbackLiberadoEn: true } });
-      if (!examen || !debeNotificarse({ estadoRevision }, examen)) return;
+      // Solo el modo «feedback inmediato» manda el mail al revisar (es lo que ese modo promete). Con las notas publicadas a mano, nada
+      // sale solo: el docente elige a quiénes mandárselo (ver NotificacionesService.notificarSeleccion).
+      if (!examen || examen.feedbackModo !== 'inmediato' || !debeNotificarse({ estadoRevision }, examen)) return;
       this.notificaciones.lanzarLote(examenId, ids);
     } catch (err) {
       this.logger.error(`No se pudo iniciar el envío de mails de la revisión (examen ${examenId})`, err as Error);

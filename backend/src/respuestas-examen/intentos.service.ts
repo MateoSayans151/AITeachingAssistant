@@ -12,6 +12,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RespuestasExamenService } from './respuestas-examen.service';
 import { sanitizarOpcionesParaAlumno } from './correccion-cerradas.util';
@@ -23,6 +24,8 @@ import { CapturaDto, EventoIntegridadDto, IniciarIntentoDto, LatidoDto, Solicita
 import { generarCodigoAcceso } from '../comisiones/comisiones.service';
 import { CodigosAccesoService, emailEnDominio, normalizarDominio } from './codigos-acceso.service';
 import { EventoServidor, IntegridadService } from './integridad.service';
+import { FilaEnVivo, contarRespondidas, estadoDeConexion, ordenarEnVivo, ultimaActividad } from './en-vivo.util';
+import { avisoDe, calcularExpiracion, estaCerrado, textoAvisoDuracion } from './control-tiempo.util';
 
 /** De dónde viene un pedido: la IP la saca Nest; el navegador y el id de pestaña los manda el cliente (son indicios, no pruebas). */
 export interface Origen {
@@ -65,6 +68,8 @@ export function nombreDesdeEmail(email: string): string {
   return local.replace(/(^|\s)(\S)/g, (_, espacio: string, letra: string) => espacio + letra.toUpperCase());
 }
 
+export const MENSAJE_EXAMEN_CERRADO = 'El docente cerró este examen: ya no se pueden iniciar nuevos intentos.';
+
 @Injectable()
 export class IntentosService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IntentosService.name);
@@ -87,7 +92,9 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     // Si el alumno cierra la pestaña y nunca vuelve, igual se entrega lo autoguardado al vencer.
     this.barrido = setInterval(() => {
-      this.cerrarVencidos().catch((e) => this.logger.error('Falló el barrido de intentos vencidos', e as Error));
+      this.cerrarProgramados()
+        .then(() => this.cerrarVencidos())
+        .catch((e) => this.logger.error('Falló el barrido de intentos vencidos', e as Error));
       this.almacenFallos
         .purgarAnteriores(Date.now() - 2 * VENTANA_FALLOS_MS)
         .catch((e) => this.logger.error('Falló la limpieza de fallos de acceso', e as Error));
@@ -107,7 +114,8 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
   async info(slug: string) {
     const ec = await this.examenComision(slug);
     const ahora = new Date();
-    const ventana = ec.fechaFin && ahora > ec.fechaFin ? 'cerrada' : ec.fechaInicio && ahora < ec.fechaInicio ? 'no_abierta' : 'abierta';
+    const ventana =
+      estaCerrado(ec.examen, ahora) || (ec.fechaFin && ahora > ec.fechaFin) ? 'cerrada' : ec.fechaInicio && ahora < ec.fechaInicio ? 'no_abierta' : 'abierta';
     return {
       examen: {
         titulo: ec.examen.titulo,
@@ -162,6 +170,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
 
     if (!intento) {
       this.validarVentana(ec);
+      this.validarAbierto(ec);
       const cfg = antiCheatActivo(ec.examen.antiCheat);
       if (cfg && dto.consentimiento !== true) {
         throw new BadRequestException('Tenés que aceptar el aviso de qué se monitorea durante el examen para poder empezar');
@@ -206,7 +215,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
    *  - si no, se rechaza, y el freno por IP limita que alguien pruebe emails al azar para ver quién está en la comisión.
    */
   async resolverAlumno(
-    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null; dominioPermitido?: string | null },
+    ec: { comisionId: string; accesoAbierto: boolean; fechaInicio: Date | null; fechaFin: Date | null; dominioPermitido?: string | null; examen?: { estado: string; cierreProgramadoEn?: Date | null } },
     dto: IniciarIntentoDto,
     claveIp: string,
   ) {
@@ -222,6 +231,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
 
     // Un examen cerrado o que todavía no abrió no suma alumnos nuevos.
     this.validarVentana(ec);
+    this.validarAbierto(ec);
     if (!emailEnDominio(dto.alumnoEmail, ec.dominioPermitido)) {
       throw new BadRequestException(`Para rendir este examen tenés que usar un mail de @${normalizarDominio(ec.dominioPermitido)}.`);
     }
@@ -261,6 +271,7 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     return {
       ahora: new Date().toISOString(), // para que el cliente corrija la diferencia de reloj
       expiraEn: intento.expiraEn,
+      aviso: avisoDe(ec.examen),
       borrador: intento.borrador,
       antiCheat: antiCheatActivo(ec.examen.antiCheat),
       preguntas: preguntas.map((p) => ({
@@ -271,6 +282,16 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
         opciones: sanitizarOpcionesParaAlumno(p.tipo, p.opciones, p.id),
       })),
     };
+  }
+
+  /**
+   * Lo mínimo que el navegador del alumno consulta cada pocos segundos aunque no esté escribiendo: su vencimiento actual (el docente
+   * puede haberle dado tiempo extra o cambiado la duración) y el último aviso. Si el intento ya terminó, responde 409 como el resto.
+   */
+  async estadoLiviano(intentoId: string) {
+    const intento = await this.intentoActivo(intentoId);
+    const examen = await this.prisma.examen.findUnique({ where: { id: intento.examenId }, select: { avisoTexto: true, avisoEn: true } });
+    return { ahora: new Date().toISOString(), expiraEn: intento.expiraEn, aviso: avisoDe(examen) };
   }
 
   // ---------------------------------------------------------------------------
@@ -286,7 +307,10 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
       where: { id: intentoId },
       data: { borrador: limpio as any, borradorActualizadoEn: guardadoEn },
     });
-    return { guardadoEn };
+    // El autoguardado es lo que el navegador del alumno hace cada pocos segundos: por acá le llegan los cambios que hace el docente
+    // mientras rinde (más o menos tiempo, un aviso) sin otro canal.
+    const examen = await this.prisma.examen.findUnique({ where: { id: intento.examenId }, select: { avisoTexto: true, avisoEn: true } });
+    return { guardadoEn, expiraEn: intento.expiraEn, aviso: avisoDe(examen) };
   }
 
   /** Si el examen monitorea, anota las respuestas que crecieron de golpe (ver `saltosDeTexto`). */
@@ -367,6 +391,247 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
 
     const final = contenido ?? (intento.borrador as Record<string, unknown>);
     return this.respuestas.crearDesdeContenido(intento.examenId, intento.alumnoId, final);
+  }
+
+  /**
+   * El docente cerró el examen y eligió entregar lo que los alumnos tengan: cada intento en curso se entrega con su último
+   * autoguardado (y se corrige como cualquier otro). Devuelve cuántos se entregaron.
+   */
+  async entregarEnCurso(examenId: string): Promise<number> {
+    const enCurso = await this.prisma.intentoExamen.findMany({ where: { examenId, estado: 'en_curso' }, select: { id: true } });
+    let entregados = 0;
+    for (const i of enCurso) {
+      try {
+        if (await this.finalizar(i.id, undefined, 'entregado')) entregados += 1;
+      } catch (e) {
+        this.logger.error(`No se pudo entregar el intento ${i.id} al cerrar el examen`, e as Error);
+      }
+    }
+    return entregados;
+  }
+
+  /** Cuántos alumnos están rindiendo ahora mismo (el diálogo de cierre lo muestra antes de que el docente elija). */
+  async cantidadEnCurso(examenId: string): Promise<number> {
+    await this.cerrarVencidos(examenId);
+    return this.prisma.intentoExamen.count({ where: { examenId, estado: 'en_curso' } });
+  }
+
+  /**
+   * Foto de cómo va el examen ahora: quién está rindiendo (con su avance y las señales de integridad), cuántos ya entregaron y
+   * cuántos de la lista todavía no empezaron. Primero se cierran los intentos vencidos para que no figuren como "rindiendo".
+   */
+  async enVivo(examenId: string) {
+    await this.cerrarVencidos(examenId);
+    const ahora = new Date();
+    const examen = await this.prisma.examen.findUniqueOrThrow({
+      where: { id: examenId },
+      select: {
+        estado: true,
+        titulo: true,
+        antiCheat: true,
+        modalidad: true,
+        duracionMinutos: true,
+        cierreProgramadoEn: true,
+        cierreEntregarEnCurso: true,
+        avisoTexto: true,
+        avisoEn: true,
+        preguntas: { select: { id: true } },
+        comisiones: { select: { id: true, comision: { select: { nombre: true, _count: { select: { alumnos: true } } } } } },
+      },
+    });
+    const preguntaIds = examen.preguntas.map((p) => p.id);
+
+    const intentos = await this.prisma.intentoExamen.findMany({
+      where: { examenId },
+      select: {
+        id: true,
+        estado: true,
+        inicioEn: true,
+        expiraEn: true,
+        entregadoEn: true,
+        borrador: true,
+        borradorActualizadoEn: true,
+        ultimoLatidoEn: true,
+        minutosExtra: true,
+        alumno: { select: { id: true, nombre: true, email: true, comision: { select: { nombre: true } } } },
+        _count: { select: { capturas: true } },
+      },
+      orderBy: { inicioEn: 'asc' },
+    });
+    const enCurso = intentos.filter((i) => i.estado === 'en_curso');
+    const eventos = enCurso.length
+      ? await this.prisma.eventoIntegridad.groupBy({ by: ['intentoId', 'tipo'], where: { intentoId: { in: enCurso.map((i) => i.id) } }, _count: { _all: true } })
+      : [];
+    const senalesPorIntento = new Map<string, Record<string, number>>();
+    for (const e of eventos) senalesPorIntento.set(e.intentoId, { ...(senalesPorIntento.get(e.intentoId) ?? {}), [e.tipo]: e._count._all });
+
+    const filas: FilaEnVivo[] = enCurso.map((i) => {
+      const ultima = ultimaActividad(i);
+      const senales = senalesPorIntento.get(i.id) ?? {};
+      return {
+        intentoId: i.id,
+        alumnoId: i.alumno.id,
+        nombre: i.alumno.nombre,
+        email: i.alumno.email,
+        comision: i.alumno.comision.nombre,
+        inicioEn: i.inicioEn,
+        expiraEn: i.expiraEn,
+        ultimaActividad: ultima,
+        conexion: estadoDeConexion(ultima, ahora),
+        respondidas: contarRespondidas(i.borrador, preguntaIds),
+        totalPreguntas: preguntaIds.length,
+        senales,
+        totalSenales: Object.values(senales).reduce((a, b) => a + b, 0),
+        capturas: i._count.capturas,
+        minutosExtra: i.minutosExtra,
+      };
+    });
+
+    const empezaron = new Set(intentos.map((i) => i.alumno.id)).size;
+    const enLista = examen.comisiones.reduce((suma, c) => suma + c.comision._count.alumnos, 0);
+    return {
+      ahora,
+      examen: {
+        titulo: examen.titulo,
+        estado: examen.estado,
+        modalidad: examen.modalidad,
+        duracionMinutos: examen.duracionMinutos,
+        monitoreado: !!antiCheatActivo(examen.antiCheat),
+        cierreProgramadoEn: examen.cierreProgramadoEn,
+        cierreEntregarEnCurso: examen.cierreEntregarEnCurso,
+        aviso: avisoDe(examen),
+      },
+      resumen: {
+        rindiendo: enCurso.length,
+        entregaron: intentos.filter((i) => i.estado !== 'en_curso').length,
+        // Los de la lista que todavía no abrieron el examen. Con acceso abierto la lista crece sola, así que es un piso.
+        sinEmpezar: Math.max(enLista - empezaron, 0),
+        sinSenal: filas.filter((f) => f.conexion === 'sin_senal').length,
+      },
+      alumnos: ordenarEnVivo(filas),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Control del docente con el examen en marcha: cierre programado, duración, tiempo extra, entrega a la fuerza y avisos
+  // ---------------------------------------------------------------------------
+  /** Programa (o quita, con null) el cierre automático. Tiene que ser a futuro y el examen no puede estar ya cerrado. */
+  async programarCierre(examenId: string, cierraEn: Date | null, entregarEnCurso: boolean) {
+    const examen = await this.prisma.examen.findUnique({ where: { id: examenId }, select: { estado: true } });
+    if (!examen) throw new NotFoundException('Examen no encontrado');
+    if (examen.estado === 'cerrado') throw new ConflictException('El examen ya está cerrado.');
+    if (cierraEn && cierraEn.getTime() <= Date.now()) throw new BadRequestException('El cierre tiene que ser en el futuro.');
+    await this.prisma.examen.update({ where: { id: examenId }, data: { cierreProgramadoEn: cierraEn, cierreEntregarEnCurso: entregarEnCurso } });
+    return { cierreProgramadoEn: cierraEn, cierreEntregarEnCurso: entregarEnCurso };
+  }
+
+  /**
+   * Cierra los exámenes cuyo cierre programado ya llegó. El cierre es atómico (solo un proceso lo gana), y si estaba elegido entregar,
+   * se entrega lo que tengan los que siguen rindiendo. Lo llama el barrido periódico.
+   */
+  async cerrarProgramados(): Promise<number> {
+    const ahora = new Date();
+    const vencidos = await this.prisma.examen.findMany({
+      where: { estado: { not: 'cerrado' }, cierreProgramadoEn: { lte: ahora } },
+      select: { id: true, cierreEntregarEnCurso: true },
+    });
+    let cerrados = 0;
+    for (const e of vencidos) {
+      try {
+        const { count } = await this.prisma.examen.updateMany({ where: { id: e.id, estado: { not: 'cerrado' } }, data: { estado: 'cerrado' } });
+        if (count === 0) continue;
+        cerrados += 1;
+        if (e.cierreEntregarEnCurso) await this.entregarEnCurso(e.id);
+      } catch (err) {
+        this.logger.error(`No se pudo cerrar el examen ${e.id} a la hora programada`, err as Error);
+      }
+    }
+    return cerrados;
+  }
+
+  /** Qué pasaría con los que están rindiendo si la sesión durara `minutos`: cuántos quedan igual y a quiénes se les cortaría ya. */
+  async vistaPreviaDuracion(examenId: string, minutos: number) {
+    const { intentos, ahora } = await this.intentosParaNuevaDuracion(examenId, minutos);
+    const seCortan = intentos.filter((i) => i.nuevaExpiracion.getTime() <= ahora.getTime());
+    return {
+      rindiendo: intentos.length,
+      seCortan: seCortan.map((i) => ({ intentoId: i.id, nombre: i.nombre })),
+    };
+  }
+
+  /**
+   * Cambia la duración de la sesión y la aplica también a los que están rindiendo: su vencimiento pasa a ser inicio + nueva duración
+   * (más el tiempo extra que el docente ya les dio). Si la bajó por debajo de lo que ya llevan, el barrido los entrega solo.
+   * Deja un aviso para todos, para que nadie se entere por sorpresa.
+   */
+  async cambiarDuracion(examenId: string, minutos: number) {
+    const { intentos, ahora } = await this.intentosParaNuevaDuracion(examenId, minutos);
+    await this.prisma.$transaction([
+      this.prisma.examen.update({
+        where: { id: examenId },
+        data: { duracionMinutos: minutos, avisoTexto: textoAvisoDuracion(minutos), avisoEn: ahora },
+      }),
+      ...intentos.map((i) => this.prisma.intentoExamen.update({ where: { id: i.id }, data: { expiraEn: i.nuevaExpiracion } })),
+    ]);
+    return {
+      duracionMinutos: minutos,
+      actualizados: intentos.length,
+      seCortan: intentos.filter((i) => i.nuevaExpiracion.getTime() <= ahora.getTime()).length,
+    };
+  }
+
+  private async intentosParaNuevaDuracion(examenId: string, minutos: number) {
+    const examen = await this.prisma.examen.findUnique({
+      where: { id: examenId },
+      select: { modalidad: true, comisiones: { select: { comisionId: true, fechaFin: true } } },
+    });
+    if (!examen) throw new NotFoundException('Examen no encontrado');
+    if (examen.modalidad !== 'sesion_tiempo') throw new ConflictException('Este examen no tiene una duración por sesión: se rinde dentro de una ventana de fechas.');
+    const enCurso = await this.prisma.intentoExamen.findMany({
+      where: { examenId, estado: 'en_curso' },
+      select: { id: true, inicioEn: true, minutosExtra: true, alumno: { select: { nombre: true, comisionId: true } } },
+    });
+    const fechaFinDe = new Map(examen.comisiones.map((c) => [c.comisionId, c.fechaFin]));
+    return {
+      ahora: new Date(),
+      intentos: enCurso.map((i) => ({
+        id: i.id,
+        nombre: i.alumno.nombre,
+        nuevaExpiracion: calcularExpiracion(i.inicioEn, minutos, i.minutosExtra, fechaFinDe.get(i.alumno.comisionId) ?? null),
+      })),
+    };
+  }
+
+  /** Le suma minutos al reloj de un alumno que está rindiendo (el de los demás no cambia). Sin límite de tiempo no hay nada que alargar. */
+  async darTiempoExtra(examenId: string, intentoId: string, minutos: number) {
+    const intento = await this.intentoDelExamen(examenId, intentoId);
+    if (intento.estado !== 'en_curso') throw new ConflictException('Este alumno ya entregó: no se le puede dar más tiempo.');
+    if (!intento.expiraEn) throw new ConflictException('Este alumno no tiene límite de tiempo: no hay nada que alargar.');
+    const expiraEn = new Date(intento.expiraEn.getTime() + minutos * 60_000);
+    await this.prisma.intentoExamen.update({ where: { id: intentoId }, data: { expiraEn, minutosExtra: { increment: minutos } } });
+    return { expiraEn, minutosExtra: intento.minutosExtra + minutos };
+  }
+
+  /** Cierra el examen de UN alumno: se entrega lo último que tenía autoguardado y la IA lo corrige, como si hubiera apretado «Entregar». */
+  async entregarIntentoPorDocente(examenId: string, intentoId: string) {
+    const intento = await this.intentoDelExamen(examenId, intentoId);
+    if (intento.estado !== 'en_curso') throw new ConflictException('Este alumno ya entregó.');
+    const respuesta = await this.finalizar(intentoId, undefined, 'entregado');
+    return { entregado: respuesta !== null };
+  }
+
+  /** Deja un aviso que los alumnos que están rindiendo ven en el examen (un solo aviso a la vez: el último). Con null lo quita. */
+  async avisar(examenId: string, texto: string | null) {
+    const { count } = await this.prisma.examen.updateMany({ where: { id: examenId }, data: { avisoTexto: texto, avisoEn: texto ? new Date() : null } });
+    if (count === 0) throw new NotFoundException('Examen no encontrado');
+    return { aviso: texto };
+  }
+
+  private async intentoDelExamen(examenId: string, intentoId: string) {
+    if (!isUUID(intentoId)) throw new NotFoundException('Intento no encontrado');
+    const intento = await this.prisma.intentoExamen.findFirst({ where: { id: intentoId, examenId } });
+    if (!intento) throw new NotFoundException('Intento no encontrado');
+    return intento;
   }
 
   /** Cierra los intentos vencidos (pasado el margen). Lo llama el barrido y la vista del docente. */
@@ -473,6 +738,11 @@ export class IntentosService implements OnModuleInit, OnModuleDestroy {
     const ahora = new Date();
     if (ec.fechaInicio && ahora < ec.fechaInicio) throw new BadRequestException('Todavía no se abrió la ventana de entrega de este examen');
     if (ec.fechaFin && ahora > ec.fechaFin) throw new BadRequestException('La ventana de entrega de este examen ya cerró');
+  }
+
+  /** El docente puede cerrar el examen a mano: nadie nuevo puede empezar (quien ya empezó sigue o no, según cómo se cerró). */
+  private validarAbierto(ec: { examen?: { estado: string; cierreProgramadoEn?: Date | null } }) {
+    if (ec.examen && estaCerrado(ec.examen, new Date())) throw new BadRequestException(MENSAJE_EXAMEN_CERRADO);
   }
 
   private estaVencido(intento: { expiraEn: Date | null }, margenMs = 0): boolean {

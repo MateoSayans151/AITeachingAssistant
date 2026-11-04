@@ -1963,3 +1963,195 @@ a.tab {
   box-shadow: 0 0 0 1px var(--color-text);
   background: var(--color-bg);
 }
+
+/* ---- control del docente sobre un examen: cerrar, editar, eliminar, elegir destinatarios, panel en vivo ---- */
+.aviso-ok {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  margin-bottom: var(--space-3);
+}
+
+.badge-cerrado {
+  background: var(--color-neutral-800);
+  color: #fff;
+}
+
+.control-opciones {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.control-opciones legend {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.borrado-perdida {
+  margin: 0 0 var(--space-3);
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.borrado-nombre {
+  overflow-wrap: anywhere;
+}
+
+.selector-barra {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.selector-barra input {
+  flex: 1;
+  min-width: 0;
+}
+
+.selector-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(380px, 50vh);
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.selector-lista li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.selector-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  min-height: 48px;
+  cursor: pointer;
+}
+
+.selector-fila input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.selector-datos {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+}
+
+.selector-datos span {
+  overflow-wrap: anywhere;
+}
+
+.selector-vacio {
+  padding: var(--space-3);
+}
+
+.selector-resumen {
+  margin: 0;
+}
+
+.vivo-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.vivo-dato {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: #fff;
+  border: 1px solid var(--color-border);
+}
+
+.vivo-dato strong {
+  display: block;
+  font-size: 28px;
+  line-height: 1.1;
+  font-family: var(--font-heading);
+}
+
+.vivo-punto {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--color-success);
+}
+
+.vivo-punto-sin-senal {
+  background: var(--color-error);
+}
+
+.vivo-barra {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-neutral-200);
+  overflow: hidden;
+  min-width: 80px;
+}
+
+.vivo-barra > span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent, var(--color-success));
+}
+
+/* Cartel del docente dentro del examen del alumno, y las acciones del panel En vivo */
+.aviso-docente {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent, #d9822b);
+  background: var(--color-accent-soft, #fff4e6);
+}
+
+.aviso-docente p {
+  margin: 4px 0 0;
+  white-space: pre-line;
+}
+
+.vivo-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.vivo-fila-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.btn-chico {
+  padding: 4px 10px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.vivo-estado-cierre {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-200);
+  margin-bottom: var(--space-3);
+}

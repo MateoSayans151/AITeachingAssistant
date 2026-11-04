@@ -230,6 +230,20 @@ export class IntegridadService {
     return filas.length;
   }
 
+  /** Borra las imágenes de todas las capturas de un examen (las filas se van solas con el examen, por cascada). Devuelve cuántas eran. */
+  async borrarImagenesDeExamen(examenId: string): Promise<number> {
+    const filas = await this.prisma.capturaIntegridad.findMany({ where: { intento: { examenId } }, select: { ruta: true } });
+    for (const f of filas) await this.almacen.borrar(f.ruta);
+    return filas.length;
+  }
+
+  /** Lo mismo para todos los exámenes de un curso (al eliminar el curso). */
+  async borrarImagenesDeCurso(cursoId: string): Promise<number> {
+    const filas = await this.prisma.capturaIntegridad.findMany({ where: { intento: { examen: { cursoId } } }, select: { ruta: true } });
+    for (const f of filas) await this.almacen.borrar(f.ruta);
+    return filas.length;
+  }
+
   /** Borra las imágenes y las filas cuya retención venció. Lo llama el barrido periódico. */
   async purgarVencidas(): Promise<number> {
     const vencidas = await this.prisma.capturaIntegridad.findMany({ where: { eliminarEn: { lt: new Date() } }, take: 200, select: { id: true, ruta: true } });

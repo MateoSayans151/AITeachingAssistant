@@ -43,6 +43,13 @@ export class RendirController {
     return this.service.estadoIntento(intentoId, slug);
   }
 
+  // Vencimiento y aviso vigentes: el navegador lo consulta cada pocos segundos, esté escribiendo o no.
+  @Get('estado')
+  async estado(@Param('slug') slug: string, @OrigenPedido() origen: Origen, @Headers('authorization') auth?: string) {
+    const intentoId = await this.service.intentoDeToken(auth, slug, origen);
+    return this.service.estadoLiviano(intentoId);
+  }
+
   @Put('borrador')
   async borrador(@Param('slug') slug: string, @Body() dto: GuardarBorradorDto, @OrigenPedido() origen: Origen, @Headers('authorization') auth?: string) {
     const intentoId = await this.service.intentoDeToken(auth, slug, origen);

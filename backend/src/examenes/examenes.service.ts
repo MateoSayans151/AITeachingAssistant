@@ -7,13 +7,16 @@ import { AccesoService } from '../acceso/acceso.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamenDto, TIPOS_AUTOCORREGIBLES } from './dto/create-examen.dto';
 import { PublicarComisionDto } from './dto/publicar-comision.dto';
+import { ActualizarPublicacionDto } from './dto/actualizar-publicacion.dto';
+import { UpdateExamenDto } from './dto/update-examen.dto';
+import { coincideNombre, MENSAJE_CONFIRMACION_NO_COINCIDE } from './confirmar-nombre.util';
 import { validarNivelesDescripcionCriterio } from './niveles.util';
 import { validarNivelesEscala, validarPuntajes } from './puntaje.util';
 import { RESUMEN_VACIO, examenesPorRevisar, resumenesDeExamenes } from './resumen-respuestas.util';
 import { MENSAJE_SIN_MAIL_PARA_PUBLICAR, NotificacionesService } from '../mail/notificaciones.service';
 
 export const MENSAJE_EXAMEN_CON_ALUMNOS =
-  'Este examen ya tiene alumnos que empezaron o entregaron: no se puede borrar para no perder sus respuestas.';
+  'Este examen ya tiene alumnos que empezaron o entregaron: no se pueden cambiar sus preguntas para no descuadrar las notas. Duplicalo para armar una versión nueva.';
 
 @Injectable()
 export class ExamenesService {
@@ -24,7 +27,8 @@ export class ExamenesService {
     private readonly notificaciones: NotificacionesService,
   ) {}
 
-  create(dto: CreateExamenDto, creadoPorId?: string) {
+  /** Las reglas de negocio de un examen completo (las comparten crear y editar). Puede reemplazar `dto.preguntas` (criterio general). */
+  private validar(dto: CreateExamenDto) {
     // Regla de negocio (no expresable con decorators porque depende del tipo de pregunta): las preguntas cerradas necesitan
     // `opciones` (con la clave correcta). Las abiertas pueden traer `criterios` (matriz de niveles) o no: sin criterios se guardan
     // con un único criterio general que vale todos sus puntos (ver criterio-general.util.ts).
@@ -59,6 +63,37 @@ export class ExamenesService {
     // cada pregunta abierta vale la suma de sus criterios.
     const errorPuntaje = validarPuntajes(dto.preguntas, dto.escalaMax);
     if (errorPuntaje) throw new BadRequestException(errorPuntaje);
+  }
+
+  private preguntasParaCrear(dto: CreateExamenDto) {
+    return dto.preguntas.map((p, i) => ({
+      tipo: p.tipo,
+      enunciado: p.enunciado,
+      puntajeMaximo: p.puntajeMaximo,
+      opciones: p.opciones ? (p.opciones as unknown as Prisma.InputJsonValue) : undefined,
+      orden: i,
+      criterios: p.criterios
+        ? {
+            create: p.criterios.map((c, j) => ({
+              matrizOrigenId: c.matrizOrigenId,
+              nombre: c.nombre,
+              descripcion: c.descripcion,
+              puntajeMaximo: c.puntajeMaximo,
+              nivelesDescripcion: (c.nivelesDescripcion ?? []) as unknown as Prisma.InputJsonValue, // [] = sin niveles detallados
+              orden: j,
+            })),
+          }
+        : undefined,
+    }));
+  }
+
+  private antiCheatParaGuardar(dto: CreateExamenDto) {
+    return dto.antiCheat && Object.values(dto.antiCheat).some(Boolean) ? (dto.antiCheat as unknown as Prisma.InputJsonValue) : undefined;
+  }
+
+  create(dto: CreateExamenDto, creadoPorId?: string) {
+    this.validar(dto);
+    const dist = dto.distribucionEsperada;
 
     return this.prisma.examen.create({
       data: {
@@ -73,28 +108,8 @@ export class ExamenesService {
         niveles: dto.niveles as unknown as Prisma.InputJsonValue,
         feedbackModo: dto.feedbackModo,
         distribucionEsperada: dist ? (dist as unknown as Prisma.InputJsonValue) : undefined,
-        antiCheat: dto.antiCheat && Object.values(dto.antiCheat).some(Boolean) ? (dto.antiCheat as unknown as Prisma.InputJsonValue) : undefined,
-        preguntas: {
-          create: dto.preguntas.map((p, i) => ({
-            tipo: p.tipo,
-            enunciado: p.enunciado,
-            puntajeMaximo: p.puntajeMaximo,
-            opciones: p.opciones ? (p.opciones as unknown as Prisma.InputJsonValue) : undefined,
-            orden: i,
-            criterios: p.criterios
-              ? {
-                  create: p.criterios.map((c, j) => ({
-                    matrizOrigenId: c.matrizOrigenId,
-                    nombre: c.nombre,
-                    descripcion: c.descripcion,
-                    puntajeMaximo: c.puntajeMaximo,
-                    nivelesDescripcion: (c.nivelesDescripcion ?? []) as unknown as Prisma.InputJsonValue, // [] = sin niveles detallados
-                    orden: j,
-                  })),
-                }
-              : undefined,
-          })),
-        },
+        antiCheat: this.antiCheatParaGuardar(dto),
+        preguntas: { create: this.preguntasParaCrear(dto) },
       },
       include: { preguntas: { include: { criterios: true }, orderBy: { orden: 'asc' } } },
     });
@@ -136,33 +151,130 @@ export class ExamenesService {
   }
 
   /**
-   * Borra el examen solo si NADIE empezó ni entregó (ni respuestas ni intentos): si no, se perderían las respuestas de los
-   * alumnos. Las preguntas, criterios, publicaciones a comisiones (los links dejan de funcionar) y ajustes de vara se van
-   * por cascada en la base.
+   * Borra el examen con todo lo que cuelga de él: preguntas, criterios, publicaciones (los links dejan de funcionar), intentos,
+   * respuestas con sus notas, eventos de integridad y ajustes de vara, por cascada en la base. Por eso exige que el docente
+   * escriba el nombre del examen: un clic sin querer no alcanza. (Las imágenes de las capturas no cuelgan de la base: las borra
+   * quien llama, antes, ver ControlExamenController.)
    * Todo en una transacción y con la fila del examen bloqueada (FOR UPDATE): un alumno que está por empezar (su intento
-   * toma un lock de la fila del examen por la clave foránea) espera a que terminemos, y entonces o ve que el examen ya no
-   * está o lo contamos nosotros y se rechaza el borrado. Sin el lock podría empezar justo entre el conteo y el borrado y
-   * perder lo que acaba de escribir por la cascada.
+   * toma un lock de la fila del examen por la clave foránea) espera a que terminemos y no escribe algo que la cascada borre
+   * sin que lo veamos.
    */
-  async remove(id: string) {
+  async remove(id: string, confirmacion: string) {
     // Un id que no es UUID no puede existir (y el cast del SQL de abajo respondería 500).
     if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
     await this.prisma.$transaction(async (tx) => {
-      const filas = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM examenes WHERE id = ${id}::uuid FOR UPDATE`;
+      const filas = await tx.$queryRaw<Array<{ id: string; titulo: string }>>`SELECT id, titulo FROM examenes WHERE id = ${id}::uuid FOR UPDATE`;
       if (filas.length === 0) throw new NotFoundException(`Examen ${id} no encontrado`);
-      const respuestas = await tx.respuestaExamen.count({ where: { examenId: id } });
-      const intentos = await tx.intentoExamen.count({ where: { examenId: id } });
-      if (respuestas > 0 || intentos > 0) throw new ConflictException(MENSAJE_EXAMEN_CON_ALUMNOS);
+      if (!coincideNombre(confirmacion, filas[0].titulo)) throw new BadRequestException(MENSAJE_CONFIRMACION_NO_COINCIDE);
       await tx.examen.delete({ where: { id } });
     });
   }
 
-  /** Cambia el título del examen. Devuelve solo lo que cambió (id y título). */
-  async renombrar(id: string, titulo: string) {
+  /** Antes de borrar nada de afuera de la base (imágenes): ¿el nombre escrito es el del examen? 404 si no existe, 400 si no coincide. */
+  async validarConfirmacion(id: string, confirmacion: string) {
     if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
-    const { count } = await this.prisma.examen.updateMany({ where: { id }, data: { titulo } });
+    const examen = await this.prisma.examen.findUnique({ where: { id }, select: { titulo: true } });
+    if (!examen) throw new NotFoundException(`Examen ${id} no encontrado`);
+    if (!coincideNombre(confirmacion, examen.titulo)) throw new BadRequestException(MENSAJE_CONFIRMACION_NO_COINCIDE);
+  }
+
+  /** Cuántos alumnos empezaron o entregaron el examen (lo que se pierde al borrarlo y lo que impide cambiar sus preguntas). */
+  async alumnosQueRindieron(examenId: string) {
+    const [intentos, respuestas] = await Promise.all([
+      this.prisma.intentoExamen.count({ where: { examenId } }),
+      this.prisma.respuestaExamen.count({ where: { examenId } }),
+    ]);
+    return { intentos, respuestas, empezaron: Math.max(intentos, respuestas) };
+  }
+
+  /**
+   * Cambia los datos de un examen que ya existe y que se pueden tocar con alumnos rindiendo, porque no cambian ninguna nota ya
+   * dada: el título, la consigna y cuándo se libera el feedback. Devuelve solo lo que cambió.
+   */
+  async actualizarDatos(id: string, dto: UpdateExamenDto) {
+    if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
+    const data: Prisma.ExamenUpdateManyMutationInput = { titulo: dto.titulo };
+    if (dto.consigna !== undefined) data.consigna = dto.consigna;
+    if (dto.feedbackModo !== undefined) data.feedbackModo = dto.feedbackModo;
+    const { count } = await this.prisma.examen.updateMany({ where: { id }, data });
     if (count === 0) throw new NotFoundException(`Examen ${id} no encontrado`);
-    return { id, titulo };
+    return { id, ...data };
+  }
+
+  /**
+   * Reemplaza todo el contenido del examen (preguntas, puntos, rúbricas, escala, modalidad...). Solo se puede si NADIE empezó ni
+   * entregó: con alumnos adentro, cambiar las preguntas dejaría notas ya dadas que no corresponden a lo que se preguntó (para eso
+   * está "Duplicar y editar"). Las publicaciones y los links no se tocan. Mismo bloqueo de fila que `remove`.
+   */
+  async reemplazarContenido(id: string, dto: CreateExamenDto) {
+    if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
+    this.validar(dto);
+    const dist = dto.distribucionEsperada;
+    return this.prisma.$transaction(async (tx) => {
+      const filas = await tx.$queryRaw<Array<{ id: string; curso_id: string }>>`SELECT id, curso_id FROM examenes WHERE id = ${id}::uuid FOR UPDATE`;
+      if (filas.length === 0) throw new NotFoundException(`Examen ${id} no encontrado`);
+      if (filas[0].curso_id !== dto.cursoId) throw new BadRequestException('Un examen no se puede pasar a otro curso: duplicalo en ese curso.');
+      const [intentos, respuestas] = await Promise.all([tx.intentoExamen.count({ where: { examenId: id } }), tx.respuestaExamen.count({ where: { examenId: id } })]);
+      if (intentos > 0 || respuestas > 0) throw new ConflictException(MENSAJE_EXAMEN_CON_ALUMNOS);
+      await tx.pregunta.deleteMany({ where: { examenId: id } });
+      return tx.examen.update({
+        where: { id },
+        data: {
+          titulo: dto.titulo,
+          consigna: dto.consigna,
+          modalidad: dto.modalidad,
+          duracionMinutos: dto.duracionMinutos ?? null,
+          escalaMin: dto.escalaMin,
+          escalaMax: dto.escalaMax,
+          niveles: dto.niveles as unknown as Prisma.InputJsonValue,
+          feedbackModo: dto.feedbackModo,
+          distribucionEsperada: dist ? (dist as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+          antiCheat: this.antiCheatParaGuardar(dto) ?? Prisma.DbNull,
+          preguntas: { create: this.preguntasParaCrear(dto) },
+        },
+        include: { preguntas: { include: { criterios: true }, orderBy: { orden: 'asc' } } },
+      });
+    });
+  }
+
+  /**
+   * Cierra el examen: los links dejan de aceptar alumnos nuevos. Qué pasa con los que están rindiendo lo decide quien llama
+   * (ver IntentosService.entregarEnCurso). Cerrar uno ya cerrado es un 409.
+   */
+  async cerrar(id: string) {
+    if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
+    const { count } = await this.prisma.examen.updateMany({ where: { id, estado: { not: 'cerrado' } }, data: { estado: 'cerrado' } });
+    if (count === 0) {
+      const existe = await this.prisma.examen.count({ where: { id } });
+      if (!existe) throw new NotFoundException(`Examen ${id} no encontrado`);
+      throw new ConflictException('El examen ya está cerrado.');
+    }
+    return { id, estado: 'cerrado' as const };
+  }
+
+  /** Vuelve a abrir un examen cerrado: queda publicado si tiene links, o en borrador si nunca se publicó. */
+  async reabrir(id: string) {
+    if (!isUUID(id)) throw new NotFoundException(`Examen ${id} no encontrado`);
+    const examen = await this.prisma.examen.findUnique({ where: { id }, select: { estado: true, _count: { select: { comisiones: true } } } });
+    if (!examen) throw new NotFoundException(`Examen ${id} no encontrado`);
+    if (examen.estado !== 'cerrado') throw new ConflictException('El examen no está cerrado.');
+    const estado = examen._count.comisiones > 0 ? ('publicado' as const) : ('borrador' as const);
+    // Se quita también el cierre programado: si ya pasó, el barrido lo volvería a cerrar al instante.
+    await this.prisma.examen.update({ where: { id }, data: { estado, cierreProgramadoEn: null } });
+    return { id, estado };
+  }
+
+  /** Cambia las fechas de una publicación (el link). No toca a quienes ya empezaron: su tiempo se fijó al iniciar. */
+  async actualizarPublicacion(examenId: string, examenComisionId: string, dto: ActualizarPublicacionDto) {
+    if (!isUUID(examenComisionId)) throw new NotFoundException('Publicación no encontrada');
+    const actual = await this.prisma.examenComision.findFirst({ where: { id: examenComisionId, examenId }, select: { fechaInicio: true, fechaFin: true } });
+    if (!actual) throw new NotFoundException('Publicación no encontrada');
+    const aFecha = (v: string | null | undefined, previa: Date | null) => (v === undefined ? previa : v ? new Date(v) : null);
+    const fechaInicio = aFecha(dto.fechaInicio, actual.fechaInicio);
+    const fechaFin = aFecha(dto.fechaFin, actual.fechaFin);
+    if (fechaInicio && fechaFin && fechaInicio >= fechaFin) throw new BadRequestException('La fecha de cierre tiene que ser posterior a la de apertura.');
+    await this.prisma.examenComision.update({ where: { id: examenComisionId }, data: { fechaInicio, fechaFin } });
+    return { id: examenComisionId, fechaInicio, fechaFin };
   }
 
   async publicarAComision(examenId: string, dto: PublicarComisionDto) {
@@ -202,7 +314,7 @@ export class ExamenesService {
    * le llegue nada a nadie. El envío corre en segundo plano; la respuesta trae cuántos mails se lanzaron (`aEnviar`)
    * y cuántas respuestas siguen sin revisar, para que la pantalla pueda avisarlo.
    */
-  async liberarFeedback(examenId: string) {
+  async liberarFeedback(examenId: string, respuestaIds?: string[]) {
     if (!this.notificaciones.configurado) throw new ConflictException(MENSAJE_SIN_MAIL_PARA_PUBLICAR);
 
     await this.prisma.examen.updateMany({
@@ -214,7 +326,9 @@ export class ExamenesService {
 
     const pendientesDeRevision = await this.prisma.respuestaExamen.count({ where: { examenId, estadoRevision: 'pendiente' } });
     // Las notas ya quedaron publicadas: si el arranque del envío falla no se deshace nada, se reintenta con "reenviar".
-    const { aEnviar } = await this.notificaciones.notificarExamen(examenId).catch((err) => {
+    // Con una selección (lo que manda la pantalla) solo reciben el mail los elegidos; sin ella, todos los que ya están revisados.
+    const envio = respuestaIds === undefined ? this.notificaciones.notificarExamen(examenId) : this.notificaciones.notificarSeleccionAlPublicar(examenId, respuestaIds);
+    const { aEnviar } = await envio.catch((err) => {
       this.logger.error(`No se pudo iniciar el envío de mails del examen ${examenId}`, err as Error);
       return { aEnviar: 0 };
     });

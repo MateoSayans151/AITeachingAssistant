@@ -238,6 +238,8 @@ function prismaInvit(examen: Record<string, any> | null) {
         return { ...examen, comisiones: examen.comisiones.filter((c: any) => !filtro || c.id === filtro.id).map((c: any) => ({ ...c })) };
       },
     },
+    // A quién se le mandó antes: en estos tests nadie (los reenvíos a elegidos se prueban en control-examen.test.ts).
+    invitacionEnviada: { findMany: async () => [], upsert: async () => ({}) },
   };
   return { prisma, consultas };
 }
@@ -518,10 +520,10 @@ test('invitar: si falla la lectura de la base, el error sale tal cual y el exame
   assert.equal(svc.estado('ex-1').enCurso, false);
 });
 
-test('invitar: la Idempotency-Key es invitacion-<publicación>-<alumno>-<tanda>: igual en un doble clic, distinta en un reenvío más tarde', async () => {
+test('invitar: la Idempotency-Key es invitacion-<publicación>-<alumno>-<veces>-<tanda>: igual en un doble clic, distinta en un reenvío más tarde', async () => {
   const { svc, mail } = servicio(unaComision(2));
   const claves = () => mail.enviados.map((m: MailParaEnviar) => m.idempotencyKey);
-  const fmt = /^invitacion-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-al-a[12]-[0-9a-f]{8}$/;
+  const fmt = /^invitacion-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-al-a[12]-0-[0-9a-f]{8}$/;
 
   await svc.invitar('ex-1');
   await terminoElLote(svc);

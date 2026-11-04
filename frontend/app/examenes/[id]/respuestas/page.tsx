@@ -9,14 +9,23 @@ import Link from 'next/link';
 import { LiberarNotasButton } from '@/app/components/LiberarNotasButton';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { formatearNota } from '@/lib/texto';
+import { armarCsv, nombreArchivoCsv } from '@/lib/exportar-respuestas';
 import {
   Examen,
   RespuestaExamen,
   bulkAceptarRespuestas,
   corregirPendientes,
+  Pregunta,
+  TIPOS_AUTOCORREGIBLES,
   getExamen,
   listRespuestasPorExamen,
 } from '@/lib/api';
+
+/** Cuánto vale la pregunta: cerradas → su puntaje; abiertas → la suma de los puntos de sus criterios. */
+function puntajeEfectivo(p: Pregunta): number {
+  if (TIPOS_AUTOCORREGIBLES.includes(p.tipo)) return Number(p.puntajeMaximo);
+  return (p.criterios ?? []).reduce((acc, c) => acc + Number(c.puntajeMaximo), 0);
+}
 
 // Mientras haya respuestas sin corregir por la IA se refresca la lista sola, pero no para siempre: si a los 3 minutos
 // siguen trabadas se frena y se avisa (probablemente falló la IA y hay que reintentar a mano).
@@ -55,25 +64,13 @@ const ESTADO_UI: Record<Categoria, { label: string; className: string; style?: C
 };
 
 function exportarCsv(examen: Examen, respuestas: RespuestaExamen[]) {
-  const filas = [
-    ['Alumno', 'Email', 'Nota sugerida', 'Nota con vara', 'Nota final', 'Estado', 'Cierre del intento', 'Señales de integridad'],
-    ...respuestas.map((r) => [
-      r.alumno?.nombre ?? '',
-      r.alumno?.email ?? '',
-      r.notaTotalSugerida ?? '',
-      r.notaConVara ?? '',
-      r.notaTotalFinal ?? '',
-      ESTADO_UI[categoriaDe(r)].label,
-      r.intento ? (r.intento.estado === 'vencido' ? 'Por vencimiento' : 'Entregado') : '',
-      r.intento?.eventos ?? '',
-    ]),
-  ];
-  const csv = filas.map((fila) => fila.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const preguntas = (examen.preguntas ?? []).map((p) => ({ id: p.id, puntajeMaximo: puntajeEfectivo(p) }));
+  const csv = armarCsv(respuestas, preguntas, Number(examen.escalaMax));
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${examen.titulo.replace(/\s+/g, '_')}_respuestas.csv`;
+  a.download = nombreArchivoCsv(examen.titulo);
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -166,7 +163,7 @@ export default function RespuestasExamenPage() {
     const conSenales = aceptables.filter((r) => (r.intento?.eventos ?? 0) > 0).length;
 
     const sugerencias = aceptables.length === 1 ? '1 sugerencia' : `${aceptables.length} sugerencias`;
-    let mensaje = `Vas a aceptar ${sugerencias} de la IA tal cual: la nota sugerida pasa a ser la nota final, sin que las revises una por una.`;
+    let mensaje = `Vas a aceptar ${sugerencias} de la IA tal cual: la nota sugerida pasa a ser la nota final y se da por cerrada, sin que las revises una por una. Después podés volver a abrir cualquiera desde su detalle («Volver a pendiente»).`;
     mensaje +=
       conSenales > 0
         ? `\n\n${conSenales === 1 ? '1 de esas respuestas tiene' : `${conSenales} de esas respuestas tienen`} señales de integridad (salida de pantalla completa, cambio de pestaña o pegado de texto). Si cancelás, podés revisarlas una por una desde cada detalle.`
@@ -174,7 +171,7 @@ export default function RespuestasExamenPage() {
     const confirmado = await confirmar({
       titulo: `¿Aceptar ${sugerencias} de la IA?`,
       mensaje,
-      textoConfirmar: aceptables.length === 1 ? 'Aceptar' : 'Aceptar todas',
+      textoConfirmar: aceptables.length === 1 ? 'Aceptar y cerrar la nota' : `Aceptar y cerrar ${aceptables.length} notas`,
     });
     if (!confirmado) return;
 
