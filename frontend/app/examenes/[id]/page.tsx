@@ -27,6 +27,7 @@ import {
 } from '@/lib/api';
 import { fechaLocalAIso } from '@/lib/fechas';
 import { mensajeDeError } from '@/lib/errores';
+import { descargarRespuestasDeExamen } from '@/lib/descargar-respuestas';
 import { plural } from '@/lib/texto';
 
 /** Cuánto puede sacar un alumno en la pregunta: cerradas → su puntaje; abiertas → la suma de los puntos de sus criterios. */
@@ -241,6 +242,7 @@ export default function ExamenDetallePage() {
             'Las capturas de pantalla guardadas',
           ]}
           textoConfirmar="Eliminar examen"
+          descarga={rindieron.respuestas > 0 ? { etiqueta: 'Descargar las respuestas (CSV)', accion: () => descargarRespuestasDeExamen(examen.id) } : undefined}
           onConfirmar={() => eliminar(examen.titulo)}
           onCancelar={() => setDialogo(null)}
         />

@@ -2415,3 +2415,28 @@ a.tab {
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+/* Descarga opcional de las respuestas dentro del diálogo de borrado */
+.borrado-descarga {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.borrado-descarga p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.borrado-descarga-ok {
+  color: var(--color-success);
+}
+
+.borrado-descarga-error {
+  color: var(--color-error);
+}

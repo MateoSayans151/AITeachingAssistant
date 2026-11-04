@@ -66,12 +66,12 @@ export function celda(valor: unknown): string {
   return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
-const ESTADO_CORRECCION: Record<EstadoEntrega, string> = {
+export const ESTADO_CORRECCION: Record<EstadoEntrega, string> = {
   pendiente_correccion: 'Sin corregir por la IA',
   corregido: 'Corregida por la IA',
   revisado: 'Revisada',
 };
-const ESTADO_REVISION: Record<EstadoRevision, string> = {
+export const ESTADO_REVISION: Record<EstadoRevision, string> = {
   pendiente: 'Para revisar',
   aceptada: 'Aceptada',
   editada: 'Editada',

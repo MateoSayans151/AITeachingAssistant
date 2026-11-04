@@ -173,6 +173,7 @@ las instrucciones para los alumnos y dos bloques plegados con un resumen de lo c
 - **Editar.** Título, consigna y cuándo se libera el feedback se cambian siempre (`PATCH /api/examenes/:id`); las fechas de cada link también (`PATCH .../comisiones/:id`).
   Preguntas, rúbricas y ajustes se reemplazan con `PUT /api/examenes/:id` (asistente en `?editar=<id>`) **solo si nadie empezó**; con alumnos adentro es 409 y la salida es *Duplicar y editar*.
   Los cursos se editan (nombre y materia) con `PATCH /api/cursos/:id`.
+- **Copia antes de borrar (opcional).** Los diálogos de eliminar un examen, un curso o una comisión ofrecen *Descargar las respuestas (CSV)* si hay respuestas: un archivo del examen, o uno solo con todos los exámenes del curso o de la comisión (`frontend/lib/descargar-respuestas.ts`). Nunca es obligatorio para borrar.
 - **Eliminar.** Exámenes y cursos se borran escribiendo su nombre (el servidor lo vuelve a validar). Un examen se puede borrar con alumnos: se llevan sus respuestas, notas y capturas
   (el diálogo dice cuántas). Un curso solo lo elimina **el último docente** del equipo (`DELETE /api/cursos/:id`); con más, 409 y se ofrece *Salir del curso*. Las imágenes de capturas
   se borran del almacenamiento antes que las filas.

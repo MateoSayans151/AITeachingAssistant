@@ -189,3 +189,35 @@ test('isoAFechaLocal: vuelve al formato del input datetime-local y tolera vacío
   assert.equal(isoAFechaLocal('basura'), '');
   assert.match(isoAFechaLocal('2026-11-03T12:00:00Z'), /^2026-11-0[23]T\d{2}:\d{2}$/);
 });
+
+// ---------------------------------------------------------------------------
+// CSV de varios exámenes juntos (descarga opcional antes de borrar un curso o una comisión)
+// ---------------------------------------------------------------------------
+import { armarCsvResumen, totalDeRespuestas } from '../../frontend/lib/exportar-resumen';
+
+test('armarCsvResumen: una columna con el examen, las filas de todos los exámenes juntas, y el mismo formato que el de un examen', () => {
+  const ana = { ...base, alumno: { nombre: 'Ana Pérez', email: 'ana@mail.com' } };
+  const beto = { ...base, alumno: { nombre: 'Beto', email: 'beto@mail.com' }, notaTotalFinal: '6.5', notaTotalSugerida: '6.5', intento: { estado: 'vencido', eventos: 0 } };
+  const csv = armarCsvResumen([
+    { titulo: 'Parcial 1', escalaMax: 10, filas: [ana, beto] },
+    { titulo: 'Final; "oral"', escalaMax: 100, filas: [ana] },
+  ]);
+  assert.ok(csv.startsWith('﻿'), 'lleva BOM');
+  const lineas = csv.slice(1).split('\r\n');
+  assert.equal(lineas.length, 5, 'encabezado + 3 filas + el salto final');
+  assert.equal(
+    lineas[0],
+    'Examen;Alumno;Email;Fecha de entrega;Cómo se cerró;Corrección de la IA;Revisión del docente;Nota sugerida por la IA;Nota con vara;Nota final;Sobre (puntaje máximo);Fecha de revisión;Mail con la nota enviado;Señales de integridad',
+  );
+  assert.equal(lineas[1], 'Parcial 1;Ana Pérez;ana@mail.com;03/11/2026 14:05;Entregado por el alumno;Revisada;Aceptada;8,5;;8,5;10;04/11/2026 09:30;;2');
+  assert.ok(lineas[2].startsWith('Parcial 1;Beto;') && lineas[2].includes('Venció el tiempo') && lineas[2].includes(';6,5;;6,5;10;'));
+  assert.ok(lineas[3].startsWith('"Final; ""oral""";Ana Pérez;'), 'el título con ; y comillas se escapa');
+  assert.ok(lineas[3].includes(';8,5;;8,5;100;'), 'cada examen con su escala');
+  assert.equal(totalDeRespuestas([{ titulo: 'a', escalaMax: 10, filas: [ana, beto] }, { titulo: 'b', escalaMax: 10, filas: [] }]), 2);
+});
+
+test('armarCsvResumen: sin exámenes ni respuestas queda solo el encabezado; un título con fórmula se neutraliza', () => {
+  assert.equal(armarCsvResumen([]).slice(1).split('\r\n').length, 2);
+  const csv = armarCsvResumen([{ titulo: '=SUMA(1;1)', escalaMax: 10, filas: [{ ...base, alumno: { nombre: 'x', email: 'x@mail.com' } }] }]);
+  assert.ok(csv.slice(1).split('\r\n')[1].startsWith(`"'=SUMA(1;1)"`));
+});

@@ -8,6 +8,7 @@ import { useConfirmar } from '@/app/components/Confirmar';
 import { AjustesCurso } from '@/app/components/AjustesCurso';
 import { ConfirmarBorrado } from '@/app/components/ConfirmarBorrado';
 import { mensajeDeError as motivoDelServidor } from '@/lib/errores';
+import { descargarRespuestasDeComision } from '@/lib/descargar-respuestas';
 import { plural } from '@/lib/texto';
 import { caracteresLegibles, problemaDelArchivo, tamanoLegible } from '@/lib/material';
 import { useDocente } from '@/lib/auth';
@@ -321,6 +322,7 @@ function ComisionCard({ comision, onCambio }: { comision: Comision; onCambio: ()
   const [error, setError] = useState<string | null>(null);
   // Eliminar la comisión: se pide primero lo que se perdería, y hay que escribir su nombre.
   const [perdida, setPerdida] = useState<string[] | null>(null);
+  const [hayRespuestas, setHayRespuestas] = useState(false);
   const [preparando, setPreparando] = useState(false);
 
   async function pedirEliminar() {
@@ -328,6 +330,7 @@ function ComisionCard({ comision, onCambio }: { comision: Comision; onCambio: ()
     setError(null);
     try {
       const q = await getQueSePierdeComision(comision.id);
+      setHayRespuestas(q.respuestas > 0);
       setPerdida([
         plural(q.alumnos, 'alumno', 'alumnos') + ' de la lista',
         ...(q.respuestas > 0 ? [`${plural(q.respuestas, 'respuesta', 'respuestas')} de esos alumnos, con sus notas y devoluciones`] : []),
@@ -381,6 +384,11 @@ function ComisionCard({ comision, onCambio }: { comision: Comision; onCambio: ()
           etiquetaNombre="comisión"
           perdida={perdida}
           textoConfirmar="Eliminar comisión"
+          descarga={
+            hayRespuestas
+              ? { etiqueta: 'Descargar las respuestas (CSV)', accion: () => descargarRespuestasDeComision(comision.cursoId, comision.id, comision.nombre) }
+              : undefined
+          }
           onConfirmar={eliminar}
           onCancelar={() => setPerdida(null)}
         />
