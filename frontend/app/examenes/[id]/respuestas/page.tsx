@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { LiberarNotasButton } from '@/app/components/LiberarNotasButton';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { formatearNota } from '@/lib/texto';
-import { armarCsv, nombreArchivoCsv } from '@/lib/exportar-respuestas';
+import { descargarCsvDeExamen } from '@/lib/descargar-respuestas';
 import {
   Examen,
   RespuestaExamen,
@@ -62,20 +62,6 @@ const ESTADO_UI: Record<Categoria, { label: string; className: string; style?: C
   aceptada: { label: 'Aceptada', className: 'badge badge-revisado', title: 'Aceptaste la sugerencia de la IA.' },
   editada: { label: 'Editada', className: 'badge badge-corregido', title: 'Editaste la corrección de la IA.' },
 };
-
-function exportarCsv(examen: Examen, respuestas: RespuestaExamen[]) {
-  const preguntas = (examen.preguntas ?? []).map((p) => ({ id: p.id, puntajeMaximo: puntajeEfectivo(p) }));
-  const csv = armarCsv(respuestas, preguntas, Number(examen.escalaMax));
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nombreArchivoCsv(examen.titulo);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export default function RespuestasExamenPage() {
   const params = useParams<{ id: string }>();
@@ -310,7 +296,7 @@ export default function RespuestasExamenPage() {
             {corrigiendo ? 'Enviando…' : 'Corregir pendientes con IA'}
           </button>
         )}
-        <button className="btn btn-ghost" onClick={() => exportarCsv(examen, respuestas)} disabled={respuestas.length === 0}>
+        <button className="btn btn-ghost" onClick={() => descargarCsvDeExamen(examen, respuestas)} disabled={respuestas.length === 0}>
           Exportar CSV
         </button>
       </div>

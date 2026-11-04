@@ -6,6 +6,9 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useConfirmar } from '@/app/components/Confirmar';
 import { AjustesCurso } from '@/app/components/AjustesCurso';
+import { ConfirmarBorrado } from '@/app/components/ConfirmarBorrado';
+import { mensajeDeError as motivoDelServidor } from '@/lib/errores';
+import { descargarRespuestasDeComision } from '@/lib/descargar-respuestas';
 import { plural } from '@/lib/texto';
 import { caracteresLegibles, problemaDelArchivo, tamanoLegible } from '@/lib/material';
 import { useDocente } from '@/lib/auth';
@@ -17,8 +20,10 @@ import {
   ApiError,
   agregarDocenteCurso,
   createMaterialCurso,
+  eliminarComision,
   eliminarMaterialCurso,
   getComision,
+  getQueSePierdeComision,
   getCurso,
   getEquipoCurso,
   quitarDocenteCurso,
@@ -150,7 +155,7 @@ export default function CursoDetallePage() {
           )}
 
           {curso.comisiones?.map((comision) => (
-            <ComisionCard key={comision.id} comision={comision} />
+            <ComisionCard key={comision.id} comision={comision} onCambio={recargar} />
           ))}
         </>
       )}
@@ -311,10 +316,44 @@ function EquipoTab({ cursoId }: { cursoId: string }) {
 }
 
 /** Comisión con su listado de alumnos (entran a rendir con su email). */
-function ComisionCard({ comision }: { comision: Comision }) {
+function ComisionCard({ comision, onCambio }: { comision: Comision; onCambio: () => void }) {
   const [detalle, setDetalle] = useState<Comision | null>(null);
   const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Eliminar la comisión: se pide primero lo que se perdería, y hay que escribir su nombre.
+  const [perdida, setPerdida] = useState<string[] | null>(null);
+  const [hayRespuestas, setHayRespuestas] = useState(false);
+  const [preparando, setPreparando] = useState(false);
+
+  async function pedirEliminar() {
+    setPreparando(true);
+    setError(null);
+    try {
+      const q = await getQueSePierdeComision(comision.id);
+      setHayRespuestas(q.respuestas > 0);
+      setPerdida([
+        plural(q.alumnos, 'alumno', 'alumnos') + ' de la lista',
+        ...(q.respuestas > 0 ? [`${plural(q.respuestas, 'respuesta', 'respuestas')} de esos alumnos, con sus notas y devoluciones`] : []),
+        ...(q.rindiendo > 0 ? [`${plural(q.rindiendo, 'alumno rindiendo', 'alumnos rindiendo')} ahora mismo, que pierden lo que escribieron`] : []),
+        ...(q.publicaciones > 0 ? [`${plural(q.publicaciones, 'link de examen publicado', 'links de exámenes publicados')} a esta comisión: dejan de funcionar`] : []),
+        'Las capturas de pantalla guardadas',
+      ]);
+    } catch {
+      setError('No se pudo preparar el borrado. Probá de nuevo.');
+    } finally {
+      setPreparando(false);
+    }
+  }
+
+  async function eliminar() {
+    try {
+      await eliminarComision(comision.id, comision.nombre);
+    } catch (err) {
+      throw new Error(motivoDelServidor(err, 'No se pudo eliminar la comisión.'));
+    }
+    setPerdida(null);
+    onCambio();
+  }
 
   async function toggle() {
     if (!abierto && !detalle) {
@@ -335,6 +374,25 @@ function ComisionCard({ comision }: { comision: Comision }) {
       <button type="button" className="btn btn-secondary" style={{ marginTop: 12 }} onClick={toggle}>
         {abierto ? 'Ocultar alumnos' : 'Ver alumnos'}
       </button>
+      <button type="button" className="btn btn-ghost btn-peligro" style={{ marginTop: 12, marginLeft: 8 }} onClick={pedirEliminar} disabled={preparando}>
+        {preparando ? 'Un momento…' : 'Eliminar comisión'}
+      </button>
+      {perdida && (
+        <ConfirmarBorrado
+          titulo="¿Eliminar la comisión?"
+          nombre={comision.nombre}
+          etiquetaNombre="comisión"
+          perdida={perdida}
+          textoConfirmar="Eliminar comisión"
+          descarga={
+            hayRespuestas
+              ? { etiqueta: 'Descargar las respuestas (CSV)', accion: () => descargarRespuestasDeComision(comision.cursoId, comision.id, comision.nombre) }
+              : undefined
+          }
+          onConfirmar={eliminar}
+          onCancelar={() => setPerdida(null)}
+        />
+      )}
       {error && <div className="error-box" style={{ marginTop: 12 }}>{error}</div>}
       {abierto && detalle && (
         <table className="table" style={{ marginTop: 12 }}>

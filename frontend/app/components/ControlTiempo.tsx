@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
+import { SelectorFecha } from './SelectorFecha';
 import { plural } from '@/lib/texto';
 import { fechaLocalAIso, isoAFechaLocal } from '@/lib/fechas';
 import { mensajeDeError } from '@/lib/errores';
@@ -139,7 +140,7 @@ export function CierreProgramadoModal({
         <p className="dialog-message">A la hora que elijas el examen se cierra solo: nadie nuevo puede empezar. Podés volver a abrirlo después.</p>
         <div className="field">
           <label htmlFor="cierre-cuando">Se cierra el</label>
-          <input id="cierre-cuando" type="datetime-local" value={cuando} onChange={(e) => setCuando(e.target.value)} disabled={trabajando} />
+          <SelectorFecha id="cierre-cuando" value={cuando} onChange={setCuando} disabled={trabajando} minimo={isoAFechaLocal(new Date().toISOString())} limpiable={false} />
           {cuando && !futuro && (
             <p className="ayuda-campo" style={{ color: 'var(--color-error)' }}>
               Elegí una fecha y hora que todavía no pasó.

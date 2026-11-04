@@ -1,5 +1,6 @@
 'use client';
 
+import { Desplegable } from '@/app/components/Desplegable';
 import { TabsExamen } from '@/app/components/TabsExamen';
 import { Cargando } from '@/app/components/Cargando';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -207,13 +208,12 @@ export default function AjustarVaraPage() {
       <div className="card" style={{ marginBottom: 24 }} data-guia="vara-regla">
         <div className="field" style={{ maxWidth: 420, marginBottom: 16 }}>
           <label htmlFor="modo">Regla</label>
-          <select id="modo" value={modo} onChange={(e) => setModo(e.target.value as ModoVara)}>
-            {(Object.keys(MODO_LABEL) as ModoVara[]).map((m) => (
-              <option key={m} value={m}>
-                {MODO_LABEL[m]}
-              </option>
-            ))}
-          </select>
+          <Desplegable
+            id="modo"
+            value={modo}
+            onChange={(valor) => setModo(valor as ModoVara)}
+            opciones={(Object.keys(MODO_LABEL) as ModoVara[]).map((m) => ({ valor: m, etiqueta: MODO_LABEL[m] }))}
+          />
         </div>
 
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>

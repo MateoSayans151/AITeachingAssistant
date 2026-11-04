@@ -7,6 +7,7 @@ import { ConfirmarBorrado } from './ConfirmarBorrado';
 import { useConfirmar } from './Confirmar';
 import { plural } from '@/lib/texto';
 import { mensajeDeError } from '@/lib/errores';
+import { descargarRespuestasDeCurso } from '@/lib/descargar-respuestas';
 import { useDocente } from '@/lib/auth';
 import { actualizarCurso, eliminarCurso, getEquipoCurso, getQueSePierdeCurso, quitarDocenteCurso } from '@/lib/api';
 import type { Curso } from '@/lib/api';
@@ -23,6 +24,7 @@ export function AjustesCurso({ curso, onCambio }: { curso: Curso; onCambio: () =
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [perdida, setPerdida] = useState<string[]>([]);
+  const [hayRespuestas, setHayRespuestas] = useState(false);
   const [otrosDocentes, setOtrosDocentes] = useState(0);
 
   async function pedirEliminar() {
@@ -36,6 +38,7 @@ export function AjustesCurso({ curso, onCambio }: { curso: Curso; onCambio: () =
         return;
       }
       const q = await getQueSePierdeCurso(curso.id).catch(() => null);
+      setHayRespuestas(q === null || q.respuestas > 0); // sin el dato, la descarga se ofrece igual (si no hay nada, avisa)
       setPerdida([
         ...(q ? [plural(q.examenes, 'examen', 'exámenes'), plural(q.respuestas, 'respuesta de alumno', 'respuestas de alumnos'), plural(q.comisiones, 'comisión', 'comisiones'), plural(q.materiales, 'material de cátedra', 'materiales de cátedra')] : ['Sus exámenes, respuestas de alumnos, comisiones y material de cátedra']),
         'Las capturas de pantalla guardadas',
@@ -109,6 +112,7 @@ export function AjustesCurso({ curso, onCambio }: { curso: Curso; onCambio: () =
           etiquetaNombre="curso"
           perdida={perdida}
           textoConfirmar="Eliminar curso"
+          descarga={hayRespuestas ? { etiqueta: 'Descargar las respuestas (CSV)', accion: () => descargarRespuestasDeCurso(curso.id, curso.nombre) } : undefined}
           onConfirmar={eliminar}
           onCancelar={() => setDialogo(null)}
         />

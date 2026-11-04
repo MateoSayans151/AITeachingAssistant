@@ -1,5 +1,6 @@
 'use client';
 
+import { Desplegable } from '@/app/components/Desplegable';
 // RubricaEditor: los criterios de UNA pregunta abierta (desarrollo, resolución de problema, demostración, análisis de caso y
 // respuesta corta). Son OPCIONALES: la sección arranca plegada y de bajo perfil («Criterios de corrección · opcional»); sin
 // criterios la IA evalúa la respuesta en conjunto contra el enunciado (el servidor le pone un único criterio general). Desplegada
@@ -273,19 +274,19 @@ export function RubricaEditor({ pregunta: p, onChange, niveles, matrices, onMatr
               {pensando ? 'Pensando…' : 'Sugerir criterios'}
             </button>
             {matrices.length === 0 ? (
-              <select className={styles.selector} aria-label="Partir de una matriz existente" disabled value="" onChange={() => {}}>
-                <option value="">Todavía no tenés matrices guardadas</option>
-              </select>
+              <Desplegable className={styles.selector} ariaLabel="Partir de una matriz existente" disabled value="" onChange={() => {}} opciones={[]} placeholder="Todavía no tenés matrices guardadas" />
             ) : (
-              <select className={styles.selector} aria-label="Partir de una matriz existente" value={matrizElegida} onChange={(e) => elegirMatriz(e.target.value)}>
-                <option value="">Partir de una matriz…</option>
-                {matrices.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre}
-                  </option>
-                ))}
-                <option value={VALOR_MATRIZ_NUEVA}>+ Crear una matriz nueva (se abre en otra pestaña)</option>
-              </select>
+              <Desplegable
+                className={styles.selector}
+                ariaLabel="Partir de una matriz existente"
+                value={matrizElegida}
+                onChange={elegirMatriz}
+                placeholder="Partir de una matriz…"
+                opciones={[
+                  ...matrices.map((m) => ({ valor: m.id, etiqueta: m.nombre })),
+                  { valor: VALOR_MATRIZ_NUEVA, etiqueta: '+ Crear una matriz nueva (se abre en otra pestaña)' },
+                ]}
+              />
             )}
           </div>
 

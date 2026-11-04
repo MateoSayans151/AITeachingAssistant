@@ -1,5 +1,6 @@
 'use client';
 
+import { Desplegable } from '@/app/components/Desplegable';
 // PreguntaCard: UNA pregunta del examen, plegable. Desplegada: selector de tipo (agrupado), enunciado, puntos de la pregunta
 // (para todos los tipos), y el cuerpo según el tipo: opciones (opción múltiple / casillas), verdadero o falso, numérica,
 // relacionar pares y, para las abiertas, la rúbrica (<RubricaEditor/>). Plegada (`pregunta.plegada`): UNA fila con el número,
@@ -281,17 +282,13 @@ export function PreguntaCard({
     <div ref={raiz} role="group" aria-label={`Pregunta ${numero}`} tabIndex={-1} data-pregunta-indice={indice} className={claseTarjeta}>
       <div className={s.cabecera}>
         <strong className={s.numero}>{numero}.</strong>
-        <select className={s.tipoSelect} aria-label={`Tipo de la pregunta ${numero}`} value={p.tipo} onChange={(e) => cambiarTipo(e.target.value as TipoPregunta)}>
-          {TIPOS_GRUPOS.map((g) => (
-            <optgroup key={g.id} label={g.titulo}>
-              {g.tipos.map(({ tipo }) => (
-                <option key={tipo} value={tipo}>
-                  {TIPOS_LABEL[tipo]}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <Desplegable
+          className={s.tipoSelect}
+          ariaLabel={`Tipo de la pregunta ${numero}`}
+          value={p.tipo}
+          onChange={(valor) => cambiarTipo(valor as TipoPregunta)}
+          opciones={TIPOS_GRUPOS.flatMap((g) => g.tipos.map(({ tipo }) => ({ valor: tipo, etiqueta: TIPOS_LABEL[tipo], grupo: g.titulo })))}
+        />
         <div className={s.acciones}>
           <button type="button" className={`btn btn-secondary ${s.btnAccion}`} data-accion="alternar" onClick={alternarPlegada} aria-expanded={true} aria-label={`Plegar la pregunta ${numero}`}>
             Plegar
@@ -400,13 +397,16 @@ export function PreguntaCard({
       {p.tipo === 'verdadero_falso' && (
         <div className="field" style={{ maxWidth: 200 }}>
           <label htmlFor={`pregunta-${indice}-vf`}>Respuesta correcta</label>
-          <select id={`pregunta-${indice}-vf`} value={p.vfCorrecta} onChange={(e) => actualizar('vfCorrecta', e.target.value as 'true' | 'false' | '')}>
-            <option value="" disabled>
-              Elegí la respuesta correcta…
-            </option>
-            <option value="true">Verdadero</option>
-            <option value="false">Falso</option>
-          </select>
+          <Desplegable
+            id={`pregunta-${indice}-vf`}
+            value={p.vfCorrecta}
+            onChange={(valor) => actualizar('vfCorrecta', valor as 'true' | 'false' | '')}
+            placeholder="Elegí la respuesta correcta…"
+            opciones={[
+              { valor: 'true', etiqueta: 'Verdadero' },
+              { valor: 'false', etiqueta: 'Falso' },
+            ]}
+          />
         </div>
       )}
 

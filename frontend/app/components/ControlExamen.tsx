@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Modal } from './Modal';
+import { Desplegable } from './Desplegable';
+import { SelectorFecha } from './SelectorFecha';
 import { plural } from '@/lib/texto';
 import { isoAFechaLocal, fechaLocalAIso } from '@/lib/fechas';
 import { mensajeDeError } from '@/lib/errores';
@@ -197,10 +199,16 @@ export function EditarExamenModal({
         </div>
         <div className="field">
           <label htmlFor="edit-feedback">Cuándo reciben su nota</label>
-          <select id="edit-feedback" value={feedbackModo} onChange={(e) => setFeedbackModo(e.target.value as FeedbackModo)} disabled={guardando}>
-            <option value="manual">Cuando yo publique las notas</option>
-            <option value="inmediato">Apenas reviso cada examen</option>
-          </select>
+          <Desplegable
+            id="edit-feedback"
+            value={feedbackModo}
+            onChange={(valor) => setFeedbackModo(valor as FeedbackModo)}
+            disabled={guardando}
+            opciones={[
+              { valor: 'manual', etiqueta: 'Cuando yo publique las notas' },
+              { valor: 'inmediato', etiqueta: 'Apenas reviso cada examen' },
+            ]}
+          />
         </div>
 
         <p className="muted" style={{ fontSize: 'var(--text-sm)' }}>
@@ -263,11 +271,11 @@ export function CambiarFechasModal({ examenId, publicacion, onListo, onCancelar 
         <div className="fila-campos">
           <div className="field">
             <label htmlFor="fechas-inicio">Se habilita</label>
-            <input id="fechas-inicio" type="datetime-local" value={inicio} onChange={(e) => setInicio(e.target.value)} disabled={guardando} />
+            <SelectorFecha id="fechas-inicio" value={inicio} onChange={setInicio} disabled={guardando} />
           </div>
           <div className="field">
             <label htmlFor="fechas-fin">Cierra</label>
-            <input id="fechas-fin" type="datetime-local" value={fin} onChange={(e) => setFin(e.target.value)} disabled={guardando} />
+            <SelectorFecha id="fechas-fin" value={fin} onChange={setFin} disabled={guardando} />
           </div>
         </div>
         <p className="ayuda-campo">Dejá una fecha vacía para quitarla. Quien ya empezó conserva el tiempo que tenía al empezar.</p>

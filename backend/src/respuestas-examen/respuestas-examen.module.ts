@@ -4,6 +4,8 @@ import { RespuestasExamenController } from './respuestas-examen.controller';
 import { RendirController } from './rendir.controller';
 import { ControlExamenController } from './control-examen.controller';
 import { ControlCursoController } from './control-curso.controller';
+import { ControlComisionController } from './control-comision.controller';
+import { ComisionesModule } from '../comisiones/comisiones.module';
 import { CursosModule } from '../cursos/cursos.module';
 import { RespuestasExamenService } from './respuestas-examen.service';
 import { IntentosService } from './intentos.service';
@@ -16,8 +18,8 @@ import { IntegridadService } from './integridad.service';
 import { ALMACEN_CAPTURAS, AlmacenCapturas, AlmacenCapturasLocal, AlmacenCapturasSupabase } from './almacen-capturas';
 
 @Module({
-  imports: [RagModule, ExamenesModule, NotificacionesModule, MailModule, CursosModule],
-  controllers: [RespuestasExamenController, RendirController, ControlExamenController, ControlCursoController],
+  imports: [RagModule, ExamenesModule, NotificacionesModule, MailModule, CursosModule, ComisionesModule],
+  controllers: [RespuestasExamenController, RendirController, ControlExamenController, ControlCursoController, ControlComisionController],
   providers: [
     RespuestasExamenService,
     IntentosService,

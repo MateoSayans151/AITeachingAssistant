@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ConfirmarBorrado } from '@/app/components/ConfirmarBorrado';
+import { Desplegable } from '@/app/components/Desplegable';
+import { SelectorFecha } from '@/app/components/SelectorFecha';
 import { CambiarFechasModal, CerrarExamenModal, EditarExamenModal, ReabrirExamenModal } from '@/app/components/ControlExamen';
 import { CopiarLinkButton } from '@/app/components/CopiarLinkButton';
 import { InvitarPorMail } from '@/app/examenes/nuevo/PasoPublicar';
@@ -25,6 +27,7 @@ import {
 } from '@/lib/api';
 import { fechaLocalAIso } from '@/lib/fechas';
 import { mensajeDeError } from '@/lib/errores';
+import { descargarRespuestasDeExamen } from '@/lib/descargar-respuestas';
 import { plural } from '@/lib/texto';
 
 /** Cuánto puede sacar un alumno en la pregunta: cerradas → su puntaje; abiertas → la suma de los puntos de sus criterios. */
@@ -239,6 +242,7 @@ export default function ExamenDetallePage() {
             'Las capturas de pantalla guardadas',
           ]}
           textoConfirmar="Eliminar examen"
+          descarga={rindieron.respuestas > 0 ? { etiqueta: 'Descargar las respuestas (CSV)', accion: () => descargarRespuestasDeExamen(examen.id) } : undefined}
           onConfirmar={() => eliminar(examen.titulo)}
           onCancelar={() => setDialogo(null)}
         />
@@ -322,14 +326,13 @@ export default function ExamenDetallePage() {
 
               <div className="field">
                 <label htmlFor="pub-comision">Comisión</label>
-                <select id="pub-comision" value={comisionSeleccionada} onChange={(e) => setComisionSeleccionada(e.target.value)}>
-                  <option value="">Elegí una comisión…</option>
-                  {comisionesDisponibles.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
+                <Desplegable
+                  id="pub-comision"
+                  value={comisionSeleccionada}
+                  onChange={setComisionSeleccionada}
+                  placeholder="Elegí una comisión…"
+                  opciones={comisionesDisponibles.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+                />
                 <p className="ayuda-campo">El grupo de alumnos que va a rendir con este link.</p>
               </div>
 
@@ -360,11 +363,11 @@ export default function ExamenDetallePage() {
                 <div className="fila-campos">
                   <div className="field">
                     <label htmlFor="pub-inicio">Se habilita</label>
-                    <input id="pub-inicio" type="datetime-local" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+                    <SelectorFecha id="pub-inicio" value={fechaInicio} onChange={setFechaInicio} />
                   </div>
                   <div className="field">
                     <label htmlFor="pub-fin">Cierra</label>
-                    <input id="pub-fin" type="datetime-local" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+                    <SelectorFecha id="pub-fin" value={fechaFin} onChange={setFechaFin} />
                   </div>
                 </div>
               )}
