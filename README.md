@@ -1,5 +1,11 @@
 # AI Teaching Assistant — MVP
 
+> **English summary.** AI-assisted grading tool for teachers, built as a university team project (UADE, Technology & Innovation). Teachers build exams (multiple choice, true/false or open-ended), share a link, and an LLM suggests a grade and feedback for each answer; the teacher reviews and publishes, so nothing reaches a student without their approval. Next.js + NestJS + Supabase (Postgres) + Vercel AI SDK (Gemini / Claude Haiku), deployed on Vercel.
+>
+> **Live:** [ai-teaching-assistant-sigma.vercel.app](https://ai-teaching-assistant-sigma.vercel.app)
+
+<p align="center"><img src="https://raw.githubusercontent.com/tomaslonati/tomaslonati/main/assets/ai-teaching-assistant.png" alt="AI Teaching Assistant — landing and login" width="55%"></p>
+
 Asistente de corrección con IA para docentes. Trabajo de Tecnología e Innovación (UADE) —
 Mateo Sayanz, Facundo Conde, Tomás Lonati.
 
